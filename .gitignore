@@ -1,0 +1,4 @@
+automation/.env
+secrets/
+app/.env.local
+automation/node_modules/

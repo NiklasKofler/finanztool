@@ -1,0 +1,14 @@
+{
+  "name": "finanztool-automation-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/drive-watcher.mjs"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.6.1",
+    "firebase-admin": "^13.4.0"
+  }
+}

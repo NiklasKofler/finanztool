@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "finanzperformance-tool"
+  },
+  "targets": {
+    "finanzperformance-tool": {
+      "hosting": {
+        "app": [
+          "finanzperformance-tool"
+        ]
+      }
+    }
+  }
+}

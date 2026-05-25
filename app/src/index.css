@@ -1,0 +1,46 @@
+:root {
+  color: #17201f;
+  background: #f5f2eb;
+  font-family: "Avenir Next", "IBM Plex Sans", "Trebuchet MS", sans-serif;
+  font-size: 16px;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 242, 235, 0.92)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(28, 68, 61, 0.04) 0,
+      rgba(28, 68, 61, 0.04) 1px,
+      transparent 1px,
+      transparent 80px
+    ),
+    #f5f2eb;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+svg {
+  display: block;
+}
