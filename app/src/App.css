@@ -121,6 +121,7 @@
   grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
   gap: 18px;
   align-items: start;
+  margin-top: 18px;
 }
 
 .panel {
@@ -151,6 +152,200 @@
   height: 24px;
   color: #a16b14;
   flex: 0 0 auto;
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.auth-panel h2 {
+  margin: 0;
+  color: #18211f;
+  font-size: 1.3rem;
+  letter-spacing: 0;
+}
+
+.auth-panel p {
+  margin: 8px 0 0;
+  color: #62706c;
+  line-height: 1.45;
+}
+
+.auth-panel__actions {
+  flex: 0 0 auto;
+}
+
+.auth-panel__hint {
+  font-weight: 700;
+}
+
+.auth-panel__error {
+  color: #a13a1b;
+  font-weight: 800;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-size: 0.94rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary-button {
+  border: 1px solid #1b6b5b;
+  background: #1f7d6a;
+  color: #ffffff;
+}
+
+.secondary-button {
+  border: 1px solid #c7d8d3;
+  background: #f7fbf8;
+  color: #214d44;
+}
+
+.position-count {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 34px;
+  border: 1px solid #c7d8d3;
+  border-radius: 999px;
+  color: #214d44;
+  background: #f7fbf8;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.positions-panel {
+  margin-top: 18px;
+  padding-bottom: 12px;
+}
+
+.positions-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+}
+
+.positions-table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+}
+
+.positions-table th,
+.positions-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e7ecea;
+  color: #26302e;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  text-align: left;
+  vertical-align: top;
+}
+
+.positions-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7faf9;
+  color: #66716e;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.positions-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.positions-table tbody tr:hover {
+  background: #fbfcfc;
+}
+
+.empty-position-row {
+  height: 92px;
+  color: #66716e;
+  text-align: center;
+}
+
+.positions-table .numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.position-name-cell {
+  width: 280px;
+}
+
+.position-name-cell strong,
+.position-name-cell span {
+  display: block;
+}
+
+.position-name-cell strong {
+  color: #17201f;
+  font-size: 0.94rem;
+}
+
+.position-name-cell span {
+  margin-top: 3px;
+  color: #73807c;
+  font-size: 0.78rem;
+}
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.source-pill--flatex {
+  color: #0f4e78;
+  background: #e8f2fb;
+}
+
+.source-pill--traderepublic {
+  color: #5b4300;
+  background: #fff2cf;
+}
+
+.source-pill--ginmon {
+  color: #0e5b43;
+  background: #e8f7ef;
+}
+
+.source-pill--intergold {
+  color: #704412;
+  background: #f7ead7;
+}
+
+.performance-cell--positive {
+  color: #0e6a4e;
+  font-weight: 800;
+}
+
+.performance-cell--negative {
+  color: #a13a1b;
+  font-weight: 800;
+}
+
+.performance-cell--neutral {
+  color: #66716e;
 }
 
 .source-list {
@@ -312,6 +507,44 @@
   margin-top: 18px;
 }
 
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.system-status-grid article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 14px;
+}
+
+.system-status-grid svg {
+  width: 21px;
+  height: 21px;
+  color: #0e7a54;
+}
+
+.system-status-grid article:nth-child(3) svg {
+  color: #a16b14;
+}
+
+.system-status-grid h3 {
+  margin: 0;
+  color: #18211f;
+  font-size: 1rem;
+}
+
+.system-status-grid p {
+  margin: 4px 0 0;
+  color: #62706c;
+  line-height: 1.45;
+}
+
 .import-controls {
   display: flex;
   flex-wrap: wrap;
@@ -394,7 +627,16 @@
     grid-template-columns: 1fr;
   }
 
+  .auth-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .import-result {
+    grid-template-columns: 1fr;
+  }
+
+  .system-status-grid {
     grid-template-columns: 1fr;
   }
 }

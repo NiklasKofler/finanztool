@@ -2,3 +2,6 @@ automation/.env
 secrets/
 app/.env.local
 automation/node_modules/
+.DS_Store
+firebase-debug.log
+*.log

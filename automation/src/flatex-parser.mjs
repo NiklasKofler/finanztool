@@ -67,6 +67,12 @@ function parseCsvLine(line, delimiter) {
   return cells;
 }
 
+function safeHeaderKey(header, index) {
+  const cleaned = String(header ?? "").trim();
+  if (cleaned) return cleaned;
+  return `col_${index + 1}`;
+}
+
 function findHeaderKey(headers, candidates) {
   for (const candidate of candidates) {
     const hit = headers.find((header) => header.includes(candidate));
@@ -91,7 +97,7 @@ export function parseFlatexCsv(csvText) {
   }
 
   const delimiter = detectDelimiter(lines[0]);
-  const rawHeaders = parseCsvLine(lines[0], delimiter);
+  const rawHeaders = parseCsvLine(lines[0], delimiter).map(safeHeaderKey);
   const normalizedHeaders = rawHeaders.map(normalizeHeader);
 
   const dateKey = findHeaderKey(normalizedHeaders, ["buchungstag", "datum", "valuta"]);

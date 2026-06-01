@@ -14,10 +14,22 @@ Persoenliches Finanzperformance-Tool fuer:
 
 - Lokale React/Firebase-App steht in `app/`
 - Firebase Hosting ist konfiguriert
-- Firebase Deploy funktioniert
+- Firebase Hosting ist konfiguriert; kein erneuter Public Deploy mit Finanzwerten ohne Auth-Grenze
+- Firestore Database ist erstellt
+- Firebase Storage ist im Spark-Tarif nicht verfuegbar und bleibt bis Billing-Entscheidung deaktiviert
 - Erster Flatex-CSV-Import ist in der App vorhanden
 - Lokaler Import-Agent ist vorbereitet in `automation/`
 - Drive-Ordnerstruktur wurde als Ziel fuer automatische Ablage definiert
+- Import-Agent laeuft als `launchd` Dienst
+- Backfill-Summaries fuer Flatex, Trade Republic, Ginmon und Intergold sind in Firestore geschrieben
+
+## Importierter Finanzstand
+
+- Flatex: `23.234,18 EUR`
+- Trade Republic: `2.254,30 EUR`
+- Ginmon: `8.029,81 EUR`
+- Intergold: `31.289,53 EUR` konservativ mit Intergold-Ankaufspreisen
+- Gesamt: `64.807,82 EUR`
 
 ## Wichtige Dateien
 
@@ -31,17 +43,17 @@ Persoenliches Finanzperformance-Tool fuer:
 ## Git Stand
 
 - Initialer Commit wurde lokal erstellt
-- Remote existiert noch nicht
-- GitHub-Repo muss noch angelegt oder verknuepft werden
+- GitHub-Remote ist verbunden: `origin` -> `https://github.com/NiklasKofler/finanztool.git`
+- `main` trackt `origin/main`
 
 ## Naechste Schritte
 
-1. GitHub-Repo anlegen und als `origin` verbinden
-2. Projekt auf Mac Studio identisch aufsetzen
-3. `app/.env.local` und `automation/.env` auf Mac Studio anlegen
-4. Service Account JSON fuer Firebase erstellen
-5. Import-Agent auf Mac Studio starten
-6. Flatex, Trade Republic, Ginmon und Intergold automatisieren
+1. Projekt auf Mac Studio identisch aufsetzen
+2. `app/.env.local` und `automation/.env` auf Mac Studio anlegen
+3. Service Account JSON fuer Firebase erstellen
+4. Import-Agent auf Mac Studio starten
+5. Flatex, Trade Republic, Ginmon und Intergold automatisieren
+6. Auth-Konzept fuer oeffentliches Hosting entscheiden, bevor Finanzwerte deployed werden
 
 ## Wichtige Hinweise
 

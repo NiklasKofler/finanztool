@@ -3,12 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
-    "start": "node src/drive-watcher.mjs"
+    "start": "node src/drive-watcher.mjs",
+    "import:bitget": "node src/import-bitget.mjs",
+    "backfill:summaries": "node src/backfill-summaries.mjs",
+    "deploy:firestore-rules": "node src/deploy-firestore-rules.mjs",
+    "serve:app": "node src/serve-app.mjs"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
     "dotenv": "^16.6.1",
-    "firebase-admin": "^13.4.0"
+    "firebase-admin": "^13.4.0",
+    "pdfjs-dist": "^5.7.284"
   }
 }

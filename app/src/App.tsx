@@ -1,27 +1,31 @@
 import {
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  type User,
+} from "firebase/auth";
+import {
   Activity,
-  AlertTriangle,
   Archive,
   CheckCircle2,
   Cloud,
   Database,
-  FileText,
-  Mail,
   RefreshCcw,
   ShieldCheck,
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
-import { importFlatexCsvToFirestore, type FlatexImportSummary } from "./firebase/importFlatex";
 import {
-  importPipeline,
-  sourceOverviews,
-  updateSchedule,
-} from "./domain/seedData";
-import type { SourceOverview, SourceStatus } from "./domain/types";
+  loadSourcePositions,
+  loadSourceSummaries,
+  type SourceSummaryDocument,
+} from "./firebase/sourceSummaries";
+import { importPipeline, sourceOverviews } from "./domain/seedData";
+import type { PortfolioPosition, SourceOverview, SourceStatus } from "./domain/types";
 
 const currencyFormatter = new Intl.NumberFormat("de-AT", {
   style: "currency",
@@ -32,6 +36,22 @@ const currencyFormatter = new Intl.NumberFormat("de-AT", {
 const numberFormatter = new Intl.NumberFormat("de-AT", {
   maximumFractionDigits: 0,
 });
+
+const percentFormatter = new Intl.NumberFormat("de-AT", {
+  style: "percent",
+  maximumFractionDigits: 1,
+});
+
+const sourceLabels: Record<string, string> = {
+  flatex: "Flatex",
+  traderepublic: "Trade Republic",
+  ginmon: "Ginmon",
+  intergold: "Intergold",
+  bitget: "Bitget",
+};
+
+const sourceSortOrder = ["flatex", "traderepublic", "ginmon", "intergold", "bitget"];
+const ownerEmail = "niklas.kofler@gmail.com";
 
 const statusMeta: Record<
   SourceStatus,
@@ -46,14 +66,43 @@ const statusMeta: Record<
 
 function formatCurrency(value?: number) {
   if (typeof value !== "number") {
-    return "Noch offen";
+    return "—";
   }
 
   return currencyFormatter.format(value);
 }
 
+function formatOptionalText(value?: string | null) {
+  return value?.trim() ? value : "—";
+}
+
+function formatPercent(value?: number | null) {
+  if (typeof value !== "number") return "—";
+  return percentFormatter.format(value);
+}
+
+function formatValuationDate(value?: string) {
+  if (!value) return "Noch offen";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
 function getTrackedTotal(sources: SourceOverview[]) {
   return sources.reduce((sum, source) => sum + (source.currentValue ?? 0), 0);
+}
+
+function getSourceLabel(source: string) {
+  return sourceLabels[source] ?? source;
+}
+
+function getPositionSortValue(position: PortfolioPosition) {
+  const sourceIndex = sourceSortOrder.indexOf(position.source);
+  return sourceIndex === -1 ? Number.MAX_SAFE_INTEGER : sourceIndex;
 }
 
 function SourceIcon({ source }: { source: SourceOverview }) {
@@ -78,42 +127,111 @@ function StatusBadge({ status }: { status: SourceStatus }) {
 }
 
 function App() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importSummary, setImportSummary] = useState<FlatexImportSummary | null>(null);
+  const [sourceSummaries, setSourceSummaries] = useState<
+    Record<string, SourceSummaryDocument>
+  >({});
+  const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [dataStatus, setDataStatus] = useState<
+    "auth-required" | "loading" | "live" | "blocked"
+  >("auth-required");
 
-  const trackedTotal = getTrackedTotal(sourceOverviews);
-  const importedSources = sourceOverviews.filter(
-    (source) => source.status === "ready" || source.status === "automated",
-  ).length;
-  const manualSources = sourceOverviews.filter((source) => source.status === "manual").length;
-
-  async function handleFlatexImport() {
-    if (!selectedFile) {
-      setImportError("Bitte zuerst eine Flatex-CSV auswählen.");
-      return;
-    }
-
+  useEffect(() => {
     const services = getFirebaseServices();
-    if (!services) {
-      setImportError("Firebase ist noch nicht konfiguriert.");
-      return;
-    }
+    if (!services) return;
 
-    setIsImporting(true);
-    setImportError(null);
+    return onAuthStateChanged(services.auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      setAuthError(null);
+      if (!user) {
+        setSourceSummaries({});
+        setPositions([]);
+        setDataStatus("auth-required");
+      } else {
+        setDataStatus("loading");
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const services = getFirebaseServices();
+    if (!services || !authReady) return;
+
+    if (!authUser) return;
+
+    let isMounted = true;
+    void Promise.all([loadSourceSummaries(services.db), loadSourcePositions(services.db)])
+      .then(([summaries, loadedPositions]) => {
+        if (!isMounted) return;
+        setSourceSummaries(summaries);
+        setPositions(loadedPositions);
+        setDataStatus("live");
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setDataStatus("blocked");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authReady, authUser]);
+
+  async function handleGoogleSignIn() {
+    const services = getFirebaseServices();
+    if (!services) return;
 
     try {
-      const summary = await importFlatexCsvToFirestore(services.db, selectedFile);
-      setImportSummary(summary);
+      setAuthError(null);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ login_hint: ownerEmail });
+      await signInWithPopup(services.auth, provider);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unbekannter Importfehler.";
-      setImportError(message);
-    } finally {
-      setIsImporting(false);
+      setAuthError(error instanceof Error ? error.message : "Google-Anmeldung fehlgeschlagen");
     }
   }
+
+  async function handleSignOut() {
+    const services = getFirebaseServices();
+    if (!services) return;
+    await signOut(services.auth);
+  }
+
+  const sources = useMemo(
+    () =>
+      sourceOverviews.map((source) => {
+        const summary = sourceSummaries[source.summaryId ?? source.id];
+        if (!summary) return source;
+        return {
+          ...source,
+          currentValue: summary.currentValue ?? source.currentValue,
+          valuationDate: summary.valuationDate ?? source.valuationDate,
+          positionCount:
+            positions.filter((position) => position.source === source.id).length ||
+            summary.positionCount ||
+            source.positionCount,
+        };
+      }),
+    [positions, sourceSummaries],
+  );
+
+  const trackedTotal = getTrackedTotal(sources);
+  const importedSources = sources.filter(
+    (source) => source.status === "ready" || source.status === "automated",
+  ).length;
+  const manualSources = sources.filter((source) => source.status === "manual").length;
+  const displayedPositions = useMemo(
+    () =>
+      [...positions].sort((left, right) => {
+        const sourceDelta = getPositionSortValue(left) - getPositionSortValue(right);
+        if (sourceDelta !== 0) return sourceDelta;
+        return (right.currentValue ?? 0) - (left.currentValue ?? 0);
+      }),
+    [positions],
+  );
 
   return (
     <main className="app-shell">
@@ -124,7 +242,17 @@ function App() {
         </div>
         <div className="topbar__status">
           <Cloud aria-hidden="true" />
-          <span>{isFirebaseConfigured ? "Firebase verbunden" : "Lokaler Modus"}</span>
+          <span>
+            {dataStatus === "live"
+              ? "Firestore-Daten geladen"
+              : dataStatus === "loading"
+                ? "Lade Firestore"
+              : dataStatus === "blocked"
+                ? "Firestore blockiert"
+              : isFirebaseConfigured
+                ? "Google-Anmeldung nötig"
+                : "Lokaler Modus"}
+          </span>
         </div>
       </header>
 
@@ -135,16 +263,16 @@ function App() {
           </div>
           <p>Erfasster Wert</p>
           <strong>{formatCurrency(trackedTotal)}</strong>
-          <span>Flatex, Trade Republic und Ginmon aus den ersten Exporten</span>
+          <span>Flatex, Trade Republic, Ginmon und Intergold aus Drive-Dokumenten</span>
         </article>
 
         <article className="metric-card">
           <div className="metric-card__icon">
             <Database aria-hidden="true" />
           </div>
-          <p>Datenquellen</p>
-          <strong>{numberFormatter.format(sourceOverviews.length)}</strong>
-          <span>{importedSources} bereit, {manualSources} mit bewusstem Handgriff</span>
+          <p>Aktive Quellen</p>
+          <strong>{numberFormatter.format(importedSources)}</strong>
+          <span>{manualSources ? `${manualSources} mit bewusstem Handgriff, ` : ""}{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
         </article>
 
         <article className="metric-card">
@@ -152,9 +280,118 @@ function App() {
             <ShieldCheck aria-hidden="true" />
           </div>
           <p>Import-Prinzip</p>
-          <strong>Idempotent</strong>
-          <span>Neue Dateien werden erkannt, validiert und erst dann übernommen</span>
+          <strong>{dataStatus === "live" ? "Live" : "Geschützt"}</strong>
+          <span>
+            {dataStatus === "live"
+              ? "Firestore liest nur nach Google-Login, Client-Schreiben bleibt gesperrt"
+              : dataStatus === "blocked"
+                ? "Bitte mit dem freigegebenen Google-Konto anmelden"
+                : "Firestore ist geschützt und wartet auf deine Anmeldung"}
+          </span>
         </article>
+      </section>
+
+      {dataStatus !== "live" ? (
+        <section className="panel auth-panel">
+          <div>
+            <p className="eyebrow">Firestore</p>
+            <h2>Geschützter Zugriff</h2>
+            <p>
+              Die Finanzdaten werden erst nach Anmeldung mit {ownerEmail} aus Firestore geladen.
+            </p>
+            {authUser ? (
+              <p className="auth-panel__hint">
+                Angemeldet als {authUser.email}. Falls das der falsche Account ist, abmelden und
+                erneut anmelden.
+              </p>
+            ) : null}
+            {authError ? <p className="auth-panel__error">{authError}</p> : null}
+          </div>
+          <div className="auth-panel__actions">
+            {authUser ? (
+              <button type="button" className="secondary-button" onClick={handleSignOut}>
+                Abmelden
+              </button>
+            ) : (
+              <button type="button" className="primary-button" onClick={handleGoogleSignIn}>
+                Mit Google anmelden
+              </button>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="panel positions-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Portfolio</p>
+            <h2>Alle Einzelpositionen</h2>
+          </div>
+          <span className="position-count">{numberFormatter.format(displayedPositions.length)}</span>
+        </div>
+
+        <div className="positions-table-wrap">
+          <table className="positions-table">
+            <thead>
+              <tr>
+                <th>Quelle</th>
+                <th>Position</th>
+                <th>Kategorie</th>
+                <th>Menge</th>
+                <th>Kurs</th>
+                <th className="numeric">Wert</th>
+                <th className="numeric">Einstand</th>
+                <th className="numeric">G/V</th>
+                <th className="numeric">Perf.</th>
+                <th>Stichtag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedPositions.length ? displayedPositions.map((position) => {
+                const performanceTone =
+                  (position.performanceValue ?? 0) > 0
+                    ? "positive"
+                    : (position.performanceValue ?? 0) < 0
+                      ? "negative"
+                      : "neutral";
+
+                return (
+                  <tr key={position.id}>
+                    <td>
+                      <span className={`source-pill source-pill--${position.source}`}>
+                        {getSourceLabel(position.source)}
+                      </span>
+                    </td>
+                    <td className="position-name-cell">
+                      <strong>{position.name}</strong>
+                      <span>
+                        {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
+                      </span>
+                    </td>
+                    <td>{formatOptionalText(position.category)}</td>
+                    <td>{formatOptionalText(position.quantityText)}</td>
+                    <td>{formatOptionalText(position.quoteText)}</td>
+                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
+                    <td className="numeric">{formatCurrency(position.costValue ?? undefined)}</td>
+                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                      {formatCurrency(position.performanceValue ?? undefined)}
+                    </td>
+                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                      {formatPercent(position.performancePct)}
+                    </td>
+                    <td>{formatValuationDate(position.valuationDate ?? undefined)}</td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td className="empty-position-row" colSpan={10}>
+                    Noch keine Firestore-Positionen geladen.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="content-grid">
@@ -168,7 +405,7 @@ function App() {
           </div>
 
           <div className="source-list">
-            {sourceOverviews.map((source) => (
+            {sources.map((source) => (
               <article className="source-card" key={source.id}>
                 <div className="source-card__icon">
                   <SourceIcon source={source} />
@@ -187,12 +424,16 @@ function App() {
                       <dd>{formatCurrency(source.currentValue)}</dd>
                     </div>
                     <div>
-                      <dt>Importweg</dt>
-                      <dd>{source.importMethod}</dd>
+                      <dt>Stichtag</dt>
+                      <dd>{formatValuationDate(source.valuationDate)}</dd>
                     </div>
                     <div>
                       <dt>Nächster Schritt</dt>
-                      <dd>{source.nextStep}</dd>
+                      <dd>
+                        {source.positionCount
+                          ? `${numberFormatter.format(source.positionCount)} Positionen, ${source.importMethod}`
+                          : source.nextStep}
+                      </dd>
                     </div>
                   </dl>
                 </div>
@@ -221,87 +462,6 @@ function App() {
             ))}
           </ol>
         </aside>
-      </section>
-
-      <section className="panel schedule-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Automationen</p>
-            <h2>Geplante Export- und Importtaktung</h2>
-          </div>
-          <Mail aria-hidden="true" />
-        </div>
-        <div className="schedule-grid">
-          {updateSchedule.map((item) => (
-            <article className="schedule-item" key={item.source}>
-              <FileText aria-hidden="true" />
-              <div>
-                <h3>{item.source}</h3>
-                <p>{item.cadence}</p>
-              </div>
-              {item.needsAttention ? (
-                <AlertTriangle className="attention-icon" aria-label="Manueller Schritt nötig" />
-              ) : (
-                <CheckCircle2 className="ok-icon" aria-label="Automatisierbar" />
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel import-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Live Import</p>
-            <h2>Flatex CSV nach Firestore</h2>
-          </div>
-          <Database aria-hidden="true" />
-        </div>
-
-        <div className="import-controls">
-          <label htmlFor="flatex-file" className="import-file-label">
-            CSV auswählen
-          </label>
-          <input
-            id="flatex-file"
-            className="import-file-input"
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              setSelectedFile(file);
-              setImportSummary(null);
-              setImportError(null);
-            }}
-          />
-          <button
-            type="button"
-            className="import-button"
-            onClick={() => void handleFlatexImport()}
-            disabled={!selectedFile || isImporting}
-          >
-            {isImporting ? "Import läuft..." : "Import starten"}
-          </button>
-        </div>
-
-        <p className="import-hint">
-          Ziel-Collections: <code>imports</code>, <code>transactions</code>, <code>positions</code>,{" "}
-          <code>snapshots</code>
-        </p>
-
-        {selectedFile ? <p className="import-file-name">Datei: {selectedFile.name}</p> : null}
-        {importError ? <p className="import-error">Fehler: {importError}</p> : null}
-
-        {importSummary ? (
-          <div className="import-result">
-            <p>Status: {importSummary.status === "IMPORTED" ? "Importiert" : "Duplikat erkannt"}</p>
-            <p>Import ID: {importSummary.importId}</p>
-            <p>Transaktionen: {importSummary.transactionCount}</p>
-            <p>Uebersprungene Zeilen: {importSummary.skippedRows}</p>
-            <p>Warnungen: {importSummary.warningCount}</p>
-            <p>Summierter Betrag: {currencyFormatter.format(importSummary.totalAmount)}</p>
-          </div>
-        ) : null}
       </section>
     </main>
   );

@@ -1,0 +1,20 @@
+{
+  "name": "finanztool",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "npm --prefix app run start",
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build",
+    "lint": "npm --prefix app run lint",
+    "agent": "npm --prefix automation run start",
+    "backfill:summaries": "npm --prefix automation run backfill:summaries",
+    "deploy:firestore-rules": "npm --prefix automation run deploy:firestore-rules",
+    "serve:app": "npm --prefix automation run serve:app",
+    "install:all": "npm --prefix app install && npm --prefix automation install"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

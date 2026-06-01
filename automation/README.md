@@ -3,6 +3,9 @@
 Dieser Agent laeuft lokal auf deinem Mac Studio und ueberwacht deinen Drive-Ordner automatisch.
 Neue CSV/PDF-Dateien werden ohne manuelles Klicken erkannt und in Firebase verarbeitet.
 
+Das vollstaendige 1:1 Runbook liegt unter
+[`docs/export_import_runbook_mac_studio.md`](../docs/export_import_runbook_mac_studio.md).
+
 ## Was automatisch passiert
 
 - Beobachtet `DEPOT_ROOT` und alle Unterordner.
@@ -13,31 +16,62 @@ Neue CSV/PDF-Dateien werden ohne manuelles Klicken erkannt und in Firebase verar
   - `transactions`
   - `positions`
   - `snapshots`
+- Bitget kann per Read-only API importiert werden und schreibt:
+  - `sourcePositions`
+  - `sourceSummaries/bitget`
+  - `ledgerEntries`
 
 ## Setup
 
 1. Abhaengigkeiten installieren
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm install
 ```
 
 2. Service Account hinterlegen (Firebase Console -> Service Accounts -> new private key)
-   - Datei z. B. unter `/Users/niklaskofler/Documents/Finanztool/secrets/firebase-service-account.json`
+   - Datei z. B. unter `/Users/niklaskofler/Documents/finanztool/secrets/firebase-service-account.json`
 
 3. Env anlegen
 
 ```bash
-cp /Users/niklaskofler/Documents/Finanztool/automation/.env.example /Users/niklaskofler/Documents/Finanztool/automation/.env
+cp /Users/niklaskofler/Documents/finanztool/automation/.env.example /Users/niklaskofler/Documents/finanztool/automation/.env
 ```
 
 4. Agent starten
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm start
 ```
+
+## Bitget API-Import
+
+Der Bitget-Key muss Read-only sein. Keine Trading- oder Withdrawal-Rechte vergeben.
+
+Env-Werte:
+
+```env
+BITGET_API_KEY=
+BITGET_API_SECRET=
+BITGET_API_PASSPHRASE=
+```
+
+Import starten:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool/automation
+npm run import:bitget
+```
+
+Der Import nutzt:
+
+- `GET /api/v2/spot/account/info`
+- `GET /api/v2/spot/account/assets`
+- `GET /api/v2/account/all-account-balance`
+- `GET /api/v2/spot/market/tickers`
+- `GET /api/v2/spot/account/bills`
 
 ## Mac Studio Dauerbetrieb (launchd)
 
@@ -52,11 +86,16 @@ Beispiel `~/Library/LaunchAgents/com.niklas.finanztool.import-agent.plist`:
     <string>com.niklas.finanztool.import-agent</string>
     <key>ProgramArguments</key>
     <array>
-      <string>/usr/bin/env</string>
-      <string>bash</string>
-      <string>-lc</string>
-      <string>cd /Users/niklaskofler/Documents/Finanztool/automation && npm start</string>
+      <string>/Users/niklaskofler/.nvm/versions/node/v22.22.3/bin/node</string>
+      <string>src/drive-watcher.mjs</string>
     </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/niklaskofler/Documents/finanztool/automation</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/Users/niklaskofler/.nvm/versions/node/v22.22.3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
