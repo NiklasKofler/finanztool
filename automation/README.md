@@ -75,6 +75,23 @@ Erst nach erfolgreichem Test in Firestore importieren:
 npm run import:bitget
 ```
 
+Auf einem Entwicklungs-Mac mit bestehendem Firebase-CLI-Login kann der Import
+ohne lokalen Service Account ausgefuehrt werden:
+
+```bash
+npm run import:bitget:local
+```
+
+Automatische Aktualisierung alle 15 Minuten auf dem aktuellen Mac installieren:
+
+```bash
+npm run install:bitget-agent
+```
+
+Der lokale Import ueberschreibt aktuelle Positionen, Summary und Agent-Status.
+Pro Kalendertag wird nur ein Import-Dokument aktualisiert, damit Firestore nicht
+durch die 15-Minuten-Aktualisierung unnoetig waechst.
+
 Der Import nutzt:
 
 - `GET /api/v2/spot/account/info`

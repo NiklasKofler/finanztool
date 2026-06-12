@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.niklas.finanztool.bitget-import</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>__NODE_PATH__</string>
+      <string>src/import-bitget-local.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__WORKING_DIRECTORY__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>__PATH__</string>
+      <key>FIREBASE_PROJECT_ID</key>
+      <string>finanzperformance-tool</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/finanztool-bitget-import.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/finanztool-bitget-import.err.log</string>
+  </dict>
+</plist>

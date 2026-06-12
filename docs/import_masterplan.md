@@ -26,7 +26,7 @@ Wichtig:
 | Broker | Trade Republic | aktiv | sehr hoch | taeglich bei Transaktionen plus periodischer Snapshot | Mail-Agent fuer taegliche Abrechnungs-PDFs | manueller Mobile-Export plus Agent | Mailweg bestaetigt, Umsetzung offen |
 | Robo-Advisor | Ginmon | aktiv | hoch | taeglich bis woechentlich je nach Dokumentenlage | Agent | Browser-/Dokumentabruf | teilweise produktiv |
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
-| Krypto | Bitget | aktiv | hoch | nahezu echtzeitnah | API | CSV/Datei nur Notfall | vorbereitet, API blockiert |
+| Krypto | Bitget | aktiv | hoch | alle 15 Minuten | API | CSV/Datei nur Notfall | produktiv auf MacBook |
 | Mitarbeiteraktien | EquatePlus | passiv/regelmaessig | mittel | bei neuer Benachrichtigung, mindestens monatlich | geplanter Mail-Agent | manueller PDF-Import | erste Benachrichtigung abwarten |
 | Bank | Sparkasse George | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter | Export oder manueller Eintrag | Anbieter pruefen |
 | Kreditkarte | Amazon Visa | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
@@ -99,8 +99,11 @@ Wichtig:
   - primaer `API`
   - spaeter automatischer Polling-Job
 - Zusatz:
-  - aktueller Blocker: API-Signaturfehler
-  - nach Fix hohe Prioritaet, weil hier echter Live-Charakter moeglich ist
+  - neuer API-Key `Finanztool-Codex` ist ausschliesslich Read-only
+  - Spot- und Earn-Bestand werden erfasst
+  - kontenuebergreifender Bitget-Wert wird fuer die Summary verwendet
+  - automatische Aktualisierung laeuft auf dem MacBook alle 15 Minuten
+  - Einstandswerte werden einmalig separat erfasst
 
 ### 6. EquatePlus
 

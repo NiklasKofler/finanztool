@@ -117,6 +117,10 @@ export class BitgetClient {
     return this.request("GET", "/api/v2/account/all-account-balance");
   }
 
+  getEarnAssets() {
+    return this.request("GET", "/api/v2/earn/account/assets");
+  }
+
   getSpotBills(params = {}) {
     return this.request("GET", "/api/v2/spot/account/bills", { params });
   }
@@ -186,10 +190,17 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     accountBalances = { warning: error.message };
   }
 
+  let earnAssets = [];
+  try {
+    earnAssets = await client.getEarnAssets();
+  } catch (error) {
+    console.warn(`[warn] Bitget earn assets skipped: ${error.message}`);
+  }
+
   const tickerBySymbol = new Map((tickers ?? []).map((ticker) => [ticker.symbol, ticker]));
   const usdtToEur = usdEurRate ?? parseNumber(process.env.BITGET_USDT_EUR_RATE) ?? null;
 
-  const positions = (assets ?? [])
+  const spotPositions = (assets ?? [])
     .map((asset) => {
       const coin = String(asset.coin ?? "").toUpperCase();
       const available = parseNumber(asset.available) ?? 0;
@@ -205,10 +216,11 @@ export async function fetchBitgetPortfolioSnapshot(client) {
         currentValueUsdt !== null && usdtToEur !== null ? currentValueUsdt * usdtToEur : null;
 
       return {
-        id: `bitget_${coin}`,
+        id: `bitget_spot_${coin}`,
         source: "bitget",
         name: coin,
-        category: "Crypto",
+        category: "Crypto - Spot",
+        accountType: "spot",
         quantity,
         quantityText: String(quantity),
         quoteText: priceUsdt !== null ? `${priceUsdt} USDT` : null,
@@ -224,10 +236,62 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     })
     .filter(Boolean);
 
-  const currentValue = positions.reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
+  const earnPositions = (earnAssets ?? [])
+    .map((asset) => {
+      const coin = String(asset.coin ?? "").toUpperCase();
+      const quantity = parseNumber(asset.amount) ?? 0;
+      if (!coin || quantity <= 0) return null;
+
+      const ticker = coin === "USDT" ? null : tickerBySymbol.get(`${coin}USDT`);
+      const priceUsdt = coin === "USDT" ? 1 : parseNumber(ticker?.lastPr);
+      const currentValueUsdt = priceUsdt !== null ? quantity * priceUsdt : null;
+      const currentValue =
+        currentValueUsdt !== null && usdtToEur !== null ? currentValueUsdt * usdtToEur : null;
+
+      return {
+        id: `bitget_earn_${coin}`,
+        source: "bitget",
+        name: coin,
+        category: "Crypto - Earn",
+        accountType: "earn",
+        quantity,
+        quantityText: String(quantity),
+        quoteText: priceUsdt !== null ? `${priceUsdt} USDT` : null,
+        currentValue,
+        currentValueUsdt,
+        costValue: null,
+        performanceValue: null,
+        performancePct: null,
+        valuationDate: new Date().toISOString(),
+        valuationMethod: "bitget_earn_assets_v1",
+        raw: asset,
+      };
+    })
+    .filter(Boolean);
+
+  const positions = [...spotPositions, ...earnPositions];
+  const accountComponents = Object.fromEntries(
+    (accountBalances ?? []).map((account) => [
+      account.accountType,
+      parseNumber(account.usdtBalance) ?? 0,
+    ]),
+  );
+  const totalAccountValueUsdt = Object.values(accountComponents).reduce(
+    (total, value) => total + value,
+    0,
+  );
+  const positionsValue = positions.reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
+  const currentValue =
+    totalAccountValueUsdt > 0 && usdtToEur !== null
+      ? totalAccountValueUsdt * usdtToEur
+      : positionsValue;
+
   return {
     accountInfo,
     accountBalances,
+    accountComponents,
+    totalAccountValueUsdt,
+    earnAssets,
     positions,
     currentValue,
     usdtToEur,

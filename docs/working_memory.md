@@ -129,9 +129,14 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ### Bitget
 
-- API-Client ist vorbereitet
-- Importskript ist vorhanden
-- Aktueller Blocker: `sign signature error` bei privaten API-Requests
+- Read-only API funktioniert
+- API-Key, Secret und Passphrase liegen lokal im macOS-Schluesselbund
+- Spot- und Earn-Bestand werden in `sourcePositions` geschrieben
+- `sourceSummaries/bitget` nutzt Bitgets kontenuebergreifende Bewertung
+- `agentStatus/bitget` dokumentiert den letzten erfolgreichen Lauf
+- Automatischer Import laeuft auf dem MacBook alle 15 Minuten
+- Firestore erhaelt hoechstens ein Bitget-Importdokument pro Kalendertag
+- Einmalige Einstandswerte fuer Performanceberechnung sind noch offen
 
 ## Importierter Finanzstand laut letzter Studio-Zusammenfassung
 
@@ -188,17 +193,18 @@ npx firebase-tools deploy --project finanzperformance-tool
 ## Offene Punkte
 
 1. `working_memory.md` kuenftig nach wichtigen Sessions wirklich pflegen
-2. Bitget API-Key/Secret/Passphrase sauber korrigieren
-3. UI weiter ausbauen: Filter, Sortierung, Detailansichten
-4. EquatePlus Parser ergaenzen
-5. Ginmon Kosten-/Steuerdetails vertiefen
-6. Intergold Belegparser und Preisbewertung sauber zusammenfuehren
-7. Trade-Republic-Mail-Agent fuer taegliche verschluesselte PDFs bauen
-8. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
+2. Bitget-Einstandswerte einmalig erfassen
+3. Flatex-Download-Agent auf dem Mac Studio bauen
+4. Ginmon-Download-Agent auf dem Mac Studio bauen
+5. Trade-Republic-Mail-Agent fuer taegliche verschluesselte PDFs bauen
+6. UI weiter ausbauen: Filter, Sortierung, Detailansichten
+7. EquatePlus Parser ergaenzen
+8. Intergold Belegparser und Preisbewertung sauber zusammenfuehren
+9. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
 
 ## Naechster empfohlener Schritt
 
-Bitget zuerst auf dem MacBook abschliessen. Danach auf dem Mac Studio reine
+Bitget-Einstandswerte einmalig ergaenzen. Danach auf dem Mac Studio reine
 Download-Agents in dieser Reihenfolge bauen: Flatex, Ginmon, Trade Republic.
 Der Erstbestand jeder Quelle wird einmalig gemeinsam kontrolliert erfasst;
 anschliessend verarbeiten Parser nur noch neue Updates.
@@ -206,4 +212,4 @@ anschliessend verarbeiten Parser nur noch neue Updates.
 ## Letzte Aktualisierung
 
 - Datum: 2026-06-13
-- Quelle: Umsetzungsreihenfolge Bitget, Download-Agents und Update-Parser
+- Quelle: Bitget Read-only API, Spot-/Earn-Import und 15-Minuten-Agent abgeschlossen
