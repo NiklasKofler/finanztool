@@ -1,41 +1,70 @@
 # Trade Republic Import Strategie
 
+Stand: 2026-06-13
+
 ## Ziel
 
-Trade Republic wird wegen 2FA nicht direkt automatisiert. Der mobile Workflow bleibt:
+Trade-Republic-Transaktionen sollen moeglichst automatisch und zeitnah in die App gelangen.
+Wegen 2FA bleibt der direkte automatisierte Broker-Zugriff ungeeignet.
 
-1. In der Trade-Republic-App die vier Reports erzeugen.
-2. Die Reports ohne Betreff an die eigene Mail schicken.
-3. Codex legt die Anhange in den Depot-Ordner ab und ueberschreibt die alten Dateien.
+## Primaerer Weg: taegliche Abrechnungsmails
 
-## Zielnamen
+Wenn Transaktionen stattgefunden haben, sendet Trade Republic am Ende des Tages automatisch eine Mail:
 
-- `2026-05-24_TradeRepublic_TransactionExport.csv`
-- `2026-05-24_TradeRepublic_AccountStatement.pdf`
-- `2026-05-24_TradeRepublic_NetWorth.pdf`
-- `2025_TradeRepublic_TaxReport.pdf`
+```text
+Duplicates customer Niklas Andre Kofler of DD.MM.YYYY.
+```
 
-## Zuordnung
+Diese Mail enthaelt ein oder mehrere passwortgeschuetzte PDFs vom Typ:
 
-- `Transaction export.csv` -> `TransactionExport.csv`
-- `Account statement.pdf` -> `AccountStatement.pdf`
-- `Net Worth.pdf` -> `NetWorth.pdf`
-- `Tax Report 2025.pdf` -> `TaxReport.pdf`
+```text
+duplicates-dispatch_Securities Settlement-<id>.pdf
+```
 
-## Ablage
+Der geplante Mail-Agent auf dem Mac Studio soll:
 
-`/Users/niklaskofler/Library/CloudStorage/GoogleDrive-niklas.kofler@gmail.com/My Drive/Depot/01_Originale/TradeRepublic`
+1. passende Trade-Republic-Mails erkennen
+2. PDF-Anhaenge herunterladen
+3. Originaldateien unveraendert archivieren
+4. PDF-Passwort aus dem macOS-Schluesselbund lesen
+5. PDFs fuer die Textauswertung entschluesseln
+6. enthaltene Transaktionen parsen
+7. Duplikate erkennen und nach Firestore schreiben
 
-## Sinnvolle Taktung
+## Passwortbehandlung
 
-- `Transaction export`: woechentlich, weil die Einzahlungen woechentlich laufen und die Datei die eigentliche Bewegungsquelle ist.
-- `Account statement`: monatlich reicht meist aus, weil das die Kontobewegungen und den Kontostand konsolidiert.
-- `Net Worth`: bei Bedarf oder zusammen mit dem Wochenlauf, wenn ein aktueller Snapshot wichtig ist.
-- `Tax Report`: jaehrlich, sobald er verfuegbar ist.
+Trade Republic sendet das PDF-Passwort separat per Mail:
 
-## Warum so
+```text
+Password for duplicates of your employees
+```
 
-- Woechentliche Exporte halten den manuellen Aufwand klein.
-- Tagesgenaue Werte liefert bei Trade Republic ohnehin der `Net Worth`-Report.
-- Die eigentliche Buchungswahrheit liegt im `Transaction export`; das `Account statement` ist vor allem fuer Cash-Reconciliation und Belege wichtig.
-- Das `Tax Report`-Dokument bleibt ein Jahresbeleg fuer Steuer und Archiv.
+Sicherheitsentscheidung:
+
+- Passwort nicht in der App speichern
+- Passwort nicht in Firestore speichern
+- Passwort nicht in Git oder Dokumentation speichern
+- Passwort lokal im macOS-Schluesselbund des Mac Studio speichern
+- Agent soll eine neue Passwort-Mail erkennen und den Schluesselbundwert aktualisieren
+
+## Periodischer Abgleich
+
+Die taeglichen PDFs sind der zeitnahe Transaktionskanal. Folgende Reports bleiben als Kontroll- und Ergaenzungsquellen:
+
+- `Transaction export.csv`: periodisch fuer Historie und Vollstaendigkeitsabgleich
+- `Net Worth.pdf`: periodisch fuer aktuelle Positionswerte
+- `Account statement.pdf`: monatlich fuer Cash- und Kontoabgleich
+- `Tax Report`: jaehrlich als Steuerbeleg
+
+## Noch zu pruefen
+
+1. Welche Transaktionsarten stehen in den taeglichen `Securities Settlement` PDFs?
+2. Sind Sparplaene, Verkaeufe, Dividenden, Zinsen, Gebuehren und Steuern vollstaendig enthalten?
+3. Welche Daten fehlen gegenueber `Transaction export.csv` und `Account statement.pdf`?
+4. Kann die Zuordnung anhand einer stabilen Dokument-ID erfolgen?
+
+## Ziel-Aktualitaet
+
+- Transaktionen: automatisch am Folgetag nach Eingang der Sammelmail
+- Positionen und Marktwerte: periodisch ueber `Net Worth.pdf`
+- Cash-Abgleich: monatlich ueber `Account statement.pdf`

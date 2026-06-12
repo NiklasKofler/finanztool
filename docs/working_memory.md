@@ -92,6 +92,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Einstandswerte werden aus Trades berechnet
 - `Net Worth.pdf` liefert aktuelle Positionswerte
 - Gewinn/Verlust je Position wird berechnet
+- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail mit passwortgeschuetzten `Securities Settlement` PDFs
+- Geplanter Zielweg: Mail-Agent laedt und importiert diese PDFs automatisch
+- PDF-Passwort bleibt lokal im macOS-Schluesselbund und wird nie in App, Firestore oder Git gespeichert
 
 ### Ginmon
 
@@ -111,6 +114,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Ordner ist im Drive-Scan enthalten
 - PDF-Dateien werden importiert und archiviert
 - Fachlicher Parser ist noch offen
+- E-Mail-Benachrichtigungen wurden aktiviert
+- Naechste Entscheidung erst nach Analyse der ersten eingehenden Benachrichtigung
+
+### Betriebliche Altersvorsorge
+
+- Wird bewusst manuell in der App gepflegt
+- Monatliche oder quartalsweise Aktualisierung reicht aus
 
 ### Bitget
 
@@ -150,6 +160,7 @@ Diese Dateien muessen pro Geraet lokal vorhanden sein.
 
 ## Wichtige Dokumente im Repo
 
+- [Import Masterplan](/Users/niklaskofler/Documents/Finanztool/docs/import_masterplan.md)
 - [Arbeitsstand](/Users/niklaskofler/Documents/Finanztool/docs/arbeitsstand_2026-05-25.md)
 - [Mac Studio Runbook](/Users/niklaskofler/Documents/Finanztool/docs/export_import_runbook_mac_studio.md)
 - [README](/Users/niklaskofler/Documents/Finanztool/README.md)
@@ -177,6 +188,8 @@ npx firebase-tools deploy --project finanzperformance-tool
 4. EquatePlus Parser ergaenzen
 5. Ginmon Kosten-/Steuerdetails vertiefen
 6. Intergold Belegparser und Preisbewertung sauber zusammenfuehren
+7. Trade-Republic-Mail-Agent fuer taegliche verschluesselte PDFs bauen
+8. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
 
 ## Naechster empfohlener Schritt
 
@@ -184,5 +197,5 @@ Immer zuerst dieses Dokument und [README](/Users/niklaskofler/Documents/Finanzto
 
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-12
-- Quelle: Stand vom Mac Studio nach Pull auf das MacBook uebernommen
+- Datum: 2026-06-13
+- Quelle: Importmethoden fuer Trade Republic, EquatePlus und Vorsorge gemeinsam festgelegt
