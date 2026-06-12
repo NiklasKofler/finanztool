@@ -50,18 +50,28 @@ npm start
 
 Der Bitget-Key muss Read-only sein. Keine Trading- oder Withdrawal-Rechte vergeben.
 
-Env-Werte:
-
-```env
-BITGET_API_KEY=
-BITGET_API_SECRET=
-BITGET_API_PASSPHRASE=
-```
-
-Import starten:
+Die Zugangsdaten werden bevorzugt lokal im macOS-Schluesselbund gespeichert.
+Der Setup-Befehl fragt alle drei Werte verdeckt ab:
 
 ```bash
 cd /Users/niklaskofler/Documents/finanztool/automation
+npm run setup:bitget
+```
+
+Secrets niemals in Git oder Firestore speichern. Alternativ werden weiterhin
+`BITGET_API_KEY`, `BITGET_API_SECRET` und `BITGET_API_PASSPHRASE` aus der
+lokalen `.env` unterstuetzt.
+
+Zuerst nur den Read-only-Zugang testen:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool/automation
+npm run check:bitget
+```
+
+Erst nach erfolgreichem Test in Firestore importieren:
+
+```bash
 npm run import:bitget
 ```
 

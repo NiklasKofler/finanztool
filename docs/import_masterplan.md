@@ -209,20 +209,30 @@ Aktuelle Hauptquellen:
 
 ## Empfohlene Umsetzungsreihenfolge
 
-### Phase 1 - belastbare Kernquellen
+### Phase 1 - Bitget abschliessen
 
-1. Flatex sauber abschliessen
-2. Trade Republic voll robust machen
-3. Ginmon stabilisieren
-4. Intergold Preise plus Belege stabilisieren
+1. Bitget Read-only API auf MacBook und Mac Studio einrichten
+2. Einmaligen Startbestand kontrollieren und Einstand manuell festhalten
+3. Laufende API-Updates automatisieren
 
-### Phase 2 - Live-Naehe erhoehen
+### Phase 2 - Download-Agents auf dem Mac Studio
 
-1. Bitget API fixen
-2. Source-Summaries vereinheitlichen
-3. Portfolio-Gesamtansicht gegen Broker-Snapshots pruefen
+1. Flatex-Agent legt neue Exporte automatisch im Drive ab
+2. Ginmon-Agent legt neue Dokumente automatisch im Drive ab
+3. Trade-Republic-Mail-Agent legt neue Dokumente automatisch im Drive ab
 
-### Phase 3 - Gesamtvermoegen schliessen
+In dieser Phase werden die Agents zuerst nur fuer eine verlaessliche
+Dateiablage gebaut. Parser und Firestore-Import folgen danach getrennt.
+
+### Phase 3 - Parser und Firestore-Updates
+
+1. Erstbestand je Quelle gemeinsam und kontrolliert erfassen
+2. Flatex-Updates parsen und importieren
+3. Ginmon-Updates parsen und importieren
+4. Trade-Republic-Updates parsen und importieren
+5. Source-Summaries vereinheitlichen und gegen Kontrollwerte pruefen
+
+### Phase 4 - Gesamtvermoegen schliessen
 
 1. EquatePlus Parser
 2. Sparkasse George

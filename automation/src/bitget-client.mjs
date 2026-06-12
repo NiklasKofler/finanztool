@@ -1,15 +1,28 @@
 import crypto from "node:crypto";
+import { readLocalSecret } from "./local-secret.mjs";
 
 const BITGET_BASE_URL = "https://api.bitget.com";
 
-function requiredEnv(name) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Fehlende Umgebungsvariable: ${name}`);
-  return value;
+const BITGET_KEYCHAIN_SERVICES = {
+  apiKey: "finanztool-bitget-api-key",
+  apiSecret: "finanztool-bitget-api-secret",
+  passphrase: "finanztool-bitget-api-passphrase",
+};
+
+export class BitgetApiError extends Error {
+  constructor({ status, code, message, requestPath }) {
+    super(`Bitget API Fehler ${status}/${code ?? "unknown"} bei ${requestPath}: ${message}`);
+    this.name = "BitgetApiError";
+    this.status = status;
+    this.code = code;
+    this.requestPath = requestPath;
+  }
 }
 
 function encodeQuery(params = {}) {
-  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null);
+  const entries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .sort(([left], [right]) => left.localeCompare(right));
   if (!entries.length) return "";
   const query = new URLSearchParams();
   entries.forEach(([key, value]) => query.set(key, String(value)));
@@ -39,11 +52,13 @@ async function fetchUsdEurRate() {
 }
 
 export class BitgetClient {
-  constructor({
-    apiKey = requiredEnv("BITGET_API_KEY"),
-    apiSecret = requiredEnv("BITGET_API_SECRET"),
-    passphrase = requiredEnv("BITGET_API_PASSPHRASE"),
-  } = {}) {
+  constructor({ apiKey, apiSecret, passphrase } = {}) {
+    if (!apiKey || !apiSecret || !passphrase) {
+      throw new Error(
+        "BitgetClient benoetigt API-Key, Secret und Passphrase. " +
+          "Verwende createBitgetClientFromLocalSecrets().",
+      );
+    }
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.passphrase = passphrase;
@@ -80,9 +95,12 @@ export class BitgetClient {
     });
     const json = await response.json().catch(() => null);
     if (!response.ok || json?.code !== "00000") {
-      throw new Error(
-        `Bitget API Fehler ${response.status}: ${json?.msg ?? json?.message ?? response.statusText}`,
-      );
+      throw new BitgetApiError({
+        status: response.status,
+        code: json?.code,
+        message: json?.msg ?? json?.message ?? response.statusText,
+        requestPath,
+      });
     }
     return json.data;
   }
@@ -110,9 +128,50 @@ export class BitgetClient {
   getSpotTickers(params = {}) {
     return this.request("GET", "/api/v2/spot/market/tickers", { params, auth: false });
   }
+
+  getServerTime() {
+    return this.request("GET", "/api/v2/public/time", { auth: false });
+  }
 }
 
-export async function fetchBitgetPortfolioSnapshot(client = new BitgetClient()) {
+export async function fetchBitgetServerTime() {
+  const response = await fetch(`${BITGET_BASE_URL}/api/v2/public/time`);
+  const json = await response.json().catch(() => null);
+  if (!response.ok || json?.code !== "00000") {
+    throw new BitgetApiError({
+      status: response.status,
+      code: json?.code,
+      message: json?.msg ?? json?.message ?? response.statusText,
+      requestPath: "/api/v2/public/time",
+    });
+  }
+  return json.data;
+}
+
+export async function createBitgetClientFromLocalSecrets() {
+  const [apiKey, apiSecret, passphrase] = await Promise.all([
+    readLocalSecret("BITGET_API_KEY", BITGET_KEYCHAIN_SERVICES.apiKey),
+    readLocalSecret("BITGET_API_SECRET", BITGET_KEYCHAIN_SERVICES.apiSecret),
+    readLocalSecret("BITGET_API_PASSPHRASE", BITGET_KEYCHAIN_SERVICES.passphrase),
+  ]);
+
+  const missing = [
+    !apiKey && "BITGET_API_KEY",
+    !apiSecret && "BITGET_API_SECRET",
+    !passphrase && "BITGET_API_PASSPHRASE",
+  ].filter(Boolean);
+  if (missing.length) {
+    throw new Error(
+      `${missing.join(", ")} fehlen. Fuehre im Ordner automation einmal ` +
+        '"npm run setup:bitget" aus.',
+    );
+  }
+
+  return new BitgetClient({ apiKey, apiSecret, passphrase });
+}
+
+export async function fetchBitgetPortfolioSnapshot(client) {
+  if (!client) throw new Error("fetchBitgetPortfolioSnapshot benoetigt einen BitgetClient.");
   const [accountInfo, assets, tickers, usdEurRate] = await Promise.all([
     client.getAccountInfo(),
     client.getSpotAssets({ assetType: "hold_only" }),

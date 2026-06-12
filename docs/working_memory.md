@@ -198,12 +198,12 @@ npx firebase-tools deploy --project finanzperformance-tool
 
 ## Naechster empfohlener Schritt
 
-Flatex-Dateitypen und Parser reparieren und danach den Flatex-Bestand aus den
-vorhandenen Depot- und Kontoumsaetzen neu aufbauen. Die vollstaendige Baseline
-steht in
-[phase1_data_baseline_audit_2026-06-13.md](/Users/niklaskofler/Documents/Finanztool/docs/phase1_data_baseline_audit_2026-06-13.md).
+Bitget zuerst auf dem MacBook abschliessen. Danach auf dem Mac Studio reine
+Download-Agents in dieser Reihenfolge bauen: Flatex, Ginmon, Trade Republic.
+Der Erstbestand jeder Quelle wird einmalig gemeinsam kontrolliert erfasst;
+anschliessend verarbeiten Parser nur noch neue Updates.
 
 ## Letzte Aktualisierung
 
 - Datum: 2026-06-13
-- Quelle: Phase-1-Datenbaseline und Parser-Audit
+- Quelle: Umsetzungsreihenfolge Bitget, Download-Agents und Update-Parser

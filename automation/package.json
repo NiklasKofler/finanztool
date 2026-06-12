@@ -8,6 +8,8 @@
   },
   "scripts": {
     "start": "node src/drive-watcher.mjs",
+    "setup:bitget": "zsh src/setup-bitget-keychain.sh",
+    "check:bitget": "node src/check-bitget.mjs",
     "import:bitget": "node src/import-bitget.mjs",
     "backfill:summaries": "node src/backfill-summaries.mjs",
     "deploy:firestore-rules": "node src/deploy-firestore-rules.mjs",

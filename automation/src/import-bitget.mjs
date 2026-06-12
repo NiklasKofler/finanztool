@@ -1,7 +1,10 @@
 import "dotenv/config";
 import admin from "firebase-admin";
 import fs from "node:fs/promises";
-import { BitgetClient, fetchBitgetPortfolioSnapshot } from "./bitget-client.mjs";
+import {
+  createBitgetClientFromLocalSecrets,
+  fetchBitgetPortfolioSnapshot,
+} from "./bitget-client.mjs";
 
 const required = ["FIREBASE_PROJECT_ID", "FIREBASE_SERVICE_ACCOUNT_PATH"];
 
@@ -61,7 +64,7 @@ async function writeLedgerEntries(entries) {
   }
 }
 
-const client = new BitgetClient();
+const client = await createBitgetClientFromLocalSecrets();
 const snapshot = await fetchBitgetPortfolioSnapshot(client);
 
 let bills = [];
