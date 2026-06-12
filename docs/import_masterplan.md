@@ -47,7 +47,8 @@ Wichtig:
   - Exportdateien landen in Drive
   - Watcher importiert automatisch
 - Zusatz:
-  - Depot-/Dashboard-Snapshots weiter nutzen
+  - laufender Bestand wird rechnerisch aus Depot- und Kontoumsaetzen gebildet
+  - vorhandener Depot-Snapshot dient nur einmalig als Kontrollwert
   - Postbox bleibt optionales Belegarchiv
 
 ### 2. Trade Republic

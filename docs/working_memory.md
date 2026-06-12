@@ -74,8 +74,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ### Flatex
 
-- CSV-Import fachlich umgesetzt
-- Daten schreiben nach:
+- CSV-Rohimport und Drive-Archivierung sind technisch vorhanden
+- Audit vom 2026-06-13: Der fachliche Import ist noch nicht belastbar
+- `Nominal (Stk.)`, Buchungstexte und CSV-Kodierung werden aktuell nicht korrekt verarbeitet
+- Dashboard-CSV und Postfach-Manifest wurden faelschlich als Transaktionen importiert
+- Der laufende Bestand soll aus Depot- und Kontoumsaetzen berechnet werden
+- Der vorhandene Depot-Snapshot dient nur einmalig als Kontrollwert
+- Technisch vorhandene Collections:
   - `imports`
   - `rawDocuments`
   - `imports/{id}/rawRows`
@@ -193,9 +198,12 @@ npx firebase-tools deploy --project finanzperformance-tool
 
 ## Naechster empfohlener Schritt
 
-Immer zuerst dieses Dokument und [README](/Users/niklaskofler/Documents/Finanztool/README.md) lesen, dann erst eine neue Arbeitsaufgabe anfangen. Fachlich waere der naechste groessere Schritt aktuell entweder Bitget reparieren oder die App-UI auf die bereits importierten Live-Daten weiter auszubauen.
+Flatex-Dateitypen und Parser reparieren und danach den Flatex-Bestand aus den
+vorhandenen Depot- und Kontoumsaetzen neu aufbauen. Die vollstaendige Baseline
+steht in
+[phase1_data_baseline_audit_2026-06-13.md](/Users/niklaskofler/Documents/Finanztool/docs/phase1_data_baseline_audit_2026-06-13.md).
 
 ## Letzte Aktualisierung
 
 - Datum: 2026-06-13
-- Quelle: Importmethoden fuer Trade Republic, EquatePlus und Vorsorge gemeinsam festgelegt
+- Quelle: Phase-1-Datenbaseline und Parser-Audit
