@@ -30,10 +30,32 @@ export interface SourceSummaryDocument {
   valuationMethod?: string;
 }
 
+export interface AgentStatusDocument {
+  id: string;
+  source?: string;
+  status?: "OK" | "WARNUNG" | "FEHLER" | "RUNNING" | string;
+  message?: string | null;
+  lastSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  valuationDate?: string | null;
+  importId?: string | null;
+  failedImportId?: string | null;
+}
+
 export async function loadSourceSummaries(db: Firestore) {
   const snapshot = await getDocs(collection(db, "sourceSummaries"));
   return Object.fromEntries(
     snapshot.docs.map((doc) => [doc.id, doc.data() as SourceSummaryDocument]),
+  );
+}
+
+export async function loadAgentStatuses(db: Firestore) {
+  const snapshot = await getDocs(collection(db, "agentStatus"));
+  return Object.fromEntries(
+    snapshot.docs.map((doc) => [
+      doc.id,
+      { id: doc.id, ...(doc.data() as Omit<AgentStatusDocument, "id">) },
+    ]),
   );
 }
 

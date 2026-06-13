@@ -20,14 +20,16 @@ import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
+  loadAgentStatuses,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
   requestQuoteSync,
+  type AgentStatusDocument,
   type SourceSummaryDocument,
 } from "./firebase/sourceSummaries";
 import { sourceOverviews } from "./domain/seedData";
-import type { PortfolioPosition, SourceOverview, SourceStatus, SystemHealth } from "./domain/types";
+import type { PortfolioPosition, SourceOverview, SystemHealth } from "./domain/types";
 
 const currencyFormatter = new Intl.NumberFormat("de-AT", {
   style: "currency",
@@ -65,15 +67,18 @@ const sourceSortOrder = [
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
 
-const statusMeta: Record<
-  SourceStatus,
+const agentStatusIds: Record<string, string> = {
+  traderepublic: "traderepublic_mail",
+};
+
+const agentStatusMeta: Record<
+  string,
   { label: string; tone: "good" | "warn" | "neutral" | "info" }
 > = {
-  automated: { label: "Automatisierbar", tone: "good" },
-  ready: { label: "Import bereit", tone: "info" },
-  manual: { label: "Manueller Export", tone: "warn" },
-  planned: { label: "Geplant", tone: "neutral" },
-  blocked: { label: "Offen", tone: "warn" },
+  OK: { label: "OK", tone: "good" },
+  WARNUNG: { label: "Warnung", tone: "warn" },
+  FEHLER: { label: "Fehler", tone: "warn" },
+  RUNNING: { label: "Läuft", tone: "info" },
 };
 
 function formatCurrency(value?: number) {
@@ -138,26 +143,6 @@ function formatOptionalText(value?: string | null) {
 function formatPercent(value?: number | null) {
   if (typeof value !== "number") return "—";
   return percentFormatter.format(value);
-}
-
-function formatValuationDate(
-  value?: string | Date | { toDate: () => Date } | { seconds: number } | null,
-) {
-  if (!value) return "Noch offen";
-  const date =
-    value instanceof Date
-      ? value
-      : typeof value === "object" && "toDate" in value
-        ? value.toDate()
-        : typeof value === "object" && "seconds" in value
-          ? new Date(value.seconds * 1000)
-          : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("de-AT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
 }
 
 function formatUpdatedAt(
@@ -235,8 +220,20 @@ function SourceIcon({ source }: { source: SourceOverview }) {
   }
 }
 
-function StatusBadge({ status }: { status: SourceStatus }) {
-  const meta = statusMeta[status];
+function getAgentStatusId(sourceId: string) {
+  return agentStatusIds[sourceId] ?? sourceId;
+}
+
+function getSourceAgentStatus(
+  sourceId: string,
+  agentStatuses: Record<string, AgentStatusDocument>,
+) {
+  return agentStatuses[getAgentStatusId(sourceId)];
+}
+
+function AgentStatusBadge({ status }: { status?: string | null }) {
+  const meta = status ? (agentStatusMeta[status] ?? { label: status, tone: "neutral" as const }) : null;
+  if (!meta) return <span className="status-badge status-badge--neutral">Ohne Agent</span>;
 
   return <span className={`status-badge status-badge--${meta.tone}`}>{meta.label}</span>;
 }
@@ -245,6 +242,7 @@ function App() {
   const [sourceSummaries, setSourceSummaries] = useState<
     Record<string, SourceSummaryDocument>
   >({});
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatusDocument>>({});
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -267,6 +265,7 @@ function App() {
       setAuthError(null);
       if (!user) {
         setSourceSummaries({});
+        setAgentStatuses({});
         setPositions([]);
         setSystemHealth(null);
         setDataStatus("auth-required");
@@ -285,12 +284,14 @@ function App() {
     let isMounted = true;
     void Promise.all([
       loadSourceSummaries(services.db),
+      loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
       loadSystemHealth(services.db),
     ])
-      .then(([summaries, loadedPositions, health]) => {
+      .then(([summaries, loadedAgentStatuses, loadedPositions, health]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
+        setAgentStatuses(loadedAgentStatuses);
         setPositions(loadedPositions);
         setSystemHealth(health);
         setDataStatus("live");
@@ -365,6 +366,7 @@ function App() {
     () =>
       sourceOverviews.map((source) => {
         const summary = sourceSummaries[source.summaryId ?? source.id];
+        const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
         const positionStats = positionStatsBySource[source.id];
         const positionDerivedValue =
           positionStats && positionStats.valuedCount > 0
@@ -385,6 +387,9 @@ function App() {
             depotValue: positionDepotValue ?? source.depotValue,
             cashValue: positionCashValue ?? source.cashValue,
             netValue: positionDerivedValue ?? source.netValue,
+            agentStatus: agentStatus?.status,
+            agentMessage: agentStatus?.message,
+            updatedAt: agentStatus?.lastSuccessAt ?? source.updatedAt,
             positionCount: positionStats?.count || source.positionCount,
           };
         }
@@ -399,21 +404,24 @@ function App() {
           availableWithCredit: summary.availableWithCredit ?? source.availableWithCredit,
           creditLineEstimate: summary.creditLineEstimate ?? source.creditLineEstimate,
           valuationDate: summary.valuationDate ?? source.valuationDate,
-          updatedAt: summary.updatedAt ?? source.updatedAt,
+          agentStatus: agentStatus?.status,
+          agentMessage: agentStatus?.message,
+          updatedAt: agentStatus?.lastSuccessAt ?? summary.updatedAt ?? source.updatedAt,
           positionCount:
             positionStats?.count ||
             summary.positionCount ||
             source.positionCount,
         };
       }),
-    [positionStatsBySource, sourceSummaries],
+    [agentStatuses, positionStatsBySource, sourceSummaries],
   );
 
   const trackedTotal = getTrackedTotal(sources);
-  const importedSources = sources.filter(
-    (source) => source.status === "ready" || source.status === "automated",
+  const activeSources = sources.filter(
+    (source) =>
+      typeof getSourceDisplayValue(source) === "number" ||
+      (source.positionCount ?? 0) > 0,
   ).length;
-  const manualSources = sources.filter((source) => source.status === "manual").length;
   const displayedPositions = useMemo(
     () =>
       positions
@@ -482,7 +490,7 @@ function App() {
           </div>
           <p>Erfasster Wert</p>
           <strong>{formatCurrency(trackedTotal)}</strong>
-          <span>Depots, Krypto, Edelmetalle und Vorsorgewerte aus den Importen</span>
+          <span>Depots, Krypto, Edelmetalle und Vorsorgewerte</span>
         </article>
 
         <article className="metric-card">
@@ -490,8 +498,8 @@ function App() {
             <Database aria-hidden="true" />
           </div>
           <p>Aktive Quellen</p>
-          <strong>{numberFormatter.format(importedSources)}</strong>
-          <span>{manualSources ? `${manualSources} mit bewusstem Handgriff, ` : ""}{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
+          <strong>{numberFormatter.format(activeSources)}</strong>
+          <span>{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
         </article>
 
         <article className="metric-card">
@@ -572,12 +580,12 @@ function App() {
                 </div>
                 <div className="source-card__body">
                   <div className="source-card__header">
-                    <div>
-                      <h3>{source.name}</h3>
-                      <p>{source.purpose}</p>
-                    </div>
-                    <StatusBadge status={source.status} />
-                  </div>
+	                    <div>
+	                      <h3>{source.name}</h3>
+	                      <p>{source.purpose}</p>
+	                    </div>
+	                    <AgentStatusBadge status={source.agentStatus} />
+	                  </div>
                   <dl>
                     <div>
                       <dt>{typeof source.netValue === "number" ? "Gesamtvermögen" : "Aktueller Wert"}</dt>
@@ -618,23 +626,21 @@ function App() {
                         <dt>Verfügbares Guthaben</dt>
                         <dd>{formatCurrency(source.availableCash)}</dd>
                       </div>
-                    ) : null}
-                    <div>
-                      <dt>Stichtag</dt>
-                      <dd>{formatValuationDate(source.valuationDate)}</dd>
-                    </div>
-                    <div>
-                      <dt>Aktualisiert</dt>
-                      <dd>{formatUpdatedAt(source.updatedAt)}</dd>
-                    </div>
-                    <div>
-                      <dt>Import</dt>
-                      <dd>
-                        {source.positionCount
-                          ? `${numberFormatter.format(source.positionCount)} Positionen, ${source.importMethod}`
-                          : source.nextStep}
-                      </dd>
-                    </div>
+	                    ) : null}
+	                    <div>
+	                      <dt>{source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
+	                      <dd>{formatUpdatedAt(source.updatedAt)}</dd>
+	                    </div>
+	                    {source.agentStatus && source.agentStatus !== "OK" ? (
+	                      <div>
+	                        <dt>Status</dt>
+	                        <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
+	                      </div>
+	                    ) : null}
+	                    <div>
+	                      <dt>Positionen</dt>
+	                      <dd>{source.positionCount ? numberFormatter.format(source.positionCount) : "—"}</dd>
+	                    </div>
                   </dl>
                 </div>
               </article>
@@ -662,11 +668,10 @@ function App() {
                 <th>Menge</th>
                 <th className="numeric">Einstand</th>
                 <th>Kurs</th>
-                <th className="numeric">Wert</th>
-                <th className="numeric">G/V</th>
-                <th className="numeric">Perf.</th>
-                <th>Stichtag</th>
-              </tr>
+	                <th className="numeric">Wert</th>
+	                <th className="numeric">G/V</th>
+	                <th className="numeric">Perf.</th>
+	              </tr>
             </thead>
             <tbody>
               {displayedPositions.length ? displayedPositions.map((position) => {
@@ -707,12 +712,11 @@ function App() {
                     <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
                       {formatPercent(positionPerformance.percentage)}
                     </td>
-                    <td>{formatValuationDate(position.valuationDate ?? undefined)}</td>
-                  </tr>
+	                  </tr>
                 );
               }) : (
                 <tr>
-                  <td className="empty-position-row" colSpan={10}>
+	                  <td className="empty-position-row" colSpan={9}>
                     Noch keine Firestore-Positionen geladen.
                   </td>
                 </tr>

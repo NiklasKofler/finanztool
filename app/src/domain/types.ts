@@ -29,6 +29,8 @@ export interface SourceOverview {
   positionCount?: number;
   importMethod: string;
   nextStep: string;
+  agentStatus?: string | null;
+  agentMessage?: string | null;
 }
 
 export interface PortfolioPosition {

@@ -218,6 +218,11 @@ for (const mapping of mappings) {
 }
 
 for (const source of expectedSources) {
+  const matchingStatus = statusById.get(source) ?? [...statusById.values()].find(
+    (status) => status.source === source,
+  );
+  if (matchingStatus?.status && matchingStatus.status !== "OK") continue;
+
   const sourcePositions = positions.filter(
     (position) => position.source === source && position.accountValueIncluded !== false,
   );
@@ -242,6 +247,11 @@ for (const source of expectedSources) {
 
 for (const entry of imports) {
   if (["FEHLER", "UNVOLLSTAENDIG", "ERROR"].includes(entry.status)) {
+    const matchingStatus = entry.source
+      ? statusById.get(entry.source) ?? [...statusById.values()].find((status) => status.source === entry.source)
+      : null;
+    if (matchingStatus?.status && matchingStatus.status !== "OK") continue;
+
     alerts.push(
       alert(
         `import_${entry.id}`,
