@@ -45,7 +45,11 @@ export interface PortfolioPosition {
   quantityText?: string | null;
   quoteText?: string | null;
   currentValue?: number | null;
+  currentValueUsdt?: number | null;
   costValue?: number | null;
+  costValueQuote?: number | null;
+  costCurrency?: string | null;
+  costBasisStatus?: string | null;
   performanceValue?: number | null;
   performancePct?: number | null;
   valuationDate?: string | null;

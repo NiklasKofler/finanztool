@@ -228,6 +228,10 @@
   padding-bottom: 12px;
 }
 
+.depot-overview {
+  margin-top: 18px;
+}
+
 .positions-table-wrap {
   overflow-x: auto;
   border: 1px solid #d9e1df;

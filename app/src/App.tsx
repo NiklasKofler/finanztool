@@ -72,6 +72,53 @@ function formatCurrency(value?: number) {
   return currencyFormatter.format(value);
 }
 
+function formatMoney(value?: number | null, currency = "EUR") {
+  if (typeof value !== "number") return "—";
+
+  try {
+    return new Intl.NumberFormat("de-AT", {
+      style: "currency",
+      currency,
+      currencyDisplay: currency === "EUR" ? "symbol" : "code",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(value)} ${currency}`;
+  }
+}
+
+function getPositionPerformance(position: PortfolioPosition) {
+  if (typeof position.costValue === "number") {
+    return {
+      cost: position.costValue,
+      performance: position.performanceValue,
+      percentage: position.performancePct,
+      currency: "EUR",
+    };
+  }
+
+  if (
+    typeof position.costValueQuote === "number" &&
+    typeof position.currentValueUsdt === "number"
+  ) {
+    const performance = position.currentValueUsdt - position.costValueQuote;
+    return {
+      cost: position.costValueQuote,
+      performance,
+      percentage: position.costValueQuote ? performance / position.costValueQuote : null,
+      currency: position.costCurrency ?? "USDT",
+    };
+  }
+
+  return {
+    cost: position.costValueQuote,
+    performance: null,
+    percentage: null,
+    currency: position.costCurrency ?? "EUR",
+  };
+}
+
 function formatOptionalText(value?: string | null) {
   return value?.trim() ? value : "—";
 }
@@ -321,85 +368,12 @@ function App() {
         </section>
       ) : null}
 
-      <section className="panel positions-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Portfolio</p>
-            <h2>Alle Einzelpositionen</h2>
-          </div>
-          <span className="position-count">{numberFormatter.format(displayedPositions.length)}</span>
-        </div>
-
-        <div className="positions-table-wrap">
-          <table className="positions-table">
-            <thead>
-              <tr>
-                <th>Quelle</th>
-                <th>Position</th>
-                <th>Kategorie</th>
-                <th>Menge</th>
-                <th>Kurs</th>
-                <th className="numeric">Wert</th>
-                <th className="numeric">Einstand</th>
-                <th className="numeric">G/V</th>
-                <th className="numeric">Perf.</th>
-                <th>Stichtag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayedPositions.length ? displayedPositions.map((position) => {
-                const performanceTone =
-                  (position.performanceValue ?? 0) > 0
-                    ? "positive"
-                    : (position.performanceValue ?? 0) < 0
-                      ? "negative"
-                      : "neutral";
-
-                return (
-                  <tr key={position.id}>
-                    <td>
-                      <span className={`source-pill source-pill--${position.source}`}>
-                        {getSourceLabel(position.source)}
-                      </span>
-                    </td>
-                    <td className="position-name-cell">
-                      <strong>{position.name}</strong>
-                      <span>
-                        {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
-                      </span>
-                    </td>
-                    <td>{formatOptionalText(position.category)}</td>
-                    <td>{formatOptionalText(position.quantityText)}</td>
-                    <td>{formatOptionalText(position.quoteText)}</td>
-                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
-                    <td className="numeric">{formatCurrency(position.costValue ?? undefined)}</td>
-                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                      {formatCurrency(position.performanceValue ?? undefined)}
-                    </td>
-                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                      {formatPercent(position.performancePct)}
-                    </td>
-                    <td>{formatValuationDate(position.valuationDate ?? undefined)}</td>
-                  </tr>
-                );
-              }) : (
-                <tr>
-                  <td className="empty-position-row" colSpan={10}>
-                    Noch keine Firestore-Positionen geladen.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="content-grid">
+      <section className="content-grid depot-overview">
         <div className="panel panel--wide">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Quellen</p>
-              <h2>Was zuerst angebunden wird</h2>
+              <p className="eyebrow">Depots</p>
+              <h2>Depotübersicht</h2>
             </div>
             <RefreshCcw aria-hidden="true" />
           </div>
@@ -428,7 +402,7 @@ function App() {
                       <dd>{formatValuationDate(source.valuationDate)}</dd>
                     </div>
                     <div>
-                      <dt>Nächster Schritt</dt>
+                      <dt>Import</dt>
                       <dd>
                         {source.positionCount
                           ? `${numberFormatter.format(source.positionCount)} Positionen, ${source.importMethod}`
@@ -463,6 +437,86 @@ function App() {
           </ol>
         </aside>
       </section>
+
+      <section className="panel positions-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Portfolio</p>
+            <h2>Alle Einzelpositionen</h2>
+          </div>
+          <span className="position-count">{numberFormatter.format(displayedPositions.length)}</span>
+        </div>
+
+        <div className="positions-table-wrap">
+          <table className="positions-table">
+            <thead>
+              <tr>
+                <th>Quelle</th>
+                <th>Position</th>
+                <th>Kategorie</th>
+                <th>Menge</th>
+                <th>Kurs</th>
+                <th className="numeric">Wert</th>
+                <th className="numeric">Einstand</th>
+                <th className="numeric">G/V</th>
+                <th className="numeric">Perf.</th>
+                <th>Stichtag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedPositions.length ? displayedPositions.map((position) => {
+                const positionPerformance = getPositionPerformance(position);
+                const performanceTone =
+                  (positionPerformance.performance ?? 0) > 0
+                    ? "positive"
+                    : (positionPerformance.performance ?? 0) < 0
+                      ? "negative"
+                      : "neutral";
+
+                return (
+                  <tr key={position.id}>
+                    <td>
+                      <span className={`source-pill source-pill--${position.source}`}>
+                        {getSourceLabel(position.source)}
+                      </span>
+                    </td>
+                    <td className="position-name-cell">
+                      <strong>{position.name}</strong>
+                      <span>
+                        {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
+                      </span>
+                    </td>
+                    <td>{formatOptionalText(position.category)}</td>
+                    <td>{formatOptionalText(position.quantityText)}</td>
+                    <td>{formatOptionalText(position.quoteText)}</td>
+                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
+                    <td className="numeric">
+                      {formatMoney(positionPerformance.cost, positionPerformance.currency)}
+                    </td>
+                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                      {formatMoney(
+                        positionPerformance.performance,
+                        positionPerformance.currency,
+                      )}
+                    </td>
+                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                      {formatPercent(positionPerformance.percentage)}
+                    </td>
+                    <td>{formatValuationDate(position.valuationDate ?? undefined)}</td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td className="empty-position-row" colSpan={10}>
+                    Noch keine Firestore-Positionen geladen.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   );
 }
