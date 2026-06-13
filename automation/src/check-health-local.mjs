@@ -24,6 +24,14 @@ const staleHoursByAgent = {
   quotes: 2,
   vbv: 100 * 24,
 };
+const allowedUnclassifiedGinmonDocuments = new Set([
+  "ginmon_doc_21333006",
+  "ginmon_doc_31350057",
+  "ginmon_doc_21334116",
+  "ginmon_doc_21648183",
+  "ginmon_file_0d9d6559cf5ca049",
+  "ginmon_file_80ad647a6d9a2979",
+]);
 
 function parseDate(value) {
   if (!value) return null;
@@ -74,23 +82,177 @@ function roundCurrency(value) {
   return Math.round(value * 100) / 100;
 }
 
+function sanitizeId(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function accountIdFromPosition(position) {
+  return (
+    position.accountNumber ??
+    position.accountId ??
+    position.accountKey ??
+    position.portfolioId ??
+    position.accountType ??
+    position.walletType ??
+    null
+  );
+}
+
+function accountLabelFromPosition(position, accountId) {
+  return (
+    position.portfolioLabel ??
+    position.accountLabel ??
+    position.accountName ??
+    position.accountType ??
+    accountId
+  );
+}
+
+function observedAccountsFromData(summaries, positions) {
+  const accounts = new Map();
+
+  for (const summary of summaries) {
+    for (const account of summary.accounts ?? []) {
+      const accountId = account.accountNumber ?? account.accountId ?? account.customerId ?? account.id;
+      if (!accountId) continue;
+      const source = summary.source ?? summary.id;
+      const id = `${source}_${sanitizeId(accountId)}`;
+      accounts.set(id, {
+        id,
+        source,
+        fromSummary: true,
+        accountId: String(accountId),
+        accountNumber: account.accountNumber ?? null,
+        customerId: account.customerId ?? null,
+        label: account.label ?? account.strategy ?? account.name ?? String(accountId),
+        currentValue: parseMaybeNumber(account.currentValue),
+        cashValue: parseMaybeNumber(account.cashValue),
+        positionCount: account.positionCount ?? null,
+        valuationDate: account.valuationDate ?? summary.valuationDate ?? null,
+      });
+    }
+  }
+
+  for (const position of positions) {
+    if (!expectedSources.includes(position.source)) continue;
+    const accountId = accountIdFromPosition(position);
+    if (!accountId) continue;
+    const id = `${position.source}_${sanitizeId(accountId)}`;
+    const existing = accounts.get(id);
+    const currentValue = parseMaybeNumber(position.currentValue);
+    if (existing?.fromSummary) continue;
+    accounts.set(id, {
+      id,
+      source: position.source,
+      accountId: String(accountId),
+      accountNumber: position.accountNumber ?? existing?.accountNumber ?? null,
+      customerId: position.customerId ?? existing?.customerId ?? null,
+      label: existing?.label ?? accountLabelFromPosition(position, accountId),
+      currentValue: roundCurrency((existing?.currentValue ?? 0) + (currentValue ?? 0)),
+      cashValue: existing?.cashValue ?? null,
+      positionCount: (existing?.positionCount ?? 0) + 1,
+      valuationDate: existing?.valuationDate ?? position.valuationDate ?? null,
+    });
+  }
+
+  for (const summary of summaries) {
+    const source = summary.source ?? summary.id;
+    if (!expectedSources.includes(source)) continue;
+    if ([...accounts.values()].some((account) => account.source === source)) continue;
+    const currentValue = parseMaybeNumber(summary.currentValue ?? summary.netValue);
+    if (currentValue === null) continue;
+    const id = `${source}_default`;
+    accounts.set(id, {
+      id,
+      source,
+      accountId: "default",
+      accountNumber: null,
+      customerId: null,
+      label: summary.displayName ?? source,
+      currentValue,
+      cashValue: parseMaybeNumber(summary.cashValue),
+      positionCount: summary.positionCount ?? null,
+      valuationDate: summary.valuationDate ?? null,
+    });
+  }
+
+  return accounts;
+}
+
 const firestore = new FirestoreRest({
   projectId,
   accessToken: await getFirebaseCliAccessToken(),
 });
 
 const now = new Date();
-const [positions, summaries, statuses, mappings, imports] = await Promise.all([
+const [positions, summaries, statuses, mappings, imports, sourceAccounts, sourceDocuments] = await Promise.all([
   firestore.listDocuments("sourcePositions"),
   firestore.listDocuments("sourceSummaries"),
   firestore.listDocuments("agentStatus"),
   firestore.listDocuments("instrumentMappings"),
   firestore.listDocuments("imports"),
+  firestore.listDocuments("sourceAccounts"),
+  firestore.listDocuments("sourceDocuments"),
 ]);
 
 const alerts = [];
 const statusById = new Map(statuses.map((status) => [status.id, status]));
 const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
+const observedAccounts = observedAccountsFromData(summaries, positions);
+const previousAccountsById = new Map(sourceAccounts.map((account) => [account.id, account]));
+const observedSources = new Set([...observedAccounts.values()].map((account) => account.source));
+
+for (const account of observedAccounts.values()) {
+  const { fromSummary: _fromSummary, ...accountData } = account;
+  const previous = previousAccountsById.get(account.id);
+  const sourceHadBaseline = sourceAccounts.some((entry) => entry.source === account.source);
+  if (!previous && sourceHadBaseline) {
+    alerts.push(
+      alert(
+        `new_account_${account.id}`,
+        "warning",
+        "Neues Depot erkannt",
+        `${accountData.source}: ${accountData.label ?? accountData.accountId} wurde neu erkannt.`,
+        accountData.source,
+        accountData,
+      ),
+    );
+  }
+  await firestore.setDocument("sourceAccounts", account.id, {
+    ...previous,
+    ...accountData,
+    status: "ACTIVE",
+    firstSeenAt: previous?.firstSeenAt ?? now,
+    lastSeenAt: now,
+    missingSince: null,
+    updatedAt: now,
+  });
+}
+
+for (const previous of sourceAccounts) {
+  if (!observedSources.has(previous.source)) continue;
+  if (observedAccounts.has(previous.id)) continue;
+  alerts.push(
+    alert(
+      `missing_account_${previous.id}`,
+      "warning",
+      "Depot nicht mehr gefunden",
+      `${previous.source}: ${previous.label ?? previous.accountId ?? previous.id} wurde im aktuellen Lauf nicht mehr gefunden.`,
+      previous.source,
+      previous,
+    ),
+  );
+  await firestore.setDocument("sourceAccounts", previous.id, {
+    ...previous,
+    status: "MISSING",
+    missingSince: previous.missingSince ?? now,
+    updatedAt: now,
+  });
+}
 
 for (const source of expectedSources) {
   if (sourcesWithoutPositions.has(source)) continue;
@@ -215,6 +377,89 @@ for (const mapping of mappings) {
       ),
     );
   }
+}
+
+const unclassifiedGinmonDocuments = sourceDocuments.filter(
+  (document) =>
+    document.source === "ginmon" &&
+    !allowedUnclassifiedGinmonDocuments.has(document.id) &&
+    (document.documentType === "unknown" ||
+      document.parseStatus === "UNKNOWN" ||
+      document.parseStatus === "UNPARSED"),
+);
+
+if (unclassifiedGinmonDocuments.length) {
+  alerts.push(
+    alert(
+      "ginmon_unclassified_documents",
+      "warning",
+      "Ginmon-Dokument nicht klassifiziert",
+      `${unclassifiedGinmonDocuments.length} Ginmon-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
+      "ginmon",
+      unclassifiedGinmonDocuments.slice(0, 10).map((document) => ({
+        id: document.id,
+        fileName: document.fileName,
+        documentType: document.documentType,
+        parseStatus: document.parseStatus,
+        customerId: document.customerId ?? null,
+      })),
+    ),
+  );
+}
+
+const unclassifiedFlatexDocuments = sourceDocuments.filter(
+  (document) =>
+    document.source === "flatex" &&
+    (document.documentType === "unknown" ||
+      document.parseStatus === "UNKNOWN" ||
+      document.parseStatus === "UNPARSED"),
+);
+
+if (unclassifiedFlatexDocuments.length) {
+  alerts.push(
+    alert(
+      "flatex_unclassified_documents",
+      "warning",
+      "Flatex-Dokument nicht klassifiziert",
+      `${unclassifiedFlatexDocuments.length} Flatex-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
+      "flatex",
+      unclassifiedFlatexDocuments.slice(0, 10).map((document) => ({
+        id: document.id,
+        fileName: document.fileName,
+        documentType: document.documentType,
+        parseStatus: document.parseStatus,
+        accountNumber: document.accountNumber ?? null,
+        depotNumber: document.depotNumber ?? null,
+      })),
+    ),
+  );
+}
+
+const unclassifiedTradeRepublicDocuments = sourceDocuments.filter(
+  (document) =>
+    document.source === "traderepublic" &&
+    (document.documentType === "unknown" ||
+      document.parseStatus === "UNKNOWN" ||
+      document.parseStatus === "UNPARSED"),
+);
+
+if (unclassifiedTradeRepublicDocuments.length) {
+  alerts.push(
+    alert(
+      "traderepublic_unclassified_documents",
+      "warning",
+      "Trade-Republic-Dokument nicht klassifiziert",
+      `${unclassifiedTradeRepublicDocuments.length} Trade-Republic-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
+      "traderepublic",
+      unclassifiedTradeRepublicDocuments.slice(0, 10).map((document) => ({
+        id: document.id,
+        fileName: document.fileName,
+        documentType: document.documentType,
+        parseStatus: document.parseStatus,
+        baselineId: document.baselineId ?? null,
+      })),
+    ),
+  );
 }
 
 for (const source of expectedSources) {

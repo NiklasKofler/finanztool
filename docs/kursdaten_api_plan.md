@@ -40,6 +40,15 @@ Boerse Frankfurt ist die primaere Kursquelle fuer Wertpapiere. Der Agent nutzt d
 oeffentlichen Website-APIs der Boerse Frankfurt und erzeugt die noetigen
 Website-Sicherheitsheader lokal. Es ist kein API-Key notwendig.
 
+Stand 2026-06-13: Die aktuelle Implementierung nutzt
+`https://api.live.deutsche-boerse.com/v1` ueber
+`automation/src/quote-provider-boerse-frankfurt.mjs`. Das ist ein
+Website-Endpunkt der Deutsche-Boerse-Live-/Boerse-Frankfurt-Oberflaeche und
+keine vertraglich garantierte stabile API. Die Deutsche Boerse verweist fuer
+offizielle API-Produkte auf ihre API Platform; falls der Website-Endpunkt
+geaendert oder blockiert wird, muss ein offizieller Datenzugang oder ein
+Fallback wie EODHD bewertet werden.
+
 Der Abgleich funktioniert dynamisch:
 
 1. Neue Positionen mit ISIN werden aus `sourcePositions` gelesen.
@@ -65,6 +74,20 @@ Ein Teil-Lauf fuer Tests:
 ```bash
 npm --prefix automation run reconcile:quotes -- --max-instruments=5
 ```
+
+Verifizierter Teil-Lauf am 2026-06-13:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool/automation
+npm run reconcile:quotes -- --max-instruments=5 --delay-ms=50
+```
+
+Ergebnis:
+
+- 20 Flatex/Trade-Republic-Instrumente im Kursuniversum
+- 5 Testinstrumente verarbeitet
+- 5/5 Kurse erfolgreich geladen
+- keine Mapping-Warnung im Testlauf
 
 Alle Instrumente werden standardmaessig verarbeitet. Explizit geht das auch so:
 

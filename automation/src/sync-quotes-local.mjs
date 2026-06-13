@@ -13,7 +13,7 @@ const quoteProvider = process.env.QUOTE_PROVIDER ?? "boerse-frankfurt";
 const maxInstruments = Number.parseInt(readArg("--max-instruments") ?? process.env.QUOTE_MAX_INSTRUMENTS ?? "0", 10);
 const delayMs = Number.parseInt(readArg("--delay-ms") ?? process.env.QUOTE_DELAY_MS ?? "150", 10);
 const quoteSources = new Set(
-  (process.env.QUOTE_SOURCES ?? "flatex,traderepublic,ginmon")
+  (process.env.QUOTE_SOURCES ?? "flatex,traderepublic")
     .split(",")
     .map((source) => source.trim())
     .filter(Boolean),
@@ -30,6 +30,10 @@ function instrumentIdForIsin(isin) {
   return `isin_${String(isin).toUpperCase()}`;
 }
 
+function historyDateId(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
 function uniqueIsinPositions(positions) {
   return positions.filter(
     (position) =>
@@ -42,6 +46,13 @@ function uniqueIsinPositions(positions) {
 
 function roundCurrency(value) {
   return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+}
+
+function formatEstimatedQuantity(value) {
+  return new Intl.NumberFormat("de-AT", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  }).format(value);
 }
 
 function parseMaybeNumber(value) {
@@ -228,18 +239,58 @@ async function main() {
         status: "OK",
         updatedAt: now,
       });
+      await firestore.setDocument("priceHistory", `${instrumentId}_${historyDateId(now)}`, {
+        instrumentId,
+        isin,
+        name: mapping.name ?? representative.name ?? null,
+        provider: quoteProvider,
+        providerSymbol: quote.providerSymbol ?? mapping.providerSymbol,
+        price: quote.price,
+        currency: quoteCurrency,
+        fxRateToEur: fx.rate,
+        fxPair: fx.pair,
+        priceEur,
+        asOf: quote.asOf,
+        historyDate: historyDateId(now),
+        mic: quote.mic ?? mapping.mic ?? null,
+        sourceUrl: quote.sourceUrl ?? mapping.sourceUrl ?? null,
+        status: "OK",
+        positionIds: group.map((position) => position.id),
+        sources: [...new Set(group.map((position) => position.source))],
+        updatedAt: now,
+      });
     }
     await writeInstrument(firestore, instrumentId, representative, mapping, quote);
 
     for (const position of group) {
-      const currentValue = roundCurrency(position.quantity * priceEur);
+      const preserveSourceValue = position.source === "ginmon";
+      const currentValue = preserveSourceValue
+        ? parseMaybeNumber(position.currentValue)
+        : roundCurrency(position.quantity * priceEur);
+      const estimatedQuantity =
+        preserveSourceValue &&
+        typeof position.quantity !== "number" &&
+        typeof currentValue === "number" &&
+        Number.isFinite(priceEur) &&
+        priceEur > 0
+          ? currentValue / priceEur
+          : null;
       const costValue = parseMaybeNumber(position.costValue);
       const performanceValue =
         typeof costValue === "number" ? roundCurrency(currentValue - costValue) : position.performanceValue ?? null;
       const updated = {
         ...position,
+        name:
+          /^ISIN\s+[A-Z]{2}[A-Z0-9]{10}$/i.test(String(position.name ?? "")) && mapping.name
+            ? mapping.name
+            : position.name,
         currentValue,
         costValue,
+        quantity: typeof position.quantity === "number" ? position.quantity : estimatedQuantity ?? position.quantity ?? null,
+        quantityText:
+          position.quantityText ??
+          (estimatedQuantity === null ? null : `ca. ${formatEstimatedQuantity(estimatedQuantity)} Stk.`),
+        quantityEstimated: estimatedQuantity !== null || position.quantityEstimated === true,
         quoteText: `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(quote.price)} ${quoteCurrency}`,
         quotePrice: quote.price,
         quoteCurrency,
@@ -248,8 +299,9 @@ async function main() {
         quoteProviderSymbol: quote.providerSymbol ?? mapping.providerSymbol,
         quoteAsOf: quote.asOf,
         quoteStatus: "OK",
-        valuationDate: quote.asOf,
-        valuationMethod: `${quoteProvider}_quote_v1`,
+        quoteUpdatedAt: now,
+        valuationDate: preserveSourceValue ? position.valuationDate : quote.asOf,
+        valuationMethod: preserveSourceValue ? position.valuationMethod : `${quoteProvider}_quote_v1`,
         performanceValue,
         performancePct: costValue ? performanceValue / costValue : position.performancePct ?? null,
         updatedAt: now,
@@ -273,6 +325,7 @@ async function main() {
   const touchedSources = [...new Set(positions.map((position) => position.source))];
   for (const source of touchedSources) {
     const existingSummary = summaries.find((summary) => summary.id === source) ?? {};
+    if (source === "ginmon") continue;
     const sourcePositions = updatedPositions.filter(
       (position) => position.source === source && position.accountValueIncluded !== false,
     );

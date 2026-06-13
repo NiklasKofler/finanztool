@@ -36,8 +36,10 @@ export async function launchVbvBrowser({ headless = false } = {}) {
 }
 
 async function isLoggedIn(page) {
+  if (page.url().includes("/login")) return false;
   const text = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-  return /Logout|Account information|Severance Payment Fund|Your balance on/i.test(text);
+  if (/E-mail address\s+Password\s+LOGIN/i.test(text)) return false;
+  return /Logout|Severance Payment Fund|Your balance on/i.test(text);
 }
 
 export async function ensureVbvLogin(page) {
@@ -55,8 +57,13 @@ export async function ensureVbvLogin(page) {
   await emailField.fill(email, { timeout: 10000 });
   await passwordField.fill(password, { timeout: 10000 });
 
-  const loginButton = page.getByRole("button", { name: "LOGIN", exact: true });
-  await loginButton.click({ timeout: 10000 });
+  const clicked = await page.evaluate(() => {
+    const button = [...document.querySelectorAll("button")]
+      .find((item) => item.textContent?.trim().toLowerCase() === "login" && !item.disabled);
+    button?.click();
+    return Boolean(button);
+  });
+  if (!clicked) throw new Error("VBV-Loginbutton wurde nicht gefunden.");
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < 45000) {

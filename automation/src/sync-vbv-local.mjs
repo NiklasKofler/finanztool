@@ -66,59 +66,96 @@ async function loadBalance() {
     return parseVbvBalanceText(await readCurrentChromeText());
   }
 
-  const { context, page } = await launchVbvBrowser();
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { context, page } = await launchVbvBrowser();
+    try {
+      await ensureVbvLogin(page);
+      return await readVbvBalance(page);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+  throw lastError;
+}
+
+async function writeAgentFailure(error) {
+  if (!writeEnabled) return;
   try {
-    await ensureVbvLogin(page);
-    return readVbvBalance(page);
-  } finally {
-    await context.close().catch(() => {});
+    const firestore = new FirestoreRest({
+      projectId,
+      accessToken: await getFirebaseCliAccessToken(),
+    });
+    const previous =
+      (await firestore.listDocuments("agentStatus")).find((entry) => entry.id === "vbv") ?? {};
+    await firestore.setDocument("agentStatus", "vbv", {
+      ...previous,
+      source: "vbv",
+      status: "FEHLER",
+      message: error?.message ?? String(error),
+      lastErrorAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } catch {
+    // Preserve the original browser/login failure.
   }
 }
 
-const balance = await loadBalance();
-const now = new Date();
-const dryRunSummary = {
-  mode: writeEnabled ? "write" : "dry-run",
-  source: "vbv",
-  currentValue: roundCurrency(balance.currentValue),
-  valuationDate: balance.valuationDate,
-  valuationMethod: balance.valuationMethod,
-};
+async function main() {
+  const balance = await loadBalance();
+  const now = new Date();
+  const dryRunSummary = {
+    mode: writeEnabled ? "write" : "dry-run",
+    source: "vbv",
+    currentValue: roundCurrency(balance.currentValue),
+    valuationDate: balance.valuationDate,
+    valuationMethod: balance.valuationMethod,
+  };
 
-if (!writeEnabled) {
-  console.log(JSON.stringify(dryRunSummary, null, 2));
-  console.log("[dry-run] Keine Firestore-Daten geaendert. Fuer Schreiben --write verwenden.");
-  process.exit(0);
+  if (!writeEnabled) {
+    console.log(JSON.stringify(dryRunSummary, null, 2));
+    console.log("[dry-run] Keine Firestore-Daten geaendert. Fuer Schreiben --write verwenden.");
+    return;
+  }
+
+  const firestore = new FirestoreRest({
+    projectId,
+    accessToken: await getFirebaseCliAccessToken(),
+  });
+  const previousSummary =
+    (await firestore.listDocuments("sourceSummaries")).find((summary) => summary.id === "vbv") ?? {};
+
+  await firestore.setDocument("sourceSummaries", "vbv", {
+    ...previousSummary,
+    source: "vbv",
+    displayName: "VBV Vorsorgekasse",
+    currentValue: roundCurrency(balance.currentValue),
+    netValue: roundCurrency(balance.netValue ?? balance.currentValue),
+    valuationDate: balance.valuationDate,
+    valuationMethod: balance.valuationMethod,
+    positionCount: 0,
+    status: "VERIFIED",
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("agentStatus", "vbv", {
+    source: "vbv",
+    status: "OK",
+    message: `VBV Vorsorgekasse ${roundCurrency(balance.currentValue).toFixed(2)} EUR per ${balance.valuationDate}`,
+    lastSuccessAt: now,
+    currentValue: roundCurrency(balance.currentValue),
+    valuationDate: balance.valuationDate,
+  });
+
+  console.log(JSON.stringify({ ...dryRunSummary, written: true }, null, 2));
+  console.log(`[ok] VBV-Wert geschrieben: ${roundCurrency(balance.currentValue).toFixed(2)} EUR per ${balance.valuationDate}`);
 }
 
-const firestore = new FirestoreRest({
-  projectId,
-  accessToken: await getFirebaseCliAccessToken(),
-});
-const previousSummary =
-  (await firestore.listDocuments("sourceSummaries")).find((summary) => summary.id === "vbv") ?? {};
-
-await firestore.setDocument("sourceSummaries", "vbv", {
-  ...previousSummary,
-  source: "vbv",
-  displayName: "VBV Vorsorgekasse",
-  currentValue: roundCurrency(balance.currentValue),
-  netValue: roundCurrency(balance.netValue ?? balance.currentValue),
-  valuationDate: balance.valuationDate,
-  valuationMethod: balance.valuationMethod,
-  positionCount: 0,
-  status: "VERIFIED",
-  updatedAt: now,
-});
-
-await firestore.setDocument("agentStatus", "vbv", {
-  source: "vbv",
-  status: "OK",
-  message: `VBV Vorsorgekasse ${roundCurrency(balance.currentValue).toFixed(2)} EUR per ${balance.valuationDate}`,
-  lastSuccessAt: now,
-  currentValue: roundCurrency(balance.currentValue),
-  valuationDate: balance.valuationDate,
-});
-
-console.log(JSON.stringify({ ...dryRunSummary, written: true }, null, 2));
-console.log(`[ok] VBV-Wert geschrieben: ${roundCurrency(balance.currentValue).toFixed(2)} EUR per ${balance.valuationDate}`);
+try {
+  await main();
+} catch (error) {
+  await writeAgentFailure(error);
+  throw error;
+}

@@ -25,7 +25,7 @@ export function getGinmonPaths() {
   };
 }
 
-export async function launchGinmonBrowser({ headless = false } = {}) {
+export async function launchGinmonBrowser({ headless = process.env.GINMON_HEADLESS === "true" } = {}) {
   const paths = getGinmonPaths();
   await Promise.all([
     fs.mkdir(paths.profilePath, { recursive: true }),

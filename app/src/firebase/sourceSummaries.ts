@@ -28,6 +28,22 @@ export interface SourceSummaryDocument {
   status?: string;
   storageStatus?: string;
   valuationMethod?: string;
+  accounts?: SourceSummaryAccount[];
+}
+
+export interface SourceSummaryAccount {
+  accountNumber?: string | null;
+  customerId?: string | null;
+  label?: string | null;
+  strategy?: string | null;
+  currentValue?: number | null;
+  depotValue?: number | null;
+  cashValue?: number | null;
+  costValue?: number | null;
+  performanceValue?: number | null;
+  performancePct?: number | null;
+  valuationDate?: string | null;
+  positionCount?: number | null;
 }
 
 export interface AgentStatusDocument {
@@ -40,6 +56,15 @@ export interface AgentStatusDocument {
   valuationDate?: string | null;
   importId?: string | null;
   failedImportId?: string | null;
+}
+
+export interface AutomationCommandDocument {
+  id: string;
+  type?: string;
+  status?: "REQUESTED" | "RUNNING" | "DONE" | "ERROR" | string;
+  errorMessage?: string | null;
+  requestedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
 export async function loadSourceSummaries(db: Firestore) {
@@ -69,6 +94,13 @@ const numericPositionFields = [
   "quantity",
   "quotePrice",
   "quotePriceEur",
+  "dayChangeValue",
+  "dayChangePct",
+  "dayChange",
+  "dayChangePercent",
+  "dailyChangeValue",
+  "dailyChangePct",
+  "previousCloseValue",
   "avgCostPerShare",
 ] as const;
 
@@ -112,4 +144,13 @@ export async function requestQuoteSync(db: Firestore, requestedBy?: string | nul
     requestedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function loadQuoteSyncCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
+  const snapshot = await getDoc(doc(db, "automationCommands", "sync_quotes_manual"));
+  if (!snapshot.exists()) return null;
+  return {
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<AutomationCommandDocument, "id">),
+  };
 }

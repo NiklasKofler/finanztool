@@ -210,3 +210,56 @@ die robustere Automatisierungsstrategie.
 Fuer den laufenden Betrieb ist das Postfach nicht die Primaerquelle fuer den
 Depotstand. Es dient als Belegarchiv fuer Steuerreports, Abrechnungen,
 Kontoauszuege, Depotauszuege und Sonderfaelle.
+
+## Firestore-Dokumentfakten 2026-06-13
+
+Die Flatex-PDFs aus dem Postfach und den Belegordnern werden jetzt nicht mehr
+nur als Archiv betrachtet, sondern generisch in Firestore registriert und
+fachlich, soweit moeglich, als Fakten gespeichert.
+
+Technik:
+
+- Parser: `automation/src/flatex-document-parser.mjs`
+- Sync: `automation/src/reconcile-flatex-documents-local.mjs`
+- Firestore:
+  - `sourceDocuments`
+  - `sourceDocumentFacts`
+  - `agentStatus/flatex_documents`
+
+Verifizierter Lauf:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool/automation
+npm run sync:flatex-documents -- --pdf-timeout-ms=30000
+```
+
+Ergebnis:
+
+- Flatex-PDFs verarbeitet: 283
+- Dokumente in `sourceDocuments`: 283
+- `PARSED`: 283
+- `UNKNOWN`: 0
+- Fakten in `sourceDocumentFacts`: 401
+- Health nach Lauf: `OK`, 0 Fehler, 0 Warnungen
+
+Aktuell erkannte Dokumentarten:
+
+- Wertpapierabrechnungen und Fonds-/Zertifikatekaeufe
+- Dividenden und Fondsertragsausschuettungen
+- Fondsthesaurierungen
+- Kontoauszuege inklusive Konto-Bewertungspositionen
+- Depotauszuege inklusive Positions-Snapshots
+- Steuerbescheinigungen inklusive Einzelpositionen
+- Kapitalmassnahmen/Fusionen
+- Saldenmitteilungen
+- Orderbestaetigungen, Orderaenderungen und Auftragsstreichungen
+- Sparplan-/Mandats-/SEPA-/Info-/Kosten-/CFD-Dokumente
+- fehlabgelegte externe Dokumente als `misfiled_external`
+
+Wichtig:
+
+Neue Flatex-Dokumente, die kuenftig nicht in diese Klassifizierung passen,
+werden durch `automation/src/check-health-local.mjs` in
+`systemHealth/current` als Warnung `Flatex-Dokument nicht klassifiziert`
+gemeldet. Damit soll sichtbar werden, wenn Flatex neue Dokumenttypen einfuehrt
+oder ein Parser erweitert werden muss.

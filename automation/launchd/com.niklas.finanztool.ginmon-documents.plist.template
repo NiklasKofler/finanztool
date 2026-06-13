@@ -3,12 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.ginmon-sync</string>
+    <string>com.niklas.finanztool.ginmon-documents</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NPM_PATH__</string>
       <string>run</string>
-      <string>sync:ginmon-current</string>
+      <string>sync:ginmon-documents</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -21,13 +21,16 @@
       <key>GINMON_HEADLESS</key>
       <string>true</string>
     </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StartInterval</key>
-    <integer>3600</integer>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>2</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-ginmon-sync.out.log</string>
+    <string>/tmp/finanztool-ginmon-documents.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-ginmon-sync.err.log</string>
+    <string>/tmp/finanztool-ginmon-documents.err.log</string>
   </dict>
 </plist>

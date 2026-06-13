@@ -40,8 +40,13 @@ export interface PortfolioPosition {
   category?: string | null;
   isin?: string | null;
   wkn?: string | null;
+  quantity?: number | null;
   quantityText?: string | null;
+  quantityEstimated?: boolean | null;
   quoteText?: string | null;
+  quotePrice?: number | null;
+  quotePriceEur?: number | null;
+  quoteCurrency?: string | null;
   currentValue?: number | null;
   currentValueUsdt?: number | null;
   costValue?: number | null;
@@ -50,9 +55,22 @@ export interface PortfolioPosition {
   costBasisStatus?: string | null;
   priceSource?: string | null;
   accountValueIncluded?: boolean | null;
+  accountId?: string | null;
+  accountNumber?: string | null;
+  customerId?: string | null;
+  portfolioId?: string | null;
+  portfolioLabel?: string | null;
   performanceValue?: number | null;
   performancePct?: number | null;
+  dayChangeValue?: number | null;
+  dayChangePct?: number | null;
+  dayChange?: number | null;
+  dayChangePercent?: number | null;
+  dailyChangeValue?: number | null;
+  dailyChangePct?: number | null;
+  previousCloseValue?: number | null;
   valuationDate?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   valuationMethod?: string | null;
 }
 

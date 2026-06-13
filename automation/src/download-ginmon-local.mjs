@@ -8,7 +8,8 @@ import { ensureGinmonLogin, launchGinmonBrowser } from "./ginmon-browser.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const writeFirestore = process.argv.includes("--write");
-const reconcileAfterDownload = writeFirestore || process.argv.includes("--reconcile");
+const writeDocumentsOnly = process.argv.includes("--write-documents-only");
+const reconcileAfterDownload = writeFirestore || writeDocumentsOnly || process.argv.includes("--reconcile");
 const verbose = process.argv.includes("--verbose");
 const pageLimit = Number.parseInt(readArg("--page-limit") ?? "100", 10);
 const maxDocuments = Number.parseInt(readArg("--max-documents") ?? "0", 10);
@@ -23,6 +24,11 @@ const driveRoot =
     "Depot",
   );
 const targetDirectory = path.join(driveRoot, "01_Originale", "Ginmon", "Reports");
+const ginmonSearchDirectories = [
+  path.join(driveRoot, "00_Inbox", "Ginmon"),
+  path.join(driveRoot, "01_Originale", "Ginmon"),
+  path.join(driveRoot, "02_Archiviert", "Ginmon"),
+];
 
 function readArg(name) {
   const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
@@ -107,6 +113,28 @@ async function findExistingDocumentIds(directory) {
   return ids;
 }
 
+async function findExistingDocumentIdsEverywhere() {
+  const sets = await Promise.all(ginmonSearchDirectories.map(findExistingDocumentIds));
+  return new Set(sets.flatMap((set) => [...set]));
+}
+
+async function uniqueTargetPath(targetPath) {
+  let candidate = targetPath;
+  const extension = path.extname(targetPath);
+  const base = targetPath.slice(0, -extension.length);
+  let index = 2;
+  while (true) {
+    try {
+      await fs.access(candidate);
+      candidate = `${base}_${index}${extension}`;
+      index += 1;
+    } catch (error) {
+      if (error?.code === "ENOENT") return candidate;
+      throw error;
+    }
+  }
+}
+
 async function captureAuthorization(page) {
   let authorization = null;
   page.on("request", (request) => {
@@ -140,13 +168,13 @@ async function downloadFile(url, targetPath) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download Fehler ${response.status}: ${url}`);
   const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(targetPath, buffer);
+  await fs.writeFile(targetPath, buffer, { flag: "wx" });
   return buffer.length;
 }
 
 async function downloadAllDocuments(authorization) {
   await fs.mkdir(targetDirectory, { recursive: true });
-  const existingIds = await findExistingDocumentIds(targetDirectory);
+  const existingIds = await findExistingDocumentIdsEverywhere();
   const documents = [];
   let totalCount = Infinity;
   for (let offset = 0; offset < totalCount; offset += pageLimit) {
@@ -172,7 +200,7 @@ async function downloadAllDocuments(authorization) {
       results.push({ id: document.id, status: "skipped", reason: "exists" });
       continue;
     }
-    const targetPath = path.join(targetDirectory, fileNameForDocument(document));
+    const targetPath = await uniqueTargetPath(path.join(targetDirectory, fileNameForDocument(document)));
     const bytes = await downloadFile(document.link, targetPath);
     results.push({
       id: document.id,
@@ -196,7 +224,8 @@ async function downloadAllDocuments(authorization) {
 
 function reconcile() {
   const reconcileArgs = [path.join(__dirname, "reconcile-ginmon-local.mjs")];
-  if (writeFirestore) reconcileArgs.push("--write");
+  if (writeDocumentsOnly) reconcileArgs.push("--write-documents-only");
+  else if (writeFirestore) reconcileArgs.push("--write");
   const reconcileResult = spawnSync(process.execPath, reconcileArgs, {
     cwd: path.resolve(__dirname, ".."),
     env: process.env,
@@ -206,7 +235,7 @@ function reconcile() {
     throw new Error(`Ginmon-Abgleich fehlgeschlagen: Exit ${reconcileResult.status}`);
   }
 
-  if (!writeFirestore) return;
+  if (!writeFirestore || writeDocumentsOnly) return;
   const currentResult = spawnSync(process.execPath, [path.join(__dirname, "sync-ginmon-current-api.mjs"), "--write"], {
     cwd: path.resolve(__dirname, ".."),
     env: process.env,
@@ -235,6 +264,7 @@ console.log(
       ...(verbose ? downloadSummary : compactDownloadSummary(downloadSummary)),
       reconcileAfterDownload,
       writeFirestore,
+      writeDocumentsOnly,
     },
     null,
     2,

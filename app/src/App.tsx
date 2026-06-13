@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Cloud,
   Database,
+  Eye,
+  EyeOff,
   RefreshCcw,
   TrendingUp,
   Wallet,
@@ -24,8 +26,10 @@ import {
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
+  loadQuoteSyncCommand,
   requestQuoteSync,
   type AgentStatusDocument,
+  type SourceSummaryAccount,
   type SourceSummaryDocument,
 } from "./firebase/sourceSummaries";
 import { sourceOverviews } from "./domain/seedData";
@@ -45,16 +49,6 @@ const percentFormatter = new Intl.NumberFormat("de-AT", {
   style: "percent",
   maximumFractionDigits: 1,
 });
-
-const sourceLabels: Record<string, string> = {
-  flatex: "Flatex",
-  traderepublic: "Trade Republic",
-  ginmon: "Ginmon",
-  intergold: "Intergold",
-  bitget: "Bitget",
-  vbv: "VBV",
-  capitalcom: "Capital.com",
-};
 
 const sourceSortOrder = [
   "flatex",
@@ -89,6 +83,17 @@ function formatCurrency(value?: number) {
   return currencyFormatter.format(value);
 }
 
+function maskMoney(value?: number | null) {
+  return typeof value === "number" ? "€€€€" : "—";
+}
+
+function maskSignedMoney(value?: number | null) {
+  if (typeof value !== "number") return "—";
+  if (value > 0) return "+€€€€";
+  if (value < 0) return "-€€€€";
+  return "±€€€€";
+}
+
 function formatMoney(value?: number | null, currency = "EUR") {
   if (typeof value !== "number") return "—";
 
@@ -103,6 +108,13 @@ function formatMoney(value?: number | null, currency = "EUR") {
   } catch {
     return `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(value)} ${currency}`;
   }
+}
+
+function formatSignedMoney(value?: number | null, currency = "EUR") {
+  if (typeof value !== "number") return "—";
+  if (value === 0) return `±${formatMoney(0, currency)}`;
+  const sign = value > 0 ? "+" : "-";
+  return `${sign}${formatMoney(Math.abs(value), currency)}`;
 }
 
 function getPositionPerformance(position: PortfolioPosition) {
@@ -140,9 +152,64 @@ function formatOptionalText(value?: string | null) {
   return value?.trim() ? value : "—";
 }
 
+function formatQuantity(position: PortfolioPosition) {
+  const formatter = new Intl.NumberFormat("de-AT", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 5,
+  });
+
+  if (typeof position.quantity === "number") {
+    const unit = position.quantityText?.match(/\s([A-Za-zÄÖÜäöüß.]+)\.?$/)?.[1] ?? "Stk.";
+    const prefix = position.quantityEstimated ? "ca. " : "";
+    return `${prefix}${formatter.format(position.quantity)} ${unit}`;
+  }
+
+  const text = position.quantityText?.trim();
+  if (!text) return "—";
+
+  const match = text.match(/^(\D*?)(-?[\d.,]+)(.*)$/);
+  if (!match) return text;
+
+  const parsed = Number.parseFloat(match[2].replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(parsed)) return text;
+
+  return `${match[1]}${formatter.format(parsed)}${match[3]}`.trim();
+}
+
 function formatPercent(value?: number | null) {
   if (typeof value !== "number") return "—";
   return percentFormatter.format(value);
+}
+
+function formatSignedPercent(value?: number | null) {
+  if (typeof value !== "number") return "—";
+  if (value === 0) return `±${formatPercent(0)}`;
+  return `${value > 0 ? "+" : "-"}${formatPercent(Math.abs(value))}`;
+}
+
+function getPositionDayChange(position: PortfolioPosition) {
+  const value =
+    position.dayChangeValue ??
+    position.dailyChangeValue ??
+    position.dayChange ??
+    (typeof position.previousCloseValue === "number" && typeof position.currentValue === "number"
+      ? position.currentValue - position.previousCloseValue
+      : null);
+  const percentage =
+    position.dayChangePct ??
+    position.dailyChangePct ??
+    position.dayChangePercent ??
+    (typeof value === "number" && typeof position.previousCloseValue === "number" && position.previousCloseValue
+      ? value / position.previousCloseValue
+      : null);
+
+  return { value, percentage };
+}
+
+function getPerformanceTone(value?: number | null) {
+  if ((value ?? 0) > 0) return "positive";
+  if ((value ?? 0) < 0) return "negative";
+  return "neutral";
 }
 
 function formatUpdatedAt(
@@ -175,12 +242,14 @@ function getSourceDisplayValue(source: SourceOverview) {
   return source.netValue ?? source.currentValue;
 }
 
-function getSourceDepotValue(source: SourceOverview) {
-  return source.depotValue ?? (typeof source.netValue === "number" ? source.currentValue : undefined);
-}
-
-function getSourceLabel(source: string) {
-  return sourceLabels[source] ?? source;
+function getAccountLabel(account: SourceSummaryAccount) {
+  return (
+    account.label?.trim() ||
+    account.strategy?.trim() ||
+    account.accountNumber?.trim() ||
+    account.customerId?.trim() ||
+    "Depot"
+  );
 }
 
 function getPositionSortValue(position: PortfolioPosition) {
@@ -203,6 +272,26 @@ function isCashPosition(position: PortfolioPosition) {
 function getIncludedPositionValue(position: PortfolioPosition) {
   if (position.accountValueIncluded === false) return 0;
   return typeof position.currentValue === "number" ? position.currentValue : 0;
+}
+
+function getPositionAccountKey(position: PortfolioPosition) {
+  return (
+    position.accountNumber?.trim() ||
+    position.accountId?.trim() ||
+    position.customerId?.trim() ||
+    position.portfolioId?.trim() ||
+    "default"
+  );
+}
+
+function getPositionAccountLabel(position: PortfolioPosition) {
+  return (
+    position.portfolioLabel?.trim() ||
+    position.accountId?.trim() ||
+    position.accountNumber?.trim() ||
+    position.customerId?.trim() ||
+    "Depot"
+  );
 }
 
 function SourceIcon({ source }: { source: SourceOverview }) {
@@ -238,6 +327,83 @@ function AgentStatusBadge({ status }: { status?: string | null }) {
   return <span className={`status-badge status-badge--${meta.tone}`}>{meta.label}</span>;
 }
 
+function PositionsTable({
+  positions,
+  privacyMode,
+}: {
+  positions: PortfolioPosition[];
+  privacyMode: boolean;
+}) {
+  return (
+    <div className="positions-table-wrap positions-table-wrap--embedded">
+      <table className="positions-table positions-table--embedded">
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th>Kategorie</th>
+            <th>Menge</th>
+            <th className="numeric">Einstand</th>
+            <th>Kurs</th>
+            <th className="numeric">Wert</th>
+            <th className="numeric">G/V</th>
+            <th className="numeric">Perf.</th>
+            <th className="numeric">Heute</th>
+            <th className="numeric">Heute %</th>
+            <th>Aktualisiert</th>
+          </tr>
+        </thead>
+        <tbody>
+          {positions.length ? positions.map((position) => {
+            const positionPerformance = getPositionPerformance(position);
+            const performanceTone = getPerformanceTone(positionPerformance.performance);
+            const dayChange = getPositionDayChange(position);
+
+            return (
+              <tr key={position.id}>
+                <td className="position-name-cell">
+                  <strong>{position.name}</strong>
+                  <span>
+                    {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
+                  </span>
+                </td>
+                <td>{formatOptionalText(position.category)}</td>
+                <td>{formatQuantity(position)}</td>
+                <td className="numeric">
+                  {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
+                </td>
+                <td>{formatOptionalText(position.quoteText)}</td>
+                <td className="numeric">{privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}</td>
+                <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                  {privacyMode
+                    ? maskSignedMoney(positionPerformance.performance)
+                    : formatSignedMoney(
+                      positionPerformance.performance,
+                      positionPerformance.currency,
+                    )}
+                </td>
+                <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                  {formatSignedPercent(positionPerformance.percentage)}
+                </td>
+                <td className="numeric">
+                  {privacyMode ? maskMoney(dayChange.value) : formatMoney(dayChange.value)}
+                </td>
+                <td className="numeric">{formatPercent(dayChange.percentage)}</td>
+                <td>{formatUpdatedAt(position.updatedAt)}</td>
+              </tr>
+            );
+          }) : (
+            <tr>
+              <td className="empty-position-row" colSpan={11}>
+                Keine Positionen geladen.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function App() {
   const [sourceSummaries, setSourceSummaries] = useState<
     Record<string, SourceSummaryDocument>
@@ -249,11 +415,12 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [quoteRequestStatus, setQuoteRequestStatus] = useState<
-    "idle" | "requesting" | "requested" | "error"
+    "idle" | "requesting" | "requested" | "running" | "error"
   >("idle");
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
+  const [privacyMode, setPrivacyMode] = useState(true);
 
   useEffect(() => {
     const services = getFirebaseServices();
@@ -330,10 +497,43 @@ function App() {
     const services = getFirebaseServices();
     if (!services || !authUser) return;
 
+    async function refreshPortfolioData() {
+      const [summaries, loadedAgentStatuses, loadedPositions, health] = await Promise.all([
+        loadSourceSummaries(services!.db),
+        loadAgentStatuses(services!.db),
+        loadSourcePositions(services!.db),
+        loadSystemHealth(services!.db),
+      ]);
+      setSourceSummaries(summaries);
+      setAgentStatuses(loadedAgentStatuses);
+      setPositions(loadedPositions);
+      setSystemHealth(health);
+    }
+
     try {
       setQuoteRequestStatus("requesting");
       await requestQuoteSync(services.db, authUser.email);
       setQuoteRequestStatus("requested");
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4000));
+        const command = await loadQuoteSyncCommand(services.db);
+        if (command?.status === "RUNNING") {
+          setQuoteRequestStatus("running");
+          continue;
+        }
+        if (command?.status === "DONE") {
+          await refreshPortfolioData();
+          setQuoteRequestStatus("idle");
+          return;
+        }
+        if (command?.status === "ERROR") {
+          await refreshPortfolioData().catch(() => undefined);
+          setQuoteRequestStatus("error");
+          return;
+        }
+      }
+      await refreshPortfolioData().catch(() => undefined);
+      setQuoteRequestStatus("idle");
     } catch {
       setQuoteRequestStatus("error");
     }
@@ -417,6 +617,38 @@ function App() {
   );
 
   const trackedTotal = getTrackedTotal(sources);
+  const portfolioPerformanceBase = positions.reduce(
+    (totals, position) => {
+      if (position.accountValueIncluded === false || isCashPosition(position)) return totals;
+      const performance = getPositionPerformance(position);
+      if (typeof performance.performance !== "number") return totals;
+      return {
+        cost: totals.cost + (typeof performance.cost === "number" ? performance.cost : 0),
+        performance: totals.performance + performance.performance,
+        count: totals.count + 1,
+      };
+    },
+    { cost: 0, performance: 0, count: 0 },
+  );
+  const portfolioPerformance =
+    portfolioPerformanceBase.count > 0 ? portfolioPerformanceBase.performance : null;
+  const portfolioPerformancePct =
+    portfolioPerformanceBase.cost && portfolioPerformance !== null
+      ? portfolioPerformance / portfolioPerformanceBase.cost
+      : null;
+  const portfolioDayChangeBase = positions.reduce((totals, position) => {
+    if (position.accountValueIncluded === false) return totals;
+    const { value } = getPositionDayChange(position);
+    if (typeof value !== "number") return totals;
+    return { value: totals.value + value, count: totals.count + 1 };
+  }, { value: 0, count: 0 });
+  const portfolioDayChange =
+    portfolioDayChangeBase.count > 0 ? portfolioDayChangeBase.value : null;
+  const portfolioPreviousValue =
+    typeof portfolioDayChange === "number" ? trackedTotal - portfolioDayChange : null;
+  const portfolioDayChangePct =
+    portfolioPreviousValue && portfolioDayChange ? portfolioDayChange / portfolioPreviousValue : null;
+  const portfolioPerformanceTone = getPerformanceTone(portfolioPerformance);
   const activeSources = sources.filter(
     (source) =>
       typeof getSourceDisplayValue(source) === "number" ||
@@ -425,14 +657,26 @@ function App() {
   const displayedPositions = useMemo(
     () =>
       positions
-        .filter((position) => !isCashPosition(position))
         .sort((left, right) => {
           const sourceDelta = getPositionSortValue(left) - getPositionSortValue(right);
           if (sourceDelta !== 0) return sourceDelta;
+          const leftAccount = getPositionAccountKey(left);
+          const rightAccount = getPositionAccountKey(right);
+          const accountDelta = leftAccount.localeCompare(rightAccount);
+          if (accountDelta !== 0) return accountDelta;
           return (right.currentValue ?? 0) - (left.currentValue ?? 0);
         }),
     [positions],
   );
+  const displayedPositionsBySource = useMemo(() => {
+    const grouped: Record<string, PortfolioPosition[]> = {};
+    for (const position of displayedPositions) {
+      const group = grouped[position.source] ?? [];
+      group.push(position);
+      grouped[position.source] = group;
+    }
+    return grouped;
+  }, [displayedPositions]);
   const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
   const healthTone =
     systemHealth?.status === "ERROR"
@@ -462,12 +706,24 @@ function App() {
                 : "Lokaler Modus"}
           </span>
         </div>
+        <label className="privacy-toggle">
+          <input
+            type="checkbox"
+            checked={privacyMode}
+            onChange={(event) => setPrivacyMode(event.target.checked)}
+          />
+          <span className="privacy-toggle__track" aria-hidden="true">
+            <span className="privacy-toggle__thumb" />
+          </span>
+          {privacyMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+          <span>{privacyMode ? "Privat" : "Sichtbar"}</span>
+        </label>
         {dataStatus === "live" ? (
           <button
             type="button"
             className="quote-sync-button"
             onClick={handleRequestQuoteSync}
-            disabled={quoteRequestStatus === "requesting"}
+            disabled={["requesting", "requested", "running"].includes(quoteRequestStatus)}
           >
             <RefreshCcw aria-hidden="true" />
             <span>
@@ -475,6 +731,8 @@ function App() {
                 ? "Kurse werden angefordert"
                 : quoteRequestStatus === "requested"
                   ? "Kurs-Sync angefordert"
+                  : quoteRequestStatus === "running"
+                    ? "Kurse werden aktualisiert"
                   : quoteRequestStatus === "error"
                     ? "Sync fehlgeschlagen"
                     : "Kurse aktualisieren"}
@@ -489,7 +747,17 @@ function App() {
             <Wallet aria-hidden="true" />
           </div>
           <p>Erfasster Wert</p>
-          <strong>{formatCurrency(trackedTotal)}</strong>
+          <strong>{privacyMode ? maskMoney(trackedTotal) : formatCurrency(trackedTotal)}</strong>
+          <div className="metric-card__details">
+            <span className={`metric-chip metric-chip--${portfolioPerformanceTone}`}>
+              G/V {privacyMode ? maskSignedMoney(portfolioPerformance) : formatSignedMoney(portfolioPerformance)}
+              <small>{formatSignedPercent(portfolioPerformancePct)}</small>
+            </span>
+            <span className="metric-chip metric-chip--neutral">
+              Heute {privacyMode ? maskSignedMoney(portfolioDayChange) : formatSignedMoney(portfolioDayChange)}
+              <small>{formatSignedPercent(portfolioDayChangePct)}</small>
+            </span>
+          </div>
           <span>Depots, Krypto, Edelmetalle und Vorsorgewerte</span>
         </article>
 
@@ -573,156 +841,181 @@ function App() {
           </div>
 
           <div className="source-list">
-            {sources.map((source) => (
-              <article className="source-card" key={source.id}>
-                <div className="source-card__icon">
-                  <SourceIcon source={source} />
-                </div>
-                <div className="source-card__body">
-                  <div className="source-card__header">
-	                    <div>
-	                      <h3>{source.name}</h3>
-	                      <p>{source.purpose}</p>
-	                    </div>
-	                    <AgentStatusBadge status={source.agentStatus} />
-	                  </div>
-                  <dl>
-                    <div>
-                      <dt>{typeof source.netValue === "number" ? "Gesamtvermögen" : "Aktueller Wert"}</dt>
-                      <dd>{formatCurrency(getSourceDisplayValue(source))}</dd>
+            {sources.map((source) => {
+              const sourceSummary = sourceSummaries[source.summaryId ?? source.id];
+              const performanceTone = getPerformanceTone(sourceSummary?.performanceValue);
+              const sourcePositionsForCard = displayedPositionsBySource[source.id] ?? [];
+              const sourceDayChangeBase = sourcePositionsForCard.reduce(
+                (totals, position) => {
+                  if (position.accountValueIncluded === false) return totals;
+                  const { value } = getPositionDayChange(position);
+                  if (typeof value !== "number") return totals;
+                  return { value: totals.value + value, count: totals.count + 1 };
+                },
+                { value: 0, count: 0 },
+              );
+              const sourceDayChange =
+                sourceDayChangeBase.count > 0 ? sourceDayChangeBase.value : null;
+              const sourcePreviousValue =
+                typeof sourceDayChange === "number" && typeof getSourceDisplayValue(source) === "number"
+                  ? (getSourceDisplayValue(source) ?? 0) - sourceDayChange
+                  : null;
+              const sourceDayChangePct =
+                sourcePreviousValue && sourceDayChange ? sourceDayChange / sourcePreviousValue : null;
+              const ginmonAccounts =
+                source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
+
+              return (
+                <article className="source-card" key={source.id}>
+                  <div className="source-card__icon">
+                    <SourceIcon source={source} />
+                  </div>
+                  <div className="source-card__body">
+                    <div className="source-card__header">
+                      <div>
+                        <h3>{source.name}</h3>
+                        <p>{source.purpose}</p>
+                      </div>
+                      <AgentStatusBadge status={source.agentStatus} />
                     </div>
-                    {typeof getSourceDepotValue(source) === "number" ? (
+                    <dl className="source-card__metrics">
                       <div>
                         <dt>Depotwert</dt>
-                        <dd>{formatCurrency(getSourceDepotValue(source))}</dd>
+                        <dd>{privacyMode ? maskMoney(getSourceDisplayValue(source)) : formatCurrency(getSourceDisplayValue(source))}</dd>
                       </div>
-                    ) : null}
-                    {typeof source.cashValue === "number" ? (
                       <div>
-                        <dt>Kontostand</dt>
-                        <dd>{formatCurrency(source.cashValue)}</dd>
+                        <dt>Cash</dt>
+                        <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
                       </div>
-                    ) : null}
-                    {typeof source.saleValue === "number" ? (
                       <div>
-                        <dt>Verkaufswert</dt>
-                        <dd>{formatCurrency(source.saleValue)}</dd>
+                        <dt>Einstand</dt>
+                        <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
                       </div>
-                    ) : null}
-                    {typeof source.availableWithCredit === "number" ? (
                       <div>
-                        <dt>Verfügbar inkl. Kredit</dt>
-                        <dd>{formatCurrency(source.availableWithCredit)}</dd>
+                        <dt>{source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
+                        <dd>{formatUpdatedAt(source.updatedAt)}</dd>
                       </div>
-                    ) : null}
-                    {typeof source.creditLineEstimate === "number" ? (
                       <div>
-                        <dt>Kreditrahmen ca.</dt>
-                        <dd>{formatCurrency(source.creditLineEstimate)}</dd>
+                        <dt>G/V</dt>
+                        <dd className={`performance-value performance-value--${performanceTone}`}>
+                          {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
+                          <span>{formatSignedPercent(sourceSummary?.performancePct)}</span>
+                        </dd>
                       </div>
-                    ) : null}
-                    {typeof source.availableCash === "number" ? (
                       <div>
-                        <dt>Verfügbares Guthaben</dt>
-                        <dd>{formatCurrency(source.availableCash)}</dd>
+                        <dt>Heute</dt>
+                        <dd>
+                          {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
+                          <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
+                        </dd>
                       </div>
-	                    ) : null}
-	                    <div>
-	                      <dt>{source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
-	                      <dd>{formatUpdatedAt(source.updatedAt)}</dd>
-	                    </div>
-	                    {source.agentStatus && source.agentStatus !== "OK" ? (
-	                      <div>
-	                        <dt>Status</dt>
-	                        <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
-	                      </div>
-	                    ) : null}
-	                    <div>
-	                      <dt>Positionen</dt>
-	                      <dd>{source.positionCount ? numberFormatter.format(source.positionCount) : "—"}</dd>
-	                    </div>
-                  </dl>
-                </div>
-              </article>
-            ))}
+                      <div>
+                        <dt>Positionen</dt>
+                        <dd>{source.positionCount ? numberFormatter.format(source.positionCount) : "—"}</dd>
+                      </div>
+                      {source.agentStatus && source.agentStatus !== "OK" ? (
+                        <div>
+                          <dt>Status</dt>
+                          <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                    {typeof source.saleValue === "number" ||
+                    typeof source.availableWithCredit === "number" ||
+                    typeof source.creditLineEstimate === "number" ||
+                    typeof source.availableCash === "number" ? (
+                      <dl className="source-card__metrics source-card__metrics--secondary">
+                        {typeof source.saleValue === "number" ? (
+                          <div>
+                            <dt>Verkaufswert</dt>
+                            <dd>{privacyMode ? maskMoney(source.saleValue) : formatCurrency(source.saleValue)}</dd>
+                          </div>
+                        ) : null}
+                        {typeof source.availableWithCredit === "number" ? (
+                          <div>
+                            <dt>Verfügbar inkl. Kredit</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
+                          </div>
+                        ) : null}
+                        {typeof source.creditLineEstimate === "number" ? (
+                          <div>
+                            <dt>Kreditrahmen ca.</dt>
+                            <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                          </div>
+                        ) : null}
+                        {typeof source.availableCash === "number" ? (
+                          <div>
+                            <dt>Verfügbares Guthaben</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableCash) : formatCurrency(source.availableCash)}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    ) : null}
+
+                    {ginmonAccounts.length ? (
+                      <details className="source-accounts-details">
+                        <summary>
+                          <span>Ginmon-Depots</span>
+                          <strong>{numberFormatter.format(ginmonAccounts.length)}</strong>
+                        </summary>
+                        <div className="source-account-list">
+                          <div className="source-account-list__header">
+                            <span>Depot</span>
+                            <span>Wert</span>
+                            <span>Barwert</span>
+                            <span>G/V</span>
+                          </div>
+                        {ginmonAccounts.map((account) => {
+                          const accountTone = getPerformanceTone(account.performanceValue);
+                          const accountKey = account.accountNumber ?? account.customerId ?? getAccountLabel(account);
+                          const accountPositions = sourcePositionsForCard.filter((position) => {
+                            const positionAccountKey = getPositionAccountKey(position);
+                            return (
+                              positionAccountKey === account.accountNumber ||
+                              positionAccountKey === account.customerId ||
+                              getPositionAccountLabel(position) === getAccountLabel(account)
+                            );
+                          });
+                          return (
+                            <details className="source-account-details" key={accountKey}>
+                              <summary className="source-account-row">
+                                <div className="source-account-row__main">
+                                  <strong>{getAccountLabel(account)}</strong>
+                                  <span>{account.positionCount ? `${numberFormatter.format(account.positionCount)} Positionen` : "—"}</span>
+                                </div>
+                                <div className="source-account-row__value">
+                                  <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
+                                </div>
+                                <div className="source-account-row__value">
+                                  <strong>{privacyMode ? maskMoney(account.cashValue) : formatCurrency(account.cashValue ?? undefined)}</strong>
+                                </div>
+                                <div className="source-account-row__numbers">
+                                  <span className={`performance-value performance-value--${accountTone}`}>
+                                    {privacyMode ? maskSignedMoney(account.performanceValue) : formatSignedMoney(account.performanceValue)}
+                                    <small>{formatSignedPercent(account.performancePct)}</small>
+                                  </span>
+                                </div>
+                              </summary>
+                              <PositionsTable positions={accountPositions} privacyMode={privacyMode} />
+                            </details>
+                          );
+                        })}
+                        </div>
+                      </details>
+                    ) : sourcePositionsForCard.length ? (
+                      <details className="source-positions-details">
+                        <summary>
+                          <span>Positionen anzeigen</span>
+                          <strong>{numberFormatter.format(sourcePositionsForCard.length)}</strong>
+                        </summary>
+                        <PositionsTable positions={sourcePositionsForCard} privacyMode={privacyMode} />
+                      </details>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
-        </div>
-      </section>
-
-      <section className="panel positions-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Portfolio</p>
-            <h2>Alle Einzelpositionen</h2>
-          </div>
-          <span className="position-count">{numberFormatter.format(displayedPositions.length)}</span>
-        </div>
-
-        <div className="positions-table-wrap">
-          <table className="positions-table">
-            <thead>
-              <tr>
-                <th>Quelle</th>
-                <th>Position</th>
-                <th>Kategorie</th>
-                <th>Menge</th>
-                <th className="numeric">Einstand</th>
-                <th>Kurs</th>
-	                <th className="numeric">Wert</th>
-	                <th className="numeric">G/V</th>
-	                <th className="numeric">Perf.</th>
-	              </tr>
-            </thead>
-            <tbody>
-              {displayedPositions.length ? displayedPositions.map((position) => {
-                const positionPerformance = getPositionPerformance(position);
-                const performanceTone =
-                  (positionPerformance.performance ?? 0) > 0
-                    ? "positive"
-                    : (positionPerformance.performance ?? 0) < 0
-                      ? "negative"
-                      : "neutral";
-
-                return (
-                  <tr key={position.id}>
-                    <td>
-                      <span className={`source-pill source-pill--${position.source}`}>
-                        {getSourceLabel(position.source)}
-                      </span>
-                    </td>
-                    <td className="position-name-cell">
-                      <strong>{position.name}</strong>
-                      <span>
-                        {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
-                      </span>
-                    </td>
-                    <td>{formatOptionalText(position.category)}</td>
-                    <td>{formatOptionalText(position.quantityText)}</td>
-                    <td className="numeric">
-                      {formatMoney(positionPerformance.cost, positionPerformance.currency)}
-                    </td>
-                    <td>{formatOptionalText(position.quoteText)}</td>
-                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
-                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                      {formatMoney(
-                        positionPerformance.performance,
-                        positionPerformance.currency,
-                      )}
-                    </td>
-                    <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                      {formatPercent(positionPerformance.percentage)}
-                    </td>
-	                  </tr>
-                );
-              }) : (
-                <tr>
-	                  <td className="empty-position-row" colSpan={9}>
-                    Noch keine Firestore-Positionen geladen.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </section>
 

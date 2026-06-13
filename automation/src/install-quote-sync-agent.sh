@@ -23,4 +23,4 @@ launchctl bootout "gui/$UID/com.niklas.finanztool.quote-sync" 2>/dev/null || tru
 launchctl bootstrap "gui/$UID" "$plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.quote-sync"
 
-echo "[ok] Kurs-Sync laeuft stuendlich."
+echo "[ok] Kurs-Sync laeuft taeglich um 22:00."

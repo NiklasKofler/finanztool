@@ -9,7 +9,8 @@ bin_path="$(dirname "$npm_path"):$(dirname "$node_path"):/usr/local/bin:/usr/bin
 if [[ -n "$firebase_path" ]]; then
   bin_path="$(dirname "$firebase_path"):$bin_path"
 fi
-plist_path="$HOME/Library/LaunchAgents/com.niklas.finanztool.ginmon-sync.plist"
+api_plist_path="$HOME/Library/LaunchAgents/com.niklas.finanztool.ginmon-sync.plist"
+documents_plist_path="$HOME/Library/LaunchAgents/com.niklas.finanztool.ginmon-documents.plist"
 
 mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -18,10 +19,20 @@ sed \
   -e "s|__WORKING_DIRECTORY__|$repo_root/automation|g" \
   -e "s|__PATH__|$bin_path|g" \
   "$repo_root/automation/launchd/com.niklas.finanztool.ginmon-sync.plist.template" \
-  > "$plist_path"
+  > "$api_plist_path"
+
+sed \
+  -e "s|__NPM_PATH__|$npm_path|g" \
+  -e "s|__WORKING_DIRECTORY__|$repo_root/automation|g" \
+  -e "s|__PATH__|$bin_path|g" \
+  "$repo_root/automation/launchd/com.niklas.finanztool.ginmon-documents.plist.template" \
+  > "$documents_plist_path"
 
 launchctl bootout "gui/$UID/com.niklas.finanztool.ginmon-sync" 2>/dev/null || true
-launchctl bootstrap "gui/$UID" "$plist_path"
+launchctl bootout "gui/$UID/com.niklas.finanztool.ginmon-documents" 2>/dev/null || true
+launchctl bootstrap "gui/$UID" "$api_plist_path"
+launchctl bootstrap "gui/$UID" "$documents_plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.ginmon-sync"
 
-echo "[ok] Ginmon-Sync laeuft alle 6 Stunden."
+echo "[ok] Ginmon-API-Sync laeuft stuendlich."
+echo "[ok] Ginmon-Dokumentimport laeuft taeglich um 02:00."

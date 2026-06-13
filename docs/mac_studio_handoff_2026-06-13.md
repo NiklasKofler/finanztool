@@ -20,7 +20,7 @@ API-Zugangsdaten liegen lokal im macOS-Schluesselbund.
 | Bitget | API | `sourcePositions`, `sourceSummaries/bitget` | alle 15 Minuten |
 | Capital.com | API, GET-only Nutzung | `sourcePositions`, `sourceSummaries/capitalcom` | stuendlich |
 | Flatex | Browser-CSV-Export | `sourcePositions`, `sourceSummaries/flatex` | 5x taeglich |
-| Ginmon | Browser/API/Dokumente | `sourcePositions`, `sourceSummaries/ginmon` | alle 6 Stunden |
+| Ginmon | Dokumente + API | `sourceDocuments`, `sourceDocumentFacts`, `sourcePositions`, `sourceSummaries/ginmon` | Dokumente taeglich 02:00, API stuendlich |
 | Trade Republic | Apple-Mail-PDF-Agent | `sourcePositions`, `sourceSummaries/traderepublic` | stuendlich |
 | Intergold | Webseite + Belege | `sourcePositions`, `sourceSummaries/intergold` | taeglich |
 | VBV | Meine-VBV-Saldo | `sourceSummaries/vbv` | quartalsweise |
@@ -102,6 +102,7 @@ launchctl list | grep finanztool
 - `com.niklas.finanztool.bitget-import`
 - `com.niklas.finanztool.capitalcom-import`
 - `com.niklas.finanztool.flatex-sync`
+- `com.niklas.finanztool.ginmon-documents`
 - `com.niklas.finanztool.ginmon-sync`
 - `com.niklas.finanztool.intergold-sync`
 - `com.niklas.finanztool.traderepublic-mail`

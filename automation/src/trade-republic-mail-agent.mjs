@@ -62,7 +62,28 @@ function sha256(buffer) {
 }
 
 async function ensureDirectories() {
-  await Promise.all([inboxDir, encryptedDir, unlockedDir, textDir].map((dir) => fs.mkdir(dir, { recursive: true })));
+  for (const dir of [inboxDir, encryptedDir, unlockedDir, textDir]) {
+    await mkdirWithDriveRetry(dir);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function mkdirWithDriveRetry(dir) {
+  let lastError;
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (error?.code !== "Unknown system error -11" && error?.errno !== -11) throw error;
+      await sleep(attempt * 750);
+    }
+  }
+  throw lastError;
 }
 
 async function pathExists(filePath) {
@@ -583,4 +604,31 @@ async function main() {
   if (!writeEnabled) console.log("[dry-run] Firestore wurde nicht geaendert. Fuer Schreiben --write verwenden.");
 }
 
-await main();
+async function writeAgentFailure(error) {
+  if (!writeEnabled || !firestoreEnabled) return;
+  try {
+    const firestore = new FirestoreRest({
+      projectId,
+      accessToken: await getFirebaseCliAccessToken(),
+    });
+    const previous =
+      (await firestore.listDocuments("agentStatus")).find((entry) => entry.id === "traderepublic_mail") ?? {};
+    await firestore.setDocument("agentStatus", "traderepublic_mail", {
+      ...previous,
+      source,
+      status: "FEHLER",
+      message: error?.message ?? String(error),
+      lastErrorAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } catch {
+    // The original failure is more useful than a secondary status-write failure.
+  }
+}
+
+try {
+  await main();
+} catch (error) {
+  await writeAgentFailure(error);
+  throw error;
+}

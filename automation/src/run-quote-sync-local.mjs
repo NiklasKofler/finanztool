@@ -33,7 +33,6 @@ await firestore.setDocument("agentStatus", "quotes", {
 
 try {
   runScript("sync-quotes-local.mjs", ["--write"]);
-  runScript("check-health-local.mjs");
   const finishedAt = new Date();
   await firestore.setDocument("agentStatus", "quotes", {
     source: "quotes",
@@ -42,6 +41,7 @@ try {
     lastSuccessAt: finishedAt,
     updatedAt: finishedAt,
   });
+  runScript("check-health-local.mjs");
 } catch (error) {
   const failedAt = new Date();
   await firestore.setDocument("agentStatus", "quotes", {
