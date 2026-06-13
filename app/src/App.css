@@ -931,8 +931,8 @@
     grid-template-columns: 1fr;
   }
 
-  .source-card dl {
-    grid-template-columns: 1fr;
+  .source-card__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .auth-panel {
@@ -951,53 +951,461 @@
 
 @media (max-width: 680px) {
   .app-shell {
-    width: min(100% - 28px, 1440px);
-    padding-top: 20px;
+    width: min(100% - 20px, 1440px);
+    padding: 16px 0 28px;
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .topbar > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .topbar h1 {
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .eyebrow {
+    margin-bottom: 5px;
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+  }
+
+  .topbar__status,
+  .quote-sync-button,
+  .privacy-toggle {
+    min-height: 34px;
+    border-radius: 7px;
+    padding: 0 9px;
+    gap: 6px;
+    font-size: 0.74rem;
+  }
+
+  .topbar__status svg,
+  .quote-sync-button svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .privacy-toggle__track {
+    width: 36px;
+    height: 20px;
+  }
+
+  .privacy-toggle__thumb {
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+  }
+
+  .privacy-toggle input:checked + .privacy-toggle__track .privacy-toggle__thumb {
+    transform: translateX(16px);
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .metric-card--total {
+    grid-column: 1 / -1;
   }
 
   .metric-card,
   .panel {
-    padding: 18px;
+    padding: 12px;
+  }
+
+  .metric-card {
+    min-height: 118px;
+  }
+
+  .metric-card__icon,
+  .source-card__icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .metric-card__icon svg,
+  .source-card__icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .metric-card p {
+    margin: 10px 0 6px;
+    font-size: 0.78rem;
+  }
+
+  .metric-card strong {
+    font-size: 1.55rem;
+  }
+
+  .metric-card > span {
+    margin-top: 8px;
+    font-size: 0.74rem;
+    line-height: 1.25;
+  }
+
+  .metric-card__details {
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .metric-card__details .metric-chip {
+    min-height: 23px;
+    padding: 0 7px;
+    font-size: 0.72rem;
+  }
+
+  .alert-list {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .alert-list__item {
+    padding-left: 7px;
+  }
+
+  .alert-list__item strong {
+    font-size: 0.73rem;
+  }
+
+  .alert-list__item span,
+  .health-ok {
+    font-size: 0.7rem;
+    line-height: 1.25;
+  }
+
+  .section-heading {
+    margin-bottom: 10px;
+  }
+
+  .section-heading h2 {
+    font-size: 1.02rem;
+  }
+
+  .section-heading > svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .depot-overview,
+  .schedule-panel,
+  .import-panel {
+    margin-top: 10px;
+  }
+
+  .source-list {
+    gap: 8px;
   }
 
   .source-card {
-    grid-template-columns: 1fr;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .source-card__body {
+    display: contents;
   }
 
   .source-card__header {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-column: 2 / 3;
+    grid-row: 1;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .source-card h3,
+  .schedule-item h3 {
+    font-size: 0.9rem;
+  }
+
+  .source-card p,
+  .schedule-item p {
+    display: none;
+  }
+
+  .status-badge {
+    min-height: 23px;
+    padding: 0 7px;
+    font-size: 0.66rem;
+  }
+
+  .source-card__metrics,
+  .source-card__metrics--secondary {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 9px;
+  }
+
+  .source-card__metrics--secondary {
+    padding-top: 8px;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(3) {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(4) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(5) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(6) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(7) {
+    grid-column: 1 / -1;
+  }
+
+  .source-card dt {
+    margin-bottom: 2px;
+    font-size: 0.6rem;
+  }
+
+  .source-card dd {
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  .performance-value {
+    gap: 3px;
+  }
+
+  .inline-percent,
+  .performance-value span,
+  .performance-value small {
+    font-size: 0.78em;
+  }
+
+  .source-positions-details,
+  .source-accounts-details {
+    grid-column: 1 / -1;
+    margin-top: 9px;
+    padding-top: 8px;
+  }
+
+  .source-positions-details > summary,
+  .source-accounts-details > summary {
+    min-height: 34px;
+    padding: 0 9px;
+    font-size: 0.78rem;
+  }
+
+  .source-positions-details > summary strong,
+  .source-accounts-details > summary strong {
+    min-width: 26px;
+    height: 22px;
+    font-size: 0.68rem;
+  }
+
+  .positions-table {
+    min-width: 1080px;
+  }
+
+  .positions-table--embedded {
+    min-width: 900px;
+  }
+
+  .positions-table th,
+  .positions-table td {
+    padding: 8px 9px;
+    font-size: 0.78rem;
+  }
+
+  .positions-table th {
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+  }
+
+  .position-name-cell {
+    width: 220px;
+  }
+
+  .position-name-cell strong {
+    font-size: 0.82rem;
+  }
+
+  .position-name-cell span {
+    font-size: 0.68rem;
+  }
+
+  .source-account-list {
+    gap: 5px;
+    margin-top: 8px;
+    padding-top: 6px;
   }
 
   .source-account-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1.05fr) minmax(72px, 0.8fr);
+    gap: 5px 8px;
+    min-height: 38px;
+    padding: 7px 8px;
   }
 
   .source-account-list__header {
     display: none;
   }
 
+  .source-account-details > summary.source-account-row {
+    grid-template-columns: 14px minmax(0, 1fr) minmax(72px, 0.8fr);
+  }
+
+  .source-account-details > summary::before {
+    font-size: 0.8rem;
+  }
+
+  .source-account-row__main {
+    grid-column: 1 / -1;
+  }
+
+  .source-account-details > summary .source-account-row__main {
+    grid-column: auto;
+  }
+
   .source-account-row__value,
   .source-account-row__numbers {
-    justify-items: start;
-    text-align: left;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .source-account-row__main strong {
+    font-size: 0.78rem;
+  }
+
+  .source-account-row__main span {
+    font-size: 0.64rem;
+    line-height: 1.25;
+  }
+
+  .source-account-row__value > strong,
+  .source-account-row__numbers > strong {
+    font-size: 0.76rem;
   }
 
   .source-account-row__numbers .performance-value {
-    justify-content: start;
+    justify-content: end;
+    font-size: 0.76rem;
   }
 
   .schedule-item {
     grid-template-columns: 30px minmax(0, 1fr);
+    padding: 10px;
   }
 
   .schedule-item .attention-icon,
   .schedule-item .ok-icon {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 430px) {
+  .app-shell {
+    width: calc(100% - 14px);
+    padding-top: 12px;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .topbar__status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+  }
+
+  .quote-sync-button {
+    grid-column: 1 / 2;
+    grid-row: 3;
+    width: 100%;
+  }
+
+  .privacy-toggle {
+    grid-column: 2 / 3;
+    grid-row: 3;
+    justify-self: end;
+  }
+
+  .privacy-toggle span:last-child {
+    display: none;
+  }
+
+  .summary-grid {
+    gap: 7px;
+  }
+
+  .metric-card,
+  .panel {
+    padding: 10px;
+  }
+
+  .metric-card {
+    min-height: 104px;
+  }
+
+  .metric-card strong {
+    font-size: 1.38rem;
+  }
+
+  .metric-card > span {
+    display: none;
+  }
+
+  .source-card {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 9px;
+  }
+
+  .source-card__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .source-card h3 {
+    font-size: 0.86rem;
+  }
+
+  .source-card__metrics,
+  .source-card__metrics--secondary {
+    gap: 5px;
+  }
+
+  .source-card dt {
+    font-size: 0.56rem;
+  }
+
+  .source-card dd {
+    font-size: 0.72rem;
   }
 }

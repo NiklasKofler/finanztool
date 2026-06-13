@@ -340,15 +340,15 @@ function PositionsTable({
         <thead>
           <tr>
             <th>Position</th>
-            <th>Kategorie</th>
-            <th>Menge</th>
-            <th className="numeric">Einstand</th>
-            <th>Kurs</th>
             <th className="numeric">Wert</th>
             <th className="numeric">G/V</th>
             <th className="numeric">Perf.</th>
             <th className="numeric">Heute</th>
             <th className="numeric">Heute %</th>
+            <th>Menge</th>
+            <th>Kurs</th>
+            <th className="numeric">Einstand</th>
+            <th>Kategorie</th>
             <th>Aktualisiert</th>
           </tr>
         </thead>
@@ -366,12 +366,6 @@ function PositionsTable({
                     {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
                   </span>
                 </td>
-                <td>{formatOptionalText(position.category)}</td>
-                <td>{formatQuantity(position)}</td>
-                <td className="numeric">
-                  {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
-                </td>
-                <td>{formatOptionalText(position.quoteText)}</td>
                 <td className="numeric">{privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}</td>
                 <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
                   {privacyMode
@@ -388,6 +382,12 @@ function PositionsTable({
                   {privacyMode ? maskMoney(dayChange.value) : formatMoney(dayChange.value)}
                 </td>
                 <td className="numeric">{formatPercent(dayChange.percentage)}</td>
+                <td>{formatQuantity(position)}</td>
+                <td>{formatOptionalText(position.quoteText)}</td>
+                <td className="numeric">
+                  {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
+                </td>
+                <td>{formatOptionalText(position.category)}</td>
                 <td>{formatUpdatedAt(position.updatedAt)}</td>
               </tr>
             );
@@ -908,10 +908,6 @@ function App() {
                           {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
                           <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
                         </dd>
-                      </div>
-                      <div>
-                        <dt>Positionen</dt>
-                        <dd>{source.positionCount ? numberFormatter.format(source.positionCount) : "—"}</dd>
                       </div>
                       {source.agentStatus && source.agentStatus !== "OK" ? (
                         <div>

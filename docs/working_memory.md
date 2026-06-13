@@ -751,9 +751,14 @@ Danach fachlich zuerst die App-Ansicht fuer Ginmon gegen die neuen
 Dokumentfakten + API-Kurse kontrollieren. Erst danach Bankkonten/Kreditkarten,
 Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
 
+## Bedienkuerzel
+
+- Wenn Niklas allein `3333` schreibt, bedeutet das: aktuellen Stand bauen,
+  auf GitHub pushen und nach Firebase deployen.
+
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-13 20:30 CEST
+- Datum: 2026-06-13 22:47 CEST
 - Quelle: Lokale Codex-Session, Agent-Audit und UI-Arbeit auf `localhost`
 - Status: Nicht pushen/deployen waehrend Entwicklung; Agenten lokal geprueft
   und repariert; Ginmon-Live-Stand hat 3 Depots/26 Positionen; Health ist
@@ -791,5 +796,19 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
   Privatsphaere-Modus ist beim Laden der App standardmaessig aktiv
   und alle Depotkarten haben dieselbe innere Hauptmetrik-Reihenfolge mit
   `G/V` unter `Depotwert`, `Heute` daneben und `Aktualisiert` oben rechts;
-  Ginmon-Unterdepots bleiben beim Laden standardmaessig eingeklappt; Firebase
+  Ginmon-Unterdepots bleiben beim Laden standardmaessig eingeklappt; die
+  App ist fuer iPhone-15-Breite responsiv verdichtet: Summary-Karten laufen
+  zweispaltig, Depotkarten blenden lange Beschreibungstexte aus, nutzen
+  drei kompakte Metrikspalten ueber die volle Kartenbreite, sodass
+  `Depotwert` links unter dem Quell-Icon beginnt, und behalten die Reihenfolge
+  `Depotwert`/`Cash`/`Aktualisiert` oben sowie `G/V`/`Heute`/`Einstand`
+  darunter; in der mobilen Kopfzeile ist der Firestore-Status fest in Zeile 2
+  und `Kurse aktualisieren` plus Privat-Schalter sind fest nebeneinander in
+  Zeile 3 positioniert; die Positionstabelle priorisiert jetzt
+  Analysewerte in der Spaltenreihenfolge `Position`, `Wert`, `G/V`, `Perf.`,
+  `Heute`, `Heute %`, `Menge`, `Kurs`, `Einstand`, `Kategorie`,
+  `Aktualisiert`; die separate Kartenmetrik `Positionen` ist entfernt,
+  weil die Anzahl bereits im aufklappbaren `Positionen anzeigen`-Element
+  steht;
+  verifiziert mit 393x852 Viewport ohne horizontalen Ueberlauf; Firebase
   Deploy fuer Hosting, Firestore Rules/Indexes und Storage Rules erfolgreich
