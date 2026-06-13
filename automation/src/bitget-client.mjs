@@ -329,14 +329,15 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     (total, value) => total + value,
     0,
   );
+  const includedPositionsValue = positions
+    .filter((position) => position.accountValueIncluded !== false)
+    .reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
   const positionsValue = positions.reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
   const additionalValue = spotPositions
     .filter((position) => !position.accountValueIncluded)
     .reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
   const currentValue =
-    totalAccountValueUsdt > 0 && usdtToEur !== null
-      ? totalAccountValueUsdt * usdtToEur + additionalValue
-      : positionsValue;
+    includedPositionsValue > 0 ? includedPositionsValue : positionsValue;
 
   return {
     accountInfo,
