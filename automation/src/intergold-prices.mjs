@@ -2,6 +2,18 @@ import { formatIsoDateFromGerman, parseGermanNumber } from "./summary-utils.mjs"
 
 export const INTERGOLD_PRICE_URL = "https://www.intergold-edelmetalle.com/aktuelles";
 
+export async function fetchIntergoldPriceHtml() {
+  const response = await fetch(INTERGOLD_PRICE_URL, {
+    headers: { "user-agent": "finanztool-import-agent/0.1" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Intergold Webseite nicht erreichbar: HTTP ${response.status}`);
+  }
+
+  return response.text();
+}
+
 function htmlToLines(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, "\n")
@@ -23,15 +35,7 @@ function isMetalCandidate(line) {
 }
 
 export async function fetchIntergoldPrices() {
-  const response = await fetch(INTERGOLD_PRICE_URL, {
-    headers: { "user-agent": "finanztool-import-agent/0.1" },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Intergold Webseite nicht erreichbar: HTTP ${response.status}`);
-  }
-
-  return parseIntergoldPricesFromHtml(await response.text());
+  return parseIntergoldPricesFromHtml(await fetchIntergoldPriceHtml());
 }
 
 export function parseIntergoldPricesFromHtml(html) {
@@ -39,11 +43,13 @@ export function parseIntergoldPricesFromHtml(html) {
   const prices = [];
 
   for (let index = 0; index < lines.length; index += 1) {
-    const metal = lines[index];
+    const verkaufLine = lines[index];
+    if (!verkaufLine.startsWith("Verkauf:")) continue;
+
+    const metal = lines[index - 1];
     if (!isMetalCandidate(metal)) continue;
 
-    const blockLines = lines.slice(index + 1, index + 8);
-    const verkaufLine = blockLines.find((line) => line.startsWith("Verkauf:"));
+    const blockLines = lines.slice(index, index + 4);
     const ankaufLine = blockLines.find((line) => line.startsWith("Ankauf:"));
     const standLine = blockLines.find((line) => line.startsWith("Stand "));
     if (!verkaufLine || !ankaufLine || !standLine) continue;
@@ -81,4 +87,3 @@ export function parseIntergoldPricesFromHtml(html) {
 
   return prices;
 }
-

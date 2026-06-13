@@ -36,12 +36,28 @@ Intergold-Ankaufspreis verwendet.
 
 - Bestand: 13 Intergold-Positionen
 - Bewertungsmethode: Ankaufspreise
-- Ankauf-Bewertung: `31.289,53 EUR`
-- Verkauf-Bewertung: `36.670,63 EUR`
-- Investierter Betrag laut Belegen: `23.040,51 EUR`
+- Preisstand: `2026-06-12`
+- Ankauf-Bewertung: `30.286,77 EUR`
+- Verkauf-Bewertung: `35.670,60 EUR`
+- Investierter Betrag all-in laut Belegen: `23.040,51 EUR`
+- Davon Metall-Rechnungswerte: `21.532,57 EUR`
+- Anteilig beruecksichtigte Kaufgebuehren: `1.507,94 EUR`
+
+## Lokale Befehle
+
+Dry-Run ohne Firestore-Schreibzugriff:
+
+```bash
+npm --prefix automation run reconcile:intergold
+```
+
+Firestore-Abgleich mit aktuellem Preis-Snapshot:
+
+```bash
+npm --prefix automation run sync:intergold
+```
 
 ## Wichtig
 
 Die Website liefert nur Preise. Der persoenliche Bestand kommt aus den Belegen.
 Preisimport und Belegimport bleiben getrennt.
-

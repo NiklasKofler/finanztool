@@ -233,8 +233,7 @@ async function archiveImportedFile(filePath, source) {
 }
 
 async function processFlatexCsv(importId, source, filePath, fileHash, content, importRef) {
-  const csvText = content.toString("utf8");
-  const parsed = parseFlatexCsv(csvText);
+  const parsed = parseFlatexCsv(content);
   const totalAmount = parsed.rows.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const positions = buildPositionMap(parsed.rows);
   const { rawStoragePath, storageStatus } = await uploadOriginal(source, fileHash, filePath, content);

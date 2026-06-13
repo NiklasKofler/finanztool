@@ -21,16 +21,12 @@ function encodeValue(value) {
 
 function decodeValue(value) {
   if (!value) return null;
-  for (const key of [
-    "stringValue",
-    "integerValue",
-    "doubleValue",
-    "booleanValue",
-    "timestampValue",
-    "nullValue",
-  ]) {
-    if (key in value) return value[key];
-  }
+  if ("stringValue" in value) return value.stringValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return value.doubleValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("nullValue" in value) return null;
   if (value.arrayValue) return (value.arrayValue.values ?? []).map(decodeValue);
   if (value.mapValue) {
     return Object.fromEntries(

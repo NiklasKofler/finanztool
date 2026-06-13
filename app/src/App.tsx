@@ -7,12 +7,12 @@ import {
 } from "firebase/auth";
 import {
   Activity,
+  AlertTriangle,
   Archive,
   CheckCircle2,
   Cloud,
   Database,
   RefreshCcw,
-  ShieldCheck,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -22,10 +22,12 @@ import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
   loadSourcePositions,
   loadSourceSummaries,
+  loadSystemHealth,
+  requestQuoteSync,
   type SourceSummaryDocument,
 } from "./firebase/sourceSummaries";
-import { importPipeline, sourceOverviews } from "./domain/seedData";
-import type { PortfolioPosition, SourceOverview, SourceStatus } from "./domain/types";
+import { sourceOverviews } from "./domain/seedData";
+import type { PortfolioPosition, SourceOverview, SourceStatus, SystemHealth } from "./domain/types";
 
 const currencyFormatter = new Intl.NumberFormat("de-AT", {
   style: "currency",
@@ -48,9 +50,19 @@ const sourceLabels: Record<string, string> = {
   ginmon: "Ginmon",
   intergold: "Intergold",
   bitget: "Bitget",
+  vbv: "VBV",
+  capitalcom: "Capital.com",
 };
 
-const sourceSortOrder = ["flatex", "traderepublic", "ginmon", "intergold", "bitget"];
+const sourceSortOrder = [
+  "flatex",
+  "traderepublic",
+  "ginmon",
+  "intergold",
+  "bitget",
+  "capitalcom",
+  "vbv",
+];
 const ownerEmail = "niklas.kofler@gmail.com";
 
 const statusMeta: Record<
@@ -128,10 +140,19 @@ function formatPercent(value?: number | null) {
   return percentFormatter.format(value);
 }
 
-function formatValuationDate(value?: string) {
+function formatValuationDate(
+  value?: string | Date | { toDate: () => Date } | { seconds: number } | null,
+) {
   if (!value) return "Noch offen";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "object" && "toDate" in value
+        ? value.toDate()
+        : typeof value === "object" && "seconds" in value
+          ? new Date(value.seconds * 1000)
+          : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("de-AT", {
     day: "2-digit",
     month: "2-digit",
@@ -139,8 +160,38 @@ function formatValuationDate(value?: string) {
   }).format(date);
 }
 
+function formatUpdatedAt(
+  value?: string | Date | { toDate: () => Date } | { seconds: number } | null,
+) {
+  if (!value) return "Noch offen";
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "object" && "toDate" in value
+        ? value.toDate()
+        : typeof value === "object" && "seconds" in value
+          ? new Date(value.seconds * 1000)
+          : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function getTrackedTotal(sources: SourceOverview[]) {
-  return sources.reduce((sum, source) => sum + (source.currentValue ?? 0), 0);
+  return sources.reduce((sum, source) => sum + (getSourceDisplayValue(source) ?? 0), 0);
+}
+
+function getSourceDisplayValue(source: SourceOverview) {
+  return source.netValue ?? source.currentValue;
+}
+
+function getSourceDepotValue(source: SourceOverview) {
+  return source.depotValue ?? (typeof source.netValue === "number" ? source.currentValue : undefined);
 }
 
 function getSourceLabel(source: string) {
@@ -150,6 +201,23 @@ function getSourceLabel(source: string) {
 function getPositionSortValue(position: PortfolioPosition) {
   const sourceIndex = sourceSortOrder.indexOf(position.source);
   return sourceIndex === -1 ? Number.MAX_SAFE_INTEGER : sourceIndex;
+}
+
+function isCashPosition(position: PortfolioPosition) {
+  const name = position.name?.trim().toLowerCase() ?? "";
+  const category = position.category?.trim().toLowerCase() ?? "";
+  return (
+    category.includes("cash") ||
+    name.includes("geldkonto") ||
+    name.includes("kontostand") ||
+    name === "eur" ||
+    name === "usdt"
+  );
+}
+
+function getIncludedPositionValue(position: PortfolioPosition) {
+  if (position.accountValueIncluded === false) return 0;
+  return typeof position.currentValue === "number" ? position.currentValue : 0;
 }
 
 function SourceIcon({ source }: { source: SourceOverview }) {
@@ -178,9 +246,13 @@ function App() {
     Record<string, SourceSummaryDocument>
   >({});
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [quoteRequestStatus, setQuoteRequestStatus] = useState<
+    "idle" | "requesting" | "requested" | "error"
+  >("idle");
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
@@ -196,6 +268,7 @@ function App() {
       if (!user) {
         setSourceSummaries({});
         setPositions([]);
+        setSystemHealth(null);
         setDataStatus("auth-required");
       } else {
         setDataStatus("loading");
@@ -210,11 +283,16 @@ function App() {
     if (!authUser) return;
 
     let isMounted = true;
-    void Promise.all([loadSourceSummaries(services.db), loadSourcePositions(services.db)])
-      .then(([summaries, loadedPositions]) => {
+    void Promise.all([
+      loadSourceSummaries(services.db),
+      loadSourcePositions(services.db),
+      loadSystemHealth(services.db),
+    ])
+      .then(([summaries, loadedPositions, health]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
         setPositions(loadedPositions);
+        setSystemHealth(health);
         setDataStatus("live");
       })
       .catch(() => {
@@ -247,22 +325,88 @@ function App() {
     await signOut(services.auth);
   }
 
+  async function handleRequestQuoteSync() {
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    try {
+      setQuoteRequestStatus("requesting");
+      await requestQuoteSync(services.db, authUser.email);
+      setQuoteRequestStatus("requested");
+    } catch {
+      setQuoteRequestStatus("error");
+    }
+  }
+
+  const positionStatsBySource = useMemo(() => {
+    const stats: Record<
+      string,
+      { count: number; valuedCount: number; value: number; cashValue: number; cashCount: number }
+    > = {};
+    for (const position of positions) {
+      const current =
+        stats[position.source] ?? { count: 0, valuedCount: 0, value: 0, cashValue: 0, cashCount: 0 };
+      current.count += 1;
+      if (position.accountValueIncluded !== false && typeof position.currentValue === "number") {
+        const value = getIncludedPositionValue(position);
+        current.valuedCount += 1;
+        current.value += value;
+        if (isCashPosition(position)) {
+          current.cashValue += value;
+          current.cashCount += 1;
+        }
+      }
+      stats[position.source] = current;
+    }
+    return stats;
+  }, [positions]);
+
   const sources = useMemo(
     () =>
       sourceOverviews.map((source) => {
         const summary = sourceSummaries[source.summaryId ?? source.id];
-        if (!summary) return source;
+        const positionStats = positionStatsBySource[source.id];
+        const positionDerivedValue =
+          positionStats && positionStats.valuedCount > 0
+            ? Math.round(positionStats.value * 100) / 100
+            : undefined;
+        const positionCashValue =
+          positionStats && positionStats.cashCount > 0
+            ? Math.round(positionStats.cashValue * 100) / 100
+            : undefined;
+        const positionDepotValue =
+          positionDerivedValue !== undefined
+            ? Math.round((positionDerivedValue - (positionCashValue ?? 0)) * 100) / 100
+            : undefined;
+        if (!summary) {
+          return {
+            ...source,
+            currentValue: positionDepotValue ?? positionDerivedValue ?? source.currentValue,
+            depotValue: positionDepotValue ?? source.depotValue,
+            cashValue: positionCashValue ?? source.cashValue,
+            netValue: positionDerivedValue ?? source.netValue,
+            positionCount: positionStats?.count || source.positionCount,
+          };
+        }
         return {
           ...source,
-          currentValue: summary.currentValue ?? source.currentValue,
+          currentValue: positionDepotValue ?? positionDerivedValue ?? summary.currentValue ?? source.currentValue,
+          depotValue: positionDepotValue ?? summary.depotValue ?? source.depotValue,
+          saleValue: summary.saleValue ?? source.saleValue,
+          cashValue: positionCashValue ?? summary.cashValue ?? source.cashValue,
+          netValue: positionDerivedValue ?? summary.netValue ?? source.netValue,
+          availableCash: summary.availableCash ?? source.availableCash,
+          availableWithCredit: summary.availableWithCredit ?? source.availableWithCredit,
+          creditLineEstimate: summary.creditLineEstimate ?? source.creditLineEstimate,
           valuationDate: summary.valuationDate ?? source.valuationDate,
+          updatedAt: summary.updatedAt ?? source.updatedAt,
           positionCount:
-            positions.filter((position) => position.source === source.id).length ||
+            positionStats?.count ||
             summary.positionCount ||
             source.positionCount,
         };
       }),
-    [positions, sourceSummaries],
+    [positionStatsBySource, sourceSummaries],
   );
 
   const trackedTotal = getTrackedTotal(sources);
@@ -272,13 +416,22 @@ function App() {
   const manualSources = sources.filter((source) => source.status === "manual").length;
   const displayedPositions = useMemo(
     () =>
-      [...positions].sort((left, right) => {
-        const sourceDelta = getPositionSortValue(left) - getPositionSortValue(right);
-        if (sourceDelta !== 0) return sourceDelta;
-        return (right.currentValue ?? 0) - (left.currentValue ?? 0);
-      }),
+      positions
+        .filter((position) => !isCashPosition(position))
+        .sort((left, right) => {
+          const sourceDelta = getPositionSortValue(left) - getPositionSortValue(right);
+          if (sourceDelta !== 0) return sourceDelta;
+          return (right.currentValue ?? 0) - (left.currentValue ?? 0);
+        }),
     [positions],
   );
+  const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
+  const healthTone =
+    systemHealth?.status === "ERROR"
+      ? "error"
+      : systemHealth?.status === "WARNUNG"
+        ? "warn"
+        : "good";
 
   return (
     <main className="app-shell">
@@ -301,6 +454,25 @@ function App() {
                 : "Lokaler Modus"}
           </span>
         </div>
+        {dataStatus === "live" ? (
+          <button
+            type="button"
+            className="quote-sync-button"
+            onClick={handleRequestQuoteSync}
+            disabled={quoteRequestStatus === "requesting"}
+          >
+            <RefreshCcw aria-hidden="true" />
+            <span>
+              {quoteRequestStatus === "requesting"
+                ? "Kurse werden angefordert"
+                : quoteRequestStatus === "requested"
+                  ? "Kurs-Sync angefordert"
+                  : quoteRequestStatus === "error"
+                    ? "Sync fehlgeschlagen"
+                    : "Kurse aktualisieren"}
+            </span>
+          </button>
+        ) : null}
       </header>
 
       <section className="summary-grid" aria-label="Aktueller Überblick">
@@ -310,7 +482,7 @@ function App() {
           </div>
           <p>Erfasster Wert</p>
           <strong>{formatCurrency(trackedTotal)}</strong>
-          <span>Flatex, Trade Republic, Ginmon und Intergold aus Drive-Dokumenten</span>
+          <span>Depots, Krypto, Edelmetalle und Vorsorgewerte aus den Importen</span>
         </article>
 
         <article className="metric-card">
@@ -324,17 +496,31 @@ function App() {
 
         <article className="metric-card">
           <div className="metric-card__icon">
-            <ShieldCheck aria-hidden="true" />
+            {healthTone === "good" ? <CheckCircle2 aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}
           </div>
-          <p>Import-Prinzip</p>
-          <strong>{dataStatus === "live" ? "Live" : "Geschützt"}</strong>
+          <p>Warnungen</p>
+          <strong className={`health-status health-status--${healthTone}`}>
+            {systemHealth ? systemHealth.alertCount : dataStatus === "live" ? 0 : "—"}
+          </strong>
           <span>
-            {dataStatus === "live"
-              ? "Firestore liest nur nach Google-Login, Client-Schreiben bleibt gesperrt"
-              : dataStatus === "blocked"
-                ? "Bitte mit dem freigegebenen Google-Konto anmelden"
-                : "Firestore ist geschützt und wartet auf deine Anmeldung"}
+            {systemHealth
+              ? `${systemHealth.errorCount} Fehler, ${systemHealth.warningCount} Warnungen`
+              : dataStatus === "live"
+                ? "Keine Health-Daten gefunden"
+                : "Wird nach Login geladen"}
           </span>
+          {visibleAlerts.length ? (
+            <ul className="alert-list">
+              {visibleAlerts.map((alert) => (
+                <li className={`alert-list__item alert-list__item--${alert.severity}`} key={alert.id}>
+                  <strong>{alert.title}</strong>
+                  <span>{alert.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : systemHealth?.status === "OK" ? (
+            <span className="health-ok">Alle Prüfungen aktuell ohne Warnung.</span>
+          ) : null}
         </article>
       </section>
 
@@ -368,8 +554,8 @@ function App() {
         </section>
       ) : null}
 
-      <section className="content-grid depot-overview">
-        <div className="panel panel--wide">
+      <section className="depot-overview">
+        <div className="panel">
           <div className="section-heading">
             <div>
               <p className="eyebrow">Depots</p>
@@ -394,12 +580,52 @@ function App() {
                   </div>
                   <dl>
                     <div>
-                      <dt>Aktueller Wert</dt>
-                      <dd>{formatCurrency(source.currentValue)}</dd>
+                      <dt>{typeof source.netValue === "number" ? "Gesamtvermögen" : "Aktueller Wert"}</dt>
+                      <dd>{formatCurrency(getSourceDisplayValue(source))}</dd>
                     </div>
+                    {typeof getSourceDepotValue(source) === "number" ? (
+                      <div>
+                        <dt>Depotwert</dt>
+                        <dd>{formatCurrency(getSourceDepotValue(source))}</dd>
+                      </div>
+                    ) : null}
+                    {typeof source.cashValue === "number" ? (
+                      <div>
+                        <dt>Kontostand</dt>
+                        <dd>{formatCurrency(source.cashValue)}</dd>
+                      </div>
+                    ) : null}
+                    {typeof source.saleValue === "number" ? (
+                      <div>
+                        <dt>Verkaufswert</dt>
+                        <dd>{formatCurrency(source.saleValue)}</dd>
+                      </div>
+                    ) : null}
+                    {typeof source.availableWithCredit === "number" ? (
+                      <div>
+                        <dt>Verfügbar inkl. Kredit</dt>
+                        <dd>{formatCurrency(source.availableWithCredit)}</dd>
+                      </div>
+                    ) : null}
+                    {typeof source.creditLineEstimate === "number" ? (
+                      <div>
+                        <dt>Kreditrahmen ca.</dt>
+                        <dd>{formatCurrency(source.creditLineEstimate)}</dd>
+                      </div>
+                    ) : null}
+                    {typeof source.availableCash === "number" ? (
+                      <div>
+                        <dt>Verfügbares Guthaben</dt>
+                        <dd>{formatCurrency(source.availableCash)}</dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>Stichtag</dt>
                       <dd>{formatValuationDate(source.valuationDate)}</dd>
+                    </div>
+                    <div>
+                      <dt>Aktualisiert</dt>
+                      <dd>{formatUpdatedAt(source.updatedAt)}</dd>
                     </div>
                     <div>
                       <dt>Import</dt>
@@ -415,27 +641,6 @@ function App() {
             ))}
           </div>
         </div>
-
-        <aside className="panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Pipeline</p>
-              <h2>Sichere Updates</h2>
-            </div>
-            <CheckCircle2 aria-hidden="true" />
-          </div>
-          <ol className="pipeline-list">
-            {importPipeline.map((step) => (
-              <li key={step.title}>
-                <span>{step.order}</span>
-                <div>
-                  <h3>{step.title}</h3>
-                  <p>{step.description}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </aside>
       </section>
 
       <section className="panel positions-panel">

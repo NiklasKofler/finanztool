@@ -17,22 +17,18 @@ export interface SourceOverview {
   purpose: string;
   status: SourceStatus;
   currentValue?: number;
+  depotValue?: number;
+  saleValue?: number;
+  cashValue?: number;
+  netValue?: number;
+  availableCash?: number;
+  availableWithCredit?: number;
+  creditLineEstimate?: number;
   valuationDate?: string;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number };
   positionCount?: number;
   importMethod: string;
   nextStep: string;
-}
-
-export interface PipelineStep {
-  order: string;
-  title: string;
-  description: string;
-}
-
-export interface UpdateScheduleItem {
-  source: string;
-  cadence: string;
-  needsAttention: boolean;
 }
 
 export interface PortfolioPosition {
@@ -56,4 +52,22 @@ export interface PortfolioPosition {
   performancePct?: number | null;
   valuationDate?: string | null;
   valuationMethod?: string | null;
+}
+
+export interface SystemAlert {
+  id: string;
+  severity: "error" | "warning" | "info";
+  title: string;
+  message: string;
+  source?: string | null;
+  details?: unknown;
+}
+
+export interface SystemHealth {
+  status: "OK" | "WARNUNG" | "ERROR";
+  generatedAt?: string | Date | { toDate: () => Date } | { seconds: number };
+  alertCount: number;
+  errorCount: number;
+  warningCount: number;
+  alerts: SystemAlert[];
 }

@@ -1,4 +1,4 @@
-import type { PipelineStep, SourceOverview, UpdateScheduleItem } from "./types";
+import type { SourceOverview } from "./types";
 
 export const sourceOverviews: SourceOverview[] = [
   {
@@ -46,55 +46,22 @@ export const sourceOverviews: SourceOverview[] = [
     importMethod: "Read-only API",
     nextStep: "API-Key später nur lesend hinterlegen",
   },
-];
-
-export const importPipeline: PipelineStep[] = [
   {
-    order: "01",
-    title: "Original sichern",
-    description: "PDFs und CSVs bleiben unverändert im Archiv und werden per Hash eindeutig erkannt.",
+    id: "capitalcom",
+    name: "Capital.com",
+    kind: "broker",
+    purpose: "CFD / Trading-Konto",
+    status: "planned",
+    importMethod: "Capital.com API, GET-only Agent",
+    nextStep: "API-Key erzeugen und lokal im Schluesselbund hinterlegen",
   },
   {
-    order: "02",
-    title: "Staging lesen",
-    description: "Parser schreiben Rohdaten in Zwischenmodelle, bevor etwas den Bestand verändert.",
-  },
-  {
-    order: "03",
-    title: "Validieren",
-    description: "Summen, Währungen, ISINs, Zeiträume und Duplikate werden vor dem Commit geprüft.",
-  },
-  {
-    order: "04",
-    title: "Firestore schreiben",
-    description: "Nur geprüfte Änderungen landen in Transaktionen, Beständen und Snapshots.",
-  },
-  {
-    order: "05",
-    title: "Abgleichen",
-    description: "App-Werte werden gegen Broker-Snapshots verglichen, damit Updates nicht schief laufen.",
-  },
-];
-
-export const updateSchedule: UpdateScheduleItem[] = [
-  {
-    source: "Flatex",
-    cadence: "Initial quartalsweise, danach täglich oder bei Aktivität Export anstoßen.",
-    needsAttention: false,
-  },
-  {
-    source: "Trade Republic",
-    cadence: "Transaction export wöchentlich, Account statement monatlich, Net Worth bei Bedarf.",
-    needsAttention: true,
-  },
-  {
-    source: "Ginmon",
-    cadence: "Monatlich Dokumente laden, Kosten und Status im Bestand nachziehen.",
-    needsAttention: false,
-  },
-  {
-    source: "Intergold",
-    cadence: "Preise täglich, Einlagerungs- und Verkaufsbestätigungen sofort aus Mail importieren.",
-    needsAttention: false,
+    id: "vbv",
+    name: "VBV Vorsorgekasse",
+    kind: "pension",
+    purpose: "Betriebliche Vorsorge / Abfertigung neu",
+    status: "automated",
+    importMethod: "Meine-VBV-Login, quartalsweiser Saldo",
+    nextStep: "Quartalswert aus Meine VBV aktualisieren",
   },
 ];

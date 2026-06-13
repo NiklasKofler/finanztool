@@ -57,60 +57,60 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Trade Republic
 - Ginmon
 - Intergold
-- EquatePlus
 - Bitget
+- Capital.com
+- VBV Vorsorgekasse
+- EquatePlus
 
 ## Aktueller Produktivstand
 
 - Firebase-Projekt: `finanzperformance-tool`
+- Hosting URL: `https://finanzperformance-tool.web.app`
+- Letzter Deploy: 2026-06-13 09:20 CEST, Hosting und Firestore Rules
 - Firestore Database ist erstellt
 - Firebase Hosting ist konfiguriert
 - Die App liest Live-Daten aus Firestore
-- Der Import-Agent verarbeitet vorhandene und neue Dateien aus dem Drive-Ordner
-- Importierte Dateien werden dokumentiert und koennen archiviert werden
-- Duplikate werden per SHA-256 erkannt
+- App-Login ist auf `niklas.kofler@gmail.com` begrenzt
+- App darf nur `automationCommands/sync_quotes_manual` schreiben
+- Finanzdaten werden lokal durch Agents geschrieben, nicht direkt aus der App
+- Mac Studio ist der Zielort fuer Dauerbetrieb
 
 ## Fachlich bereits umgesetzt
 
 ### Flatex
 
-- CSV-Rohimport und Drive-Archivierung sind technisch vorhanden
-- Audit vom 2026-06-13: Der fachliche Import ist noch nicht belastbar
-- `Nominal (Stk.)`, Buchungstexte und CSV-Kodierung werden aktuell nicht korrekt verarbeitet
-- Dashboard-CSV und Postfach-Manifest wurden faelschlich als Transaktionen importiert
-- Der laufende Bestand soll aus Depot- und Kontoumsaetzen berechnet werden
-- Der vorhandene Depot-Snapshot dient nur einmalig als Kontrollwert
-- Technisch vorhandene Collections:
-  - `imports`
-  - `rawDocuments`
-  - `imports/{id}/rawRows`
-  - `ledgerEntries`
-  - `transactions`
-  - `costEvents`
-  - `positions`
-  - `snapshots`
-  - `sourcePositions`
+- Browser-Export-Agent ist gebaut
+- Zugangsdaten liegen im macOS-Schluesselbund
+- Session-TAN bleibt deaktiviert
+- Exportzeitraum: `zwei Wochen`
+- Zeitplan: taeglich 08:00, 10:00, 13:00, 17:00, 22:00
+- Bestand und Cash werden aus Konto-/Depotumsaetzen berechnet
+- Broker-Dashboardzahlen werden nicht als Bewertungsquelle importiert
+- Wertpapierkurse kommen aus Boerse Frankfurt
 
 ### Trade Republic
 
-- `Transaction export.csv` wird fachlich geparst
-- Einstandswerte werden aus Trades berechnet
-- `Net Worth.pdf` liefert aktuelle Positionswerte
-- Gewinn/Verlust je Position wird berechnet
-- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail mit passwortgeschuetzten `Securities Settlement` PDFs
-- Geplanter Zielweg: Mail-Agent laedt und importiert diese PDFs automatisch
+- Mail-Agent fuer passwortgeschuetzte `Securities Settlement` PDFs ist gebaut
+- PDF-Passwort liegt lokal im macOS-Schluesselbund
+- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail
+- Agent laedt, entsperrt, archiviert und verarbeitet neue PDFs idempotent
+- Private Equity `LU3176111881` bleibt dokumentbasiert, weil keine stabile
+  Boerse-Frankfurt-Quelle gefunden wurde
 - PDF-Passwort bleibt lokal im macOS-Schluesselbund und wird nie in App, Firestore oder Git gespeichert
 
 ### Ginmon
 
-- PDF-/Reportdaten werden importiert
+- Browser/API-Agent ist gebaut
+- Login funktioniert ohne 2FA
+- Mehrere Portfolios/Konten werden dynamisch verarbeitet
 - Positionsdaten werden in `sourcePositions` geschrieben
-- Kosten-/Steuerdetails muessen noch vertieft werden
+- Summary wird in `sourceSummaries/ginmon` geschrieben
+- Kosten-/Steuerdetails muessen spaeter vertieft werden
 
 ### Intergold
 
-- Preisimport ist vorbereitet
-- Bestandsbewertung aus Belegen ist vorbereitet
+- Preisimport ist gebaut
+- Bestandsbewertung aus Belegen ist gebaut
 - Preisimport und Belegimport bleiben getrennt
 - Kurzfassung liegt in [intergold_preisimport_kurzfassung.md](/Users/niklaskofler/Documents/Finanztool/docs/intergold_preisimport_kurzfassung.md)
 
@@ -124,8 +124,10 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ### Betriebliche Altersvorsorge
 
-- Wird bewusst manuell in der App gepflegt
-- Monatliche oder quartalsweise Aktualisierung reicht aus
+- VBV Vorsorgekasse ist als eigene Quelle gebaut
+- Keine Einzelpositionen
+- Nur Summary/Karte `sourceSummaries/vbv`
+- Quartalsweise Aktualisierung reicht aus
 
 ### Bitget
 
@@ -150,14 +152,24 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   `44.872,561924 EUR/BTC`
 - EUR-Einstandswerte fuer TRUMP und MELANIA bleiben bis zum Abgleich mit Bank-
   oder Kreditkartenbuchungen bewusst leer
+- Bekannte Health-Warnung: kleine Abweichung zwischen Positionssumme und
+  Bitget-Summary ist noch zu klaeren
 
-## Importierter Finanzstand laut letzter Studio-Zusammenfassung
+### Capital.com
 
-- Flatex: `23.234,18 EUR`
-- Trade Republic: `2.254,30 EUR`
-- Ginmon: `8.029,81 EUR`
-- Intergold: `31.289,53 EUR`
-- Gesamt: `64.807,82 EUR`
+- API funktioniert
+- API-Key und Custom Password liegen lokal im macOS-Schluesselbund
+- Capital.com bietet laut Plattform nur `Read & Trade`, keinen echten Read-only-Key
+- Agent nutzt trotzdem nur lesende API-Endpunkte
+- Letzter Test: Live-Konto, EUR, `0,00 EUR`, 0 offene Positionen
+- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert
+- Kontowert kommt aus `GET /accounts`
+
+## Aktueller Firestore-/Health-Stand
+
+- Capital.com: `OK`, `0,00 EUR`, 0 Positionen
+- VBV: `OK`, `1.815,86 EUR`, Stichtag `2026-05-31`
+- Health: `WARNUNG` wegen `summary_mismatch_bitget`
 
 ## Wichtige lokale Pfade
 
@@ -186,6 +198,7 @@ Diese Dateien muessen pro Geraet lokal vorhanden sein.
 - [Import Masterplan](/Users/niklaskofler/Documents/Finanztool/docs/import_masterplan.md)
 - [Arbeitsstand](/Users/niklaskofler/Documents/Finanztool/docs/arbeitsstand_2026-05-25.md)
 - [Mac Studio Runbook](/Users/niklaskofler/Documents/Finanztool/docs/export_import_runbook_mac_studio.md)
+- [Mac Studio Handoff 2026-06-13](/Users/niklaskofler/Documents/Finanztool/docs/mac_studio_handoff_2026-06-13.md)
 - [README](/Users/niklaskofler/Documents/Finanztool/README.md)
 - [Intergold Kurzfassung](/Users/niklaskofler/Documents/Finanztool/docs/intergold_preisimport_kurzfassung.md)
 - [Trade Republic Strategie](/Users/niklaskofler/Documents/Finanztool/docs/traderepublic_import_strategie.md)
@@ -198,33 +211,36 @@ nvm install
 nvm use
 npm run install:all
 npm run dev
-npm run agent
-npm run backfill:summaries
-npx firebase-tools deploy --project finanzperformance-tool
+firebase deploy --only hosting,firestore:rules
+
+cd automation
+npm run secrets:export
+npm run secrets:import
+npm run secrets:list
+npm run install:all-agents
+npm run sync:health
 ```
 
 ## Offene Punkte
 
-1. `working_memory.md` kuenftig nach wichtigen Sessions wirklich pflegen
-2. Bitget-Einstandswerte mit Bank-/Kreditkartenbuchungen in EUR vervollstaendigen
-3. Flatex-Download-Agent auf dem Mac Studio bauen
-4. Ginmon-Download-Agent auf dem Mac Studio bauen
-5. Trade-Republic-Mail-Agent fuer taegliche verschluesselte PDFs bauen
-6. UI weiter ausbauen: Filter, Sortierung, Detailansichten
-7. EquatePlus Parser ergaenzen
-8. Intergold Belegparser und Preisbewertung sauber zusammenfuehren
-9. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
+1. Secrets verschluesselt vom MacBook auf den Mac Studio uebertragen
+2. Mac-Studio-Agents mit `npm run install:all-agents` installieren
+3. Bitget-Summary-Abweichung klaeren
+4. Flatex nach einigen automatischen Exportlaeufen gegen Broker pruefen
+5. Ginmon-Kostenlogik vertiefen
+6. EquatePlus Parser nach erster Benachrichtigung ergaenzen
+7. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
+8. UI weiter ausbauen: Filter, Sortierung, Detailansichten, Charts
 
 ## Naechster empfohlener Schritt
 
-Bitget-Einstandswerte mit Bank-/Kreditkartenbuchungen in EUR vervollstaendigen.
-Danach auf dem Mac Studio reine Download-Agents in dieser Reihenfolge bauen:
-Flatex, Ginmon, Trade Republic.
-Der Erstbestand jeder Quelle wird einmalig gemeinsam kontrolliert erfasst;
-anschliessend verarbeiten Parser nur noch neue Updates.
+Aktuelle Version auf GitHub pullen, Secrets importieren und alle Agents auf dem
+Mac Studio installieren. Danach App-Warnkarte und `agentStatus/*` kontrollieren.
 
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-13
-- Quelle: Bitget Read-only API, Spot-/Earn-Import, 15-Minuten-Agent und
-  historische Self-Service-Exporte abgeschlossen
+- Datum: 2026-06-13 09:20 CEST
+- Quelle: MacBook-Session vor Mac-Studio-Uebergabe
+- Status: Bitget, Capital.com, Flatex, Ginmon, Trade Republic Mail, Intergold,
+  VBV, Boerse-Frankfurt-Kurse und Health-System dokumentiert; Mac-Studio-Agents
+  bereit fuer Installation

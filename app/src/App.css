@@ -40,6 +40,32 @@
   height: 18px;
 }
 
+.quote-sync-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  gap: 8px;
+  border: 1px solid #b7cfc9;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #123f39;
+  background: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quote-sync-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.quote-sync-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: #66716e;
@@ -116,20 +142,57 @@
   line-height: 1.45;
 }
 
-.content-grid {
+.health-status--good {
+  color: #13745f;
+}
+
+.health-status--warn {
+  color: #9a650e;
+}
+
+.health-status--error {
+  color: #a13a1b;
+}
+
+.alert-list {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
-  gap: 18px;
-  align-items: start;
-  margin-top: 18px;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert-list__item {
+  border-left: 3px solid #d2a13c;
+  padding-left: 10px;
+}
+
+.alert-list__item--error {
+  border-left-color: #b44b2a;
+}
+
+.alert-list__item--info {
+  border-left-color: #3f7f91;
+}
+
+.alert-list__item strong {
+  display: block;
+  color: #1c2523;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.alert-list__item span,
+.health-ok {
+  display: block;
+  margin-top: 3px;
+  color: #687572;
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .panel {
   padding: 22px;
-}
-
-.panel--wide {
-  min-width: 0;
 }
 
 .section-heading {
@@ -372,7 +435,6 @@
 }
 
 .source-card h3,
-.pipeline-list h3,
 .schedule-item h3 {
   margin: 0;
   color: #18211f;
@@ -381,7 +443,6 @@
 }
 
 .source-card p,
-.pipeline-list p,
 .schedule-item p {
   margin: 4px 0 0;
   color: #62706c;
@@ -439,33 +500,6 @@
 .status-badge--neutral {
   color: #525b58;
   background: #eef1f0;
-}
-
-.pipeline-list {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pipeline-list li {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.pipeline-list span {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  color: #155073;
-  background: #e8f2fb;
-  font-size: 0.78rem;
-  font-weight: 900;
 }
 
 .schedule-panel {
@@ -622,7 +656,6 @@
 
 @media (max-width: 1120px) {
   .summary-grid,
-  .content-grid,
   .schedule-grid {
     grid-template-columns: 1fr;
   }

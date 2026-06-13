@@ -8,6 +8,22 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
 
+    match /automationCommands/{commandId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && commandId == "sync_quotes_manual"
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "status",
+          "requestedBy",
+          "requestedAt",
+          "updatedAt"
+        ])
+        && request.resource.data.type == "sync_quotes"
+        && request.resource.data.status == "REQUESTED";
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read: if isOwner();
       allow write: if false;

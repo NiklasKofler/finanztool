@@ -2,6 +2,7 @@ automation/.env
 secrets/
 app/.env.local
 automation/node_modules/
+automation/runtime/
 .DS_Store
 firebase-debug.log
 *.log

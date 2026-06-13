@@ -1,0 +1,55 @@
+import "dotenv/config";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
+import { FirestoreRest } from "./firestore-rest.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
+
+function runScript(script, args = []) {
+  const result = spawnSync(process.execPath, [path.join(__dirname, script), ...args], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`${script} fehlgeschlagen: Exit ${result.status}`);
+}
+
+const firestore = new FirestoreRest({
+  projectId,
+  accessToken: await getFirebaseCliAccessToken(),
+});
+
+const startedAt = new Date();
+await firestore.setDocument("agentStatus", "quotes", {
+  source: "quotes",
+  status: "RUNNING",
+  message: "Kurs-Sync laeuft",
+  startedAt,
+  updatedAt: startedAt,
+});
+
+try {
+  runScript("sync-quotes-local.mjs", ["--write"]);
+  runScript("check-health-local.mjs");
+  const finishedAt = new Date();
+  await firestore.setDocument("agentStatus", "quotes", {
+    source: "quotes",
+    status: "OK",
+    message: "Boerse-Frankfurt-Kurse aktualisiert",
+    lastSuccessAt: finishedAt,
+    updatedAt: finishedAt,
+  });
+} catch (error) {
+  const failedAt = new Date();
+  await firestore.setDocument("agentStatus", "quotes", {
+    source: "quotes",
+    status: "FEHLER",
+    message: error instanceof Error ? error.message : "Kurs-Sync fehlgeschlagen",
+    failedAt,
+    updatedAt: failedAt,
+  });
+  throw error;
+}

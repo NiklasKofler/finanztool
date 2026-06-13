@@ -1,13 +1,17 @@
 import fs from "node:fs/promises";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
-export async function extractPdfText(filePath) {
+pdfjs.VerbosityLevel && pdfjs.setVerbosityLevel?.(pdfjs.VerbosityLevel.ERRORS);
+
+export async function extractPdfText(filePath, options = {}) {
   const data = new Uint8Array(await fs.readFile(filePath));
   const document = await pdfjs.getDocument({
     data,
+    password: options.password,
     disableFontFace: true,
     isEvalSupported: false,
     useWorkerFetch: false,
+    verbosity: pdfjs.VerbosityLevel?.ERRORS,
   }).promise;
 
   const pages = [];
@@ -19,4 +23,3 @@ export async function extractPdfText(filePath) {
 
   return pages.join("\n");
 }
-

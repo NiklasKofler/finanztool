@@ -9,6 +9,13 @@ function normalizeHeader(value) {
     .replace(/[^a-z0-9]+/g, " ");
 }
 
+function decodeCsvInput(input) {
+  if (!Buffer.isBuffer(input)) return String(input ?? "");
+  const utf8 = input.toString("utf8");
+  if (!utf8.includes("\uFFFD")) return utf8;
+  return new TextDecoder("windows-1252").decode(input);
+}
+
 function parseGermanNumber(value) {
   const cleaned = String(value ?? "").trim();
   if (!cleaned) return null;
@@ -67,22 +74,29 @@ function parseCsvLine(line, delimiter) {
   return cells;
 }
 
-function safeHeaderKey(header, index) {
+function safeHeaderKey(header, index, existingKeys) {
   const cleaned = String(header ?? "").trim();
-  if (cleaned) return cleaned;
-  return `col_${index + 1}`;
-}
-
-function findHeaderKey(headers, candidates) {
-  for (const candidate of candidates) {
-    const hit = headers.find((header) => header.includes(candidate));
-    if (hit) return hit;
+  const base = cleaned || `col_${index + 1}`;
+  let key = base;
+  let suffix = 2;
+  while (existingKeys.has(key)) {
+    key = `${base}_${suffix}`;
+    suffix += 1;
   }
-  return null;
+  existingKeys.add(key);
+  return key;
 }
 
-export function parseFlatexCsv(csvText) {
-  const lines = csvText
+function findHeaderIndex(headers, candidates) {
+  for (const candidate of candidates) {
+    const hit = headers.findIndex((header) => header.includes(candidate));
+    if (hit !== -1) return hit;
+  }
+  return -1;
+}
+
+export function parseFlatexCsv(input) {
+  const lines = decodeCsvInput(input)
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .split("\n")
@@ -97,25 +111,44 @@ export function parseFlatexCsv(csvText) {
   }
 
   const delimiter = detectDelimiter(lines[0]);
-  const rawHeaders = parseCsvLine(lines[0], delimiter).map(safeHeaderKey);
+  const existingHeaderKeys = new Set();
+  const rawHeaders = parseCsvLine(lines[0], delimiter).map((header, index) =>
+    safeHeaderKey(header, index, existingHeaderKeys),
+  );
   const normalizedHeaders = rawHeaders.map(normalizeHeader);
 
-  const dateKey = findHeaderKey(normalizedHeaders, ["buchungstag", "datum", "valuta"]);
-  const textKey = findHeaderKey(normalizedHeaders, [
+  const dateIndex = findHeaderIndex(normalizedHeaders, ["buchungstag", "datum", "valuta"]);
+  const textIndex = findHeaderIndex(normalizedHeaders, [
+    "buchungsinformationen",
+    "buchungsinformation",
     "buchungstext",
     "transaktion",
     "bezeichnung",
+    "empfaenger",
     "wertpapier",
     "text",
   ]);
-  const isinKey = findHeaderKey(normalizedHeaders, ["isin"]);
-  const quantityKey = findHeaderKey(normalizedHeaders, ["stueck", "anzahl", "menge"]);
-  const amountKey = findHeaderKey(normalizedHeaders, ["betrag", "umsatz", "wert"]);
-  const currencyKey = findHeaderKey(normalizedHeaders, ["waehrung", "currency"]);
+  const labelIndex = findHeaderIndex(normalizedHeaders, [
+    "bezeichnung",
+    "wertpapier",
+    "empfaenger",
+    "buchungsinformationen",
+  ]);
+  const isinIndex = findHeaderIndex(normalizedHeaders, ["isin"]);
+  const quantityIndex = findHeaderIndex(normalizedHeaders, [
+    "nominal stk",
+    "nominal",
+    "stueck",
+    "anzahl",
+    "menge",
+  ]);
+  const amountIndex = findHeaderIndex(normalizedHeaders, ["betrag", "umsatz", "wert"]);
+  const currencyIndex = findHeaderIndex(normalizedHeaders, ["waehrung", "currency"]);
+  const transactionIdIndex = findHeaderIndex(normalizedHeaders, ["ta nr", "transaktionsnummer"]);
 
   const warnings = [];
-  if (!amountKey) warnings.push("Keine Betrags-Spalte erkannt.");
-  if (!dateKey) warnings.push("Keine Datums-Spalte erkannt.");
+  if (amountIndex === -1) warnings.push("Keine Betrags-Spalte erkannt.");
+  if (dateIndex === -1) warnings.push("Keine Datums-Spalte erkannt.");
 
   const rows = [];
   let skippedRows = 0;
@@ -127,17 +160,17 @@ export function parseFlatexCsv(csvText) {
       rowRaw[header] = (values[colIndex] ?? "").trim();
     });
 
-    const normalizedRow = new Map();
-    normalizedHeaders.forEach((header, colIndex) => {
-      normalizedRow.set(header, (values[colIndex] ?? "").trim());
-    });
-
-    const dateRaw = dateKey ? normalizedRow.get(dateKey) ?? "" : "";
-    const amountRaw = amountKey ? normalizedRow.get(amountKey) ?? "" : "";
-    const textRaw = textKey ? normalizedRow.get(textKey) ?? "" : "";
-    const isinRaw = isinKey ? normalizedRow.get(isinKey) ?? "" : "";
-    const qtyRaw = quantityKey ? normalizedRow.get(quantityKey) ?? "" : "";
-    const currencyRaw = currencyKey ? normalizedRow.get(currencyKey) ?? "" : "EUR";
+    const valueAt = (columnIndex) =>
+      columnIndex >= 0 ? String(values[columnIndex] ?? "").trim() : "";
+    const dateRaw = valueAt(dateIndex);
+    const amountRaw = valueAt(amountIndex);
+    const textRaw = valueAt(textIndex);
+    const labelRaw = valueAt(labelIndex);
+    const isinRaw = valueAt(isinIndex);
+    const qtyRaw = valueAt(quantityIndex);
+    const adjacentCurrency = amountIndex >= 0 ? valueAt(amountIndex + 1) : "";
+    const currencyRaw = valueAt(currencyIndex) || adjacentCurrency || "EUR";
+    const transactionIdRaw = valueAt(transactionIdIndex);
 
     const amount = parseGermanNumber(amountRaw);
     const date = parseGermanDate(dateRaw);
@@ -152,6 +185,8 @@ export function parseFlatexCsv(csvText) {
     rows.push({
       date,
       bookingText,
+      label: labelRaw || bookingText,
+      transactionId: transactionIdRaw || null,
       isin: isinRaw || null,
       quantity,
       amount,
@@ -170,7 +205,7 @@ export function buildPositionMap(rows) {
     const key = row.isin ?? `TEXT:${row.bookingText}`;
     const current = positions.get(key) ?? {
       isin: row.isin,
-      label: row.bookingText,
+      label: row.label || row.bookingText,
       quantity: 0,
       currency: row.currency || "EUR",
     };
