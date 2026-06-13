@@ -42,6 +42,7 @@ await firestore.setDocument("sourceSummaries", "bitget", {
   positionCount: snapshot.positions.length,
   componentsUsdt: snapshot.accountComponents,
   totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
+  additionalValue: snapshot.additionalValue,
   status: snapshot.positions.length ? "VERIFIED" : "UNVOLLSTAENDIG",
   valuationMethod: "bitget_api_v1",
   updatedAt: now,
@@ -57,6 +58,7 @@ await firestore.setDocument("imports", importId, {
   usdtToEur: snapshot.usdtToEur,
   componentsUsdt: snapshot.accountComponents,
   totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
+  additionalValue: snapshot.additionalValue,
   runId,
   updatedAt: now,
 });

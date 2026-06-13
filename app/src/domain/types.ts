@@ -50,6 +50,8 @@ export interface PortfolioPosition {
   costValueQuote?: number | null;
   costCurrency?: string | null;
   costBasisStatus?: string | null;
+  priceSource?: string | null;
+  accountValueIncluded?: boolean | null;
   performanceValue?: number | null;
   performancePct?: number | null;
   valuationDate?: string | null;

@@ -2,6 +2,10 @@ import crypto from "node:crypto";
 import { readLocalSecret } from "./local-secret.mjs";
 
 const BITGET_BASE_URL = "https://api.bitget.com";
+const COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
+const COINGECKO_IDS_BY_COIN = {
+  MELANIA: "melania-meme",
+};
 
 const BITGET_KEYCHAIN_SERVICES = {
   apiKey: "finanztool-bitget-api-key",
@@ -48,6 +52,34 @@ async function fetchUsdEurRate() {
     return parseNumber(json?.rates?.EUR);
   } catch {
     return null;
+  }
+}
+
+async function fetchFallbackCryptoPrices(coins) {
+  const requested = [...new Set(coins)]
+    .map((coin) => [coin, COINGECKO_IDS_BY_COIN[coin]])
+    .filter(([, id]) => id);
+  if (!requested.length) return {};
+
+  try {
+    const url = new URL(COINGECKO_PRICE_URL);
+    url.searchParams.set("ids", requested.map(([, id]) => id).join(","));
+    url.searchParams.set("vs_currencies", "usd,eur");
+    const response = await fetch(url);
+    if (!response.ok) return {};
+    const json = await response.json();
+    return Object.fromEntries(
+      requested.map(([coin, id]) => [
+        coin,
+        {
+          usd: parseNumber(json?.[id]?.usd),
+          eur: parseNumber(json?.[id]?.eur),
+          source: "coingecko",
+        },
+      ]),
+    );
+  } catch {
+    return {};
   }
 }
 
@@ -199,6 +231,9 @@ export async function fetchBitgetPortfolioSnapshot(client) {
 
   const tickerBySymbol = new Map((tickers ?? []).map((ticker) => [ticker.symbol, ticker]));
   const usdtToEur = usdEurRate ?? parseNumber(process.env.BITGET_USDT_EUR_RATE) ?? null;
+  const fallbackPrices = await fetchFallbackCryptoPrices(
+    (assets ?? []).map((asset) => String(asset.coin ?? "").toUpperCase()),
+  );
 
   const spotPositions = (assets ?? [])
     .map((asset) => {
@@ -210,10 +245,19 @@ export async function fetchBitgetPortfolioSnapshot(client) {
       if (!coin || quantity <= 0) return null;
 
       const ticker = coin === "USDT" ? null : tickerBySymbol.get(`${coin}USDT`);
-      const priceUsdt = coin === "USDT" ? 1 : parseNumber(ticker?.lastPr);
+      const bitgetPriceUsdt = coin === "USDT" ? 1 : parseNumber(ticker?.lastPr);
+      const fallbackPrice = fallbackPrices[coin];
+      const priceUsdt = bitgetPriceUsdt ?? fallbackPrice?.usd ?? null;
       const currentValueUsdt = priceUsdt !== null ? quantity * priceUsdt : null;
       const currentValue =
-        currentValueUsdt !== null && usdtToEur !== null ? currentValueUsdt * usdtToEur : null;
+        coin === "EUR"
+          ? quantity
+          : fallbackPrice?.eur !== null && fallbackPrice?.eur !== undefined
+            ? quantity * fallbackPrice.eur
+            : currentValueUsdt !== null && usdtToEur !== null
+              ? currentValueUsdt * usdtToEur
+              : null;
+      const priceSource = bitgetPriceUsdt !== null ? "bitget" : fallbackPrice?.source ?? null;
 
       return {
         id: `bitget_spot_${coin}`,
@@ -223,14 +267,19 @@ export async function fetchBitgetPortfolioSnapshot(client) {
         accountType: "spot",
         quantity,
         quantityText: String(quantity),
-        quoteText: priceUsdt !== null ? `${priceUsdt} USDT` : null,
+        quoteText: coin === "EUR" ? "1 EUR" : priceUsdt !== null ? `${priceUsdt} USDT` : null,
         currentValue,
         currentValueUsdt,
+        priceSource,
+        accountValueIncluded: bitgetPriceUsdt !== null,
         costValue: null,
         performanceValue: null,
         performancePct: null,
         valuationDate: new Date().toISOString(),
-        valuationMethod: "bitget_spot_assets_v1",
+        valuationMethod:
+          priceSource === "coingecko"
+            ? "bitget_spot_assets_coingecko_price_v1"
+            : "bitget_spot_assets_v1",
         raw: asset,
       };
     })
@@ -281,9 +330,12 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     0,
   );
   const positionsValue = positions.reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
+  const additionalValue = spotPositions
+    .filter((position) => !position.accountValueIncluded)
+    .reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
   const currentValue =
     totalAccountValueUsdt > 0 && usdtToEur !== null
-      ? totalAccountValueUsdt * usdtToEur
+      ? totalAccountValueUsdt * usdtToEur + additionalValue
       : positionsValue;
 
   return {
@@ -291,6 +343,7 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     accountBalances,
     accountComponents,
     totalAccountValueUsdt,
+    additionalValue,
     earnAssets,
     positions,
     currentValue,

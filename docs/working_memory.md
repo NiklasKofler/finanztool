@@ -143,6 +143,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - MELANIA: `289,53119 USDT` fuer aktuell `66,20373 MELANIA`
 - Persistente Kostenbasis liegt in Firestore unter `sourceCostBasis` und wird
   bei jedem Bitget-Import zugemischt
+- Coins ohne aktuellen Bitget-Ticker werden fuer die Bewertung ueber einen
+  CoinGecko-Fallback bepreist; aktuell betrifft das MELANIA
 - BTC-Einstand wurde vom Nutzer mit insgesamt `3.000 EUR` fuer den Earn-Bestand
   von `0,066856 BTC` bestaetigt; rechnerischer Einstandskurs:
   `44.872,561924 EUR/BTC`
