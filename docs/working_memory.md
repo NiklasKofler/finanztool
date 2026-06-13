@@ -61,6 +61,12 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Capital.com
 - VBV Vorsorgekasse
 - EquatePlus
+- Bankkonten/Kreditkarten, noch offen:
+  - Sparkasse/George
+  - Amazon Visa
+  - TF Bank Kreditkarte
+  - Revolut, derzeit inaktiv
+- Trading 212, derzeit inaktiv/offen
 
 ## Aktueller Produktivstand
 
@@ -131,12 +137,16 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ### Bitget
 
-- Read-only API funktioniert
+- Firestore enthaelt aktuelle Bitget-Positionen aus einem erfolgreichen Lauf
 - API-Key, Secret und Passphrase liegen lokal im macOS-Schluesselbund
 - Spot- und Earn-Bestand werden in `sourcePositions` geschrieben
-- `sourceSummaries/bitget` nutzt Bitgets kontenuebergreifende Bewertung
+- `sourceSummaries/bitget` wurde auf die Summe der sichtbaren, inkludierten
+  Positionen korrigiert, damit die App keine doppelt gezaehlten Zusatzwerte zeigt
 - `agentStatus/bitget` dokumentiert den letzten erfolgreichen Lauf
-- Automatischer Import laeuft auf dem MacBook alle 15 Minuten
+- Automatischer Import ist vorgesehen; aktueller lokaler Test auf dem MacBook
+  meldet jedoch `Bitget API Fehler 400/40009 ... sign signature error`
+- Naechster Bitget-Schritt: API-Key, Secret und Passphrase im Schluesselbund
+  exakt gegen den Bitget-Key pruefen oder Key neu erzeugen
 - Firestore erhaelt hoechstens ein Bitget-Importdokument pro Kalendertag
 - Historische Self-Service-Exporte von 13.06.2024 bis 13.06.2026 liegen in
   `My Drive/Depot/01_Originale/Bitget/API_Exports/`
@@ -152,8 +162,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   `44.872,561924 EUR/BTC`
 - EUR-Einstandswerte fuer TRUMP und MELANIA bleiben bis zum Abgleich mit Bank-
   oder Kreditkartenbuchungen bewusst leer
-- Bekannte Health-Warnung: kleine Abweichung zwischen Positionssumme und
-  Bitget-Summary ist noch zu klaeren
+- Health-Warnung zur Bitget-Summary wurde am 2026-06-13 bereinigt
 
 ### Capital.com
 
@@ -169,7 +178,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - Capital.com: `OK`, `0,00 EUR`, 0 Positionen
 - VBV: `OK`, `1.815,86 EUR`, Stichtag `2026-05-31`
-- Health: `WARNUNG` wegen `summary_mismatch_bitget`
+- Bitget: 6 Positionen, sichtbare inkludierte Positionssumme `3.807,42 EUR`
+- Firestore Health: `OK`, 0 Fehler, 0 Warnungen
 
 ## Wichtige lokale Pfade
 
@@ -225,22 +235,31 @@ npm run sync:health
 
 1. Secrets verschluesselt vom MacBook auf den Mac Studio uebertragen
 2. Mac-Studio-Agents mit `npm run install:all-agents` installieren
-3. Bitget-Summary-Abweichung klaeren
-4. Flatex nach einigen automatischen Exportlaeufen gegen Broker pruefen
-5. Ginmon-Kostenlogik vertiefen
-6. EquatePlus Parser nach erster Benachrichtigung ergaenzen
-7. Open-Banking-Anbieter fuer Sparkasse George, Amazon Visa und TF Bank pruefen
-8. UI weiter ausbauen: Filter, Sortierung, Detailansichten, Charts
+3. Bankkonten und Kreditkarten integrieren:
+   Sparkasse/George, Amazon Visa, TF Bank Kreditkarte, spaeter Revolut
+4. Trading 212 als eigene Quelle ergaenzen, sobald wieder relevant oder Daten
+   vorliegen
+5. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
+   Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind
+6. Bitget API-Credentials reparieren (`40009 sign signature error`)
+7. Flatex nach einigen automatischen Exportlaeufen gegen Broker pruefen
+8. Ginmon-Kostenlogik vertiefen
+9. EquatePlus Parser nach erster Benachrichtigung ergaenzen
+10. UI weiter ausbauen: Filter, Sortierung, Konto-/Depotansichten,
+    Detailansichten, Charts
 
 ## Naechster empfohlener Schritt
 
-Aktuelle Version auf GitHub pullen, Secrets importieren und alle Agents auf dem
-Mac Studio installieren. Danach App-Warnkarte und `agentStatus/*` kontrollieren.
+Aktuelle Version auf GitHub pullen, diese Datei lesen, Secrets importieren und
+alle Agents auf dem Mac Studio installieren. Danach App-Warnkarte und
+`agentStatus/*` kontrollieren. Danach fachlich zuerst Bankkonten/Kreditkarten
+und Trading 212 einplanen, weil diese Quellen noch nicht integriert sind.
 
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-13 09:20 CEST
-- Quelle: MacBook-Session vor Mac-Studio-Uebergabe
-- Status: Bitget, Capital.com, Flatex, Ginmon, Trade Republic Mail, Intergold,
-  VBV, Boerse-Frankfurt-Kurse und Health-System dokumentiert; Mac-Studio-Agents
-  bereit fuer Installation
+- Datum: 2026-06-13 10:55 CEST
+- Quelle: Codex-Session nach Health-Bereinigung
+- Status: Firestore Health ist `OK`; Bankkonten/Kreditkarten und Trading 212
+  sind ausdruecklich noch nicht integriert; Bitget-Datenbestand ist vorhanden,
+  aber der naechste API-Import muss wegen `40009 sign signature error` repariert
+  werden

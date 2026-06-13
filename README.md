@@ -1,9 +1,10 @@
 # Finanzperformance-Tool
 
 Persoenliches Portfolio- und Performance-Tool fuer Flatex, Trade Republic,
-Ginmon, Intergold, EquatePlus und Bitget.
+Ginmon, Intergold, EquatePlus, Bitget, Capital.com und VBV. Bankkonten,
+Kreditkarten und Trading 212 sind als naechste Integrationen geplant.
 
-Stand: 2026-06-01
+Stand: 2026-06-13
 
 ## Ziel
 
@@ -80,7 +81,10 @@ Gebuehren, Steuern, Gewinn/Verlust und Performance ausweisen.
 
 ### Bitget
 
-- Bitget API-Client ist vorbereitet.
+- Bitget-Datenbestand ist in Firestore vorhanden.
+- Spot- und Earn-Positionen werden in `sourcePositions` abgebildet.
+- `sourceSummaries/bitget` nutzt die Summe der sichtbaren, inkludierten
+  Positionen, damit die App keine doppelt gezaehlten Zusatzwerte zeigt.
 - Importskript ist vorhanden: `npm run import:bitget`.
 - Datenziel:
   - `sourcePositions`
@@ -88,10 +92,32 @@ Gebuehren, Steuern, Gewinn/Verlust und Performance ausweisen.
   - `ledgerEntries`
   - `imports`
   - `rawDocuments`
-- Aktueller Blocker: Bitget private API-Requests melden noch
-  `sign signature error`. Ursache ist sehr wahrscheinlich ein nicht exakt
-  passender API-Secret- oder Passphrase-Wert. Der Code fuer HMAC-Signatur und
-  oeffentliche Marktdaten funktioniert.
+- Aktueller Blocker fuer frische lokale Importe:
+  `Bitget API Fehler 400/40009 ... sign signature error`.
+  API-Key, Secret und Passphrase im macOS-Schluesselbund muessen geprueft oder
+  neu erzeugt werden.
+
+### Capital.com
+
+- API funktioniert.
+- Live-Konto wird gelesen.
+- Aktueller Stand: `0,00 EUR`, 0 offene Positionen.
+- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert.
+
+### VBV
+
+- VBV Vorsorgekasse ist als Summary-Quelle integriert.
+- Aktueller Stand: `1.815,86 EUR`, Stichtag `2026-05-31`.
+- Keine Einzelpositionen.
+
+### Noch nicht integriert
+
+- Bankkonten/Kreditkarten:
+  - Sparkasse/George
+  - Amazon Visa
+  - TF Bank Kreditkarte
+  - Revolut, derzeit inaktiv
+- Trading 212
 
 ## Wichtige lokale Pfade
 
@@ -220,14 +246,19 @@ Wichtige Collections:
 
 ## Naechste sinnvolle Schritte
 
-1. Bitget API-Key/Passphrase/Secret final korrigieren und `npm run import:bitget`
+1. Bankkonten/Kreditkarten ueber Open-Banking pruefen und integrieren:
+   Sparkasse/George, Amazon Visa, TF Bank Kreditkarte.
+2. Trading 212 als eigene Quelle ergaenzen.
+3. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
+   Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind.
+4. Bitget API-Key/Passphrase/Secret final korrigieren und `npm run import:bitget`
    erfolgreich ausfuehren.
-2. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
+5. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
    Transaktionshistorie, Kosten/Steuern je Position.
-3. EquatePlus Parser fuer Holdings und Transaktionen ergaenzen.
-4. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
-5. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
-6. Launchd-Dauerbetrieb fuer den Import-Agent auf dem Mac Pro einrichten.
+6. EquatePlus Parser fuer Holdings und Transaktionen ergaenzen.
+7. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
+8. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
+9. Launchd-Dauerbetrieb fuer den Import-Agent auf dem Mac Pro einrichten.
 
 ## Sicherheitsnotiz
 

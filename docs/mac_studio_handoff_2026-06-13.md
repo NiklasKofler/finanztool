@@ -28,18 +28,28 @@ API-Zugangsdaten liegen lokal im macOS-Schluesselbund.
 
 EODHD ist nicht relevant. Kurse kommen aktuell aus Boerse Frankfurt.
 
+Noch nicht produktiv integriert:
+
+- Bankkonten/Kreditkarten: Sparkasse/George, Amazon Visa, TF Bank Kreditkarte,
+  spaeter Revolut
+- Trading 212
+
 ## Aktueller Firestore-Stand
 
 Zuletzt erfolgreich geprueft:
 
 - Capital.com: `OK`, Live-Konto, `0,00 EUR`, 0 Positionen
 - VBV: `OK`, `1.815,86 EUR`, Stichtag `2026-05-31`
-- Health: `WARNUNG` nur wegen Bitget-Summary-Abweichung
+- Bitget: 6 Positionen, sichtbare inkludierte Positionssumme `3.807,42 EUR`
+- Health: `OK`, 0 Fehler, 0 Warnungen
 
-Bekannte offene Health-Warnung:
+Bekannter Bitget-Hinweis:
 
-- `summary_mismatch_bitget`: Positionssumme weicht leicht von Bitget-Summary ab.
-  Das ist fachlich noch zu pruefen, aber kein Mac-Studio-Setup-Blocker.
+- Der Firestore-Datenbestand ist konsistent, aber ein frischer lokaler
+  Bitget-Import meldete am 2026-06-13 `40009 sign signature error`.
+- Vor dem naechsten Dauerbetrieb muessen API-Key, Secret und Passphrase im
+  macOS-Schluesselbund gegen den aktuellen Bitget-Key geprueft oder neu erzeugt
+  werden.
 
 ## Mac Studio Startfolge
 
@@ -130,9 +140,12 @@ Alle Finanzdaten schreibt der lokale Mac-Studio-Agent.
 
 ## Offene fachliche Punkte
 
-1. Bitget-Summary-Abweichung klaeren
-2. Ginmon-Kostenlogik spaeter vertiefen
-3. Flatex nach ein paar automatischen Exportlaeufen erneut gegen Broker pruefen
-4. Trade-Republic-Private-Equity bleibt dokumentbasiert
-5. Equate Plus erst nach erster Mail/Benachrichtigung umsetzen
-6. Bankdaten/Kreditkarten spaeter ueber Open-Banking-Ansatz pruefen
+1. Bankkonten/Kreditkarten ueber Open-Banking-Ansatz pruefen und integrieren:
+   Sparkasse/George, Amazon Visa, TF Bank Kreditkarte, spaeter Revolut
+2. Trading 212 als eigene Quelle ergaenzen
+3. Einheitliches Konto-/Depotmodell in Firestore ergaenzen
+4. Bitget API-Credentials reparieren (`40009 sign signature error`)
+5. Ginmon-Kostenlogik spaeter vertiefen
+6. Flatex nach ein paar automatischen Exportlaeufen erneut gegen Broker pruefen
+7. Trade-Republic-Private-Equity bleibt dokumentbasiert
+8. Equate Plus erst nach erster Mail/Benachrichtigung umsetzen
