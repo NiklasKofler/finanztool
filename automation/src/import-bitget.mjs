@@ -5,6 +5,7 @@ import {
   createBitgetClientFromLocalSecrets,
   fetchBitgetPortfolioSnapshot,
 } from "./bitget-client.mjs";
+import { applyCostBasisOverrides } from "./cost-basis-overrides.mjs";
 
 const required = ["FIREBASE_PROJECT_ID", "FIREBASE_SERVICE_ACCOUNT_PATH"];
 
@@ -66,6 +67,11 @@ async function writeLedgerEntries(entries) {
 
 const client = await createBitgetClientFromLocalSecrets();
 const snapshot = await fetchBitgetPortfolioSnapshot(client);
+const costBasisSnapshot = await db.collection("sourceCostBasis").where("source", "==", "bitget").get();
+snapshot.positions = applyCostBasisOverrides(
+  snapshot.positions,
+  costBasisSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+);
 
 let bills = [];
 try {

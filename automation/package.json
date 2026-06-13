@@ -11,6 +11,7 @@
     "setup:bitget": "zsh src/setup-bitget-keychain.sh",
     "check:bitget": "node src/check-bitget.mjs",
     "import:bitget:local": "node src/import-bitget-local.mjs",
+    "seed:bitget-cost-basis": "node src/seed-bitget-cost-basis-local.mjs",
     "install:bitget-agent": "zsh src/install-bitget-launch-agent.sh",
     "import:bitget": "node src/import-bitget.mjs",
     "backfill:summaries": "node src/backfill-summaries.mjs",

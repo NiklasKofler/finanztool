@@ -103,7 +103,10 @@ Wichtig:
   - Spot- und Earn-Bestand werden erfasst
   - kontenuebergreifender Bitget-Wert wird fuer die Summary verwendet
   - automatische Aktualisierung laeuft auf dem MacBook alle 15 Minuten
-  - Einstandswerte werden einmalig separat erfasst
+  - historische Exporte von 13.06.2024 bis 13.06.2026 sind gesichert
+  - TRUMP- und MELANIA-Einstand sind in USDT verifiziert
+  - EUR-Einstand und BTC-Einstand werden einmalig mit Bank-/Kreditkartendaten
+    vervollstaendigt
 
 ### 6. EquatePlus
 

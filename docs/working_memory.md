@@ -136,7 +136,17 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - `agentStatus/bitget` dokumentiert den letzten erfolgreichen Lauf
 - Automatischer Import laeuft auf dem MacBook alle 15 Minuten
 - Firestore erhaelt hoechstens ein Bitget-Importdokument pro Kalendertag
-- Einmalige Einstandswerte fuer Performanceberechnung sind noch offen
+- Historische Self-Service-Exporte von 13.06.2024 bis 13.06.2026 liegen in
+  `My Drive/Depot/01_Originale/Bitget/API_Exports/`
+- Verifizierte Einstandswerte:
+  - TRUMP: `990,80114 USDT` fuer aktuell `20,20977 TRUMP`
+  - MELANIA: `289,53119 USDT` fuer aktuell `66,20373 MELANIA`
+- Persistente Kostenbasis liegt in Firestore unter `sourceCostBasis` und wird
+  bei jedem Bitget-Import zugemischt
+- BTC-Einstand in EUR bleibt offen, da `0,066 BTC` extern eingezahlt wurden und
+  beim Kartenkauf von `0,000856 BTC` der bezahlte EUR-Betrag im Export fehlt
+- EUR-Einstandswerte fuer TRUMP und MELANIA bleiben bis zum Abgleich mit Bank-
+  oder Kreditkartenbuchungen bewusst leer
 
 ## Importierter Finanzstand laut letzter Studio-Zusammenfassung
 
@@ -193,7 +203,7 @@ npx firebase-tools deploy --project finanzperformance-tool
 ## Offene Punkte
 
 1. `working_memory.md` kuenftig nach wichtigen Sessions wirklich pflegen
-2. Bitget-Einstandswerte einmalig erfassen
+2. Bitget-Einstandswerte mit Bank-/Kreditkartenbuchungen in EUR vervollstaendigen
 3. Flatex-Download-Agent auf dem Mac Studio bauen
 4. Ginmon-Download-Agent auf dem Mac Studio bauen
 5. Trade-Republic-Mail-Agent fuer taegliche verschluesselte PDFs bauen
@@ -204,12 +214,14 @@ npx firebase-tools deploy --project finanzperformance-tool
 
 ## Naechster empfohlener Schritt
 
-Bitget-Einstandswerte einmalig ergaenzen. Danach auf dem Mac Studio reine
-Download-Agents in dieser Reihenfolge bauen: Flatex, Ginmon, Trade Republic.
+Bitget-Einstandswerte mit Bank-/Kreditkartenbuchungen in EUR vervollstaendigen.
+Danach auf dem Mac Studio reine Download-Agents in dieser Reihenfolge bauen:
+Flatex, Ginmon, Trade Republic.
 Der Erstbestand jeder Quelle wird einmalig gemeinsam kontrolliert erfasst;
 anschliessend verarbeiten Parser nur noch neue Updates.
 
 ## Letzte Aktualisierung
 
 - Datum: 2026-06-13
-- Quelle: Bitget Read-only API, Spot-/Earn-Import und 15-Minuten-Agent abgeschlossen
+- Quelle: Bitget Read-only API, Spot-/Earn-Import, 15-Minuten-Agent und
+  historische Self-Service-Exporte abgeschlossen

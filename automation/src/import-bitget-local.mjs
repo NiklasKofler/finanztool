@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createBitgetClientFromLocalSecrets, fetchBitgetPortfolioSnapshot } from "./bitget-client.mjs";
+import { applyCostBasisOverrides } from "./cost-basis-overrides.mjs";
 import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
 import { FirestoreRest } from "./firestore-rest.mjs";
 
@@ -12,6 +13,10 @@ const snapshot = await fetchBitgetPortfolioSnapshot(client);
 const accessToken = await getFirebaseCliAccessToken();
 const firestore = new FirestoreRest({ projectId, accessToken });
 const now = new Date();
+const costBasisOverrides = (await firestore.listDocuments("sourceCostBasis")).filter(
+  (override) => override.source === "bitget",
+);
+snapshot.positions = applyCostBasisOverrides(snapshot.positions, costBasisOverrides);
 
 const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
   (position) => position.source === "bitget",
