@@ -32,10 +32,11 @@ const overrides = [
     id: "bitget_earn_BTC",
     source: "bitget",
     positionId: "bitget_earn_BTC",
+    costValueEur: 3000,
     quantityBasis: 0.066856,
     costCurrency: "EUR",
-    status: "MISSING_EXTERNAL_COST",
-    note: "0,066 BTC extern eingezahlt; Kartenpreis fuer weitere 0,000856 BTC fehlt.",
+    status: "USER_CONFIRMED",
+    note: "Gesamter BTC-Einstand vom Nutzer mit 3.000 EUR bestaetigt.",
   },
   {
     id: "bitget_spot_BTC",

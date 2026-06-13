@@ -143,8 +143,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - MELANIA: `289,53119 USDT` fuer aktuell `66,20373 MELANIA`
 - Persistente Kostenbasis liegt in Firestore unter `sourceCostBasis` und wird
   bei jedem Bitget-Import zugemischt
-- BTC-Einstand in EUR bleibt offen, da `0,066 BTC` extern eingezahlt wurden und
-  beim Kartenkauf von `0,000856 BTC` der bezahlte EUR-Betrag im Export fehlt
+- BTC-Einstand wurde vom Nutzer mit insgesamt `3.000 EUR` fuer den Earn-Bestand
+  von `0,066856 BTC` bestaetigt; rechnerischer Einstandskurs:
+  `44.872,561924 EUR/BTC`
 - EUR-Einstandswerte fuer TRUMP und MELANIA bleiben bis zum Abgleich mit Bank-
   oder Kreditkartenbuchungen bewusst leer
 

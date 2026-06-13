@@ -19,6 +19,7 @@ Die erste im Export enthaltene Bewegung ist eine BTC-Einzahlung vom 24.08.2024.
 
 | Position | Aktueller Bestand | Brutto gekauft | Gebuehr in Coin | Bezahlter Betrag | Einstand je aktuellem Coin |
 | --- | ---: | ---: | ---: | ---: | ---: |
+| BTC Earn | 0,066856 BTC | 0,066856 BTC | - | 3.000,00 EUR | 44.872,561924 EUR |
 | TRUMP | 20,20977 TRUMP | 20,23 TRUMP | 0,02023 TRUMP | 990,80114 USDT | 49,025849 USDT |
 | MELANIA | 66,20373 MELANIA | 66,27 MELANIA | 0,06627 MELANIA | 289,53119 USDT | 4,373337 USDT |
 
@@ -38,13 +39,13 @@ bezahlten EUR-Betraege in den Bitget-Exporten fehlen.
 
 Der aktuelle Spot-BTC-Bestand stammt praktisch vollstaendig aus Earn-Zinsen.
 Der Earn-Bestand von `0,066856 BTC` ist der angelegte urspruengliche Bestand.
+Der Nutzer hat fuer diesen BTC-Bestand einen gesamten Einstand von `3.000 EUR`
+bestaetigt. Das entspricht rechnerisch `44.872,561924 EUR/BTC`.
 
 ## Noch fehlende Informationen
 
 Fuer vollstaendige EUR-Einstandswerte werden einmalig benoetigt:
 
-- EUR-Betrag der Kartenbuchung fuer `0,000856 BTC` vom 06.09.2024
-- urspruenglicher Kaufpreis der extern eingezahlten `0,066 BTC`
 - EUR-Gegenwert der am 20.01.2025 per Karte gekauften `981,0823 USDT`
 - EUR-Gegenwert der am 21.01.2025 eingezahlten `289,7462 USDT`
 
@@ -62,7 +63,7 @@ verwendet werden.
   jedem API-Snapshot zugemischt.
 - TRUMP und MELANIA bleiben mit `VERIFIED_QUOTE_ONLY` markiert, bis ihr
   tatsaechlicher EUR-Einstand bekannt ist.
-- Earn-BTC ist mit `MISSING_EXTERNAL_COST` markiert.
+- Earn-BTC ist mit `USER_CONFIRMED` und `3.000 EUR` Kostenbasis markiert.
 - Spot-BTC ist mit `VERIFIED_ZERO_COST` markiert, weil dieser Bestand laut
   Export aus Earn-Zinsen stammt.
 - Earn-Zinsen haben einen Einstand von null und erhoehen nicht die historische
