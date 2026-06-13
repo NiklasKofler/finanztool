@@ -455,9 +455,9 @@ function App() {
                 <th>Position</th>
                 <th>Kategorie</th>
                 <th>Menge</th>
+                <th className="numeric">Einstand</th>
                 <th>Kurs</th>
                 <th className="numeric">Wert</th>
-                <th className="numeric">Einstand</th>
                 <th className="numeric">G/V</th>
                 <th className="numeric">Perf.</th>
                 <th>Stichtag</th>
@@ -488,11 +488,11 @@ function App() {
                     </td>
                     <td>{formatOptionalText(position.category)}</td>
                     <td>{formatOptionalText(position.quantityText)}</td>
-                    <td>{formatOptionalText(position.quoteText)}</td>
-                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
                     <td className="numeric">
                       {formatMoney(positionPerformance.cost, positionPerformance.currency)}
                     </td>
+                    <td>{formatOptionalText(position.quoteText)}</td>
+                    <td className="numeric">{formatCurrency(position.currentValue ?? undefined)}</td>
                     <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
                       {formatMoney(
                         positionPerformance.performance,
