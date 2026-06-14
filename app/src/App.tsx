@@ -379,9 +379,9 @@ function PositionsTable({
                   {formatSignedPercent(positionPerformance.percentage)}
                 </td>
                 <td className="numeric">
-                  {privacyMode ? maskMoney(dayChange.value) : formatMoney(dayChange.value)}
+                  {privacyMode ? maskSignedMoney(dayChange.value) : formatSignedMoney(dayChange.value)}
                 </td>
-                <td className="numeric">{formatPercent(dayChange.percentage)}</td>
+                <td className="numeric">{formatSignedPercent(dayChange.percentage)}</td>
                 <td>{formatQuantity(position)}</td>
                 <td>{formatOptionalText(position.quoteText)}</td>
                 <td className="numeric">
@@ -420,7 +420,7 @@ function App() {
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
-  const [privacyMode, setPrivacyMode] = useState(true);
+  const [privacyMode, setPrivacyMode] = useState(false);
 
   useEffect(() => {
     const services = getFirebaseServices();

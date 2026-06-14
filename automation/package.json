@@ -59,6 +59,8 @@
     "sync:quotes": "node src/sync-quotes-local.mjs --write",
     "sync:quotes:local": "node src/run-quote-sync-local.mjs",
     "reconcile:quotes": "node src/sync-quotes-local.mjs",
+    "sync:position-history": "node src/sync-position-history-local.mjs --write",
+    "reconcile:position-history": "node src/sync-position-history-local.mjs",
     "run:commands": "node src/run-automation-commands-local.mjs",
     "install:quote-agent": "zsh src/install-quote-sync-agent.sh",
     "install:command-runner": "zsh src/install-command-runner-agent.sh",

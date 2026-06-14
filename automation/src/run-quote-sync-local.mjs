@@ -33,11 +33,12 @@ await firestore.setDocument("agentStatus", "quotes", {
 
 try {
   runScript("sync-quotes-local.mjs", ["--write"]);
+  runScript("sync-position-history-local.mjs", ["--write"]);
   const finishedAt = new Date();
   await firestore.setDocument("agentStatus", "quotes", {
     source: "quotes",
     status: "OK",
-    message: "Boerse-Frankfurt-Kurse aktualisiert",
+    message: "Kurse und Positionshistorie aktualisiert",
     lastSuccessAt: finishedAt,
     updatedAt: finishedAt,
   });

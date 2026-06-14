@@ -15,6 +15,47 @@ function formatError(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function parseMaybeNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number.parseFloat(value.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function roundCurrency(value) {
+  return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+}
+
+function enrichQuoteCostBasis(position, usdtToEur) {
+  const currentValue = parseMaybeNumber(position.currentValue);
+  const costValue = parseMaybeNumber(position.costValue);
+  if (typeof costValue === "number") return position;
+
+  const costValueQuote = parseMaybeNumber(position.costValueQuote);
+  if (
+    typeof currentValue !== "number" ||
+    typeof costValueQuote !== "number" ||
+    typeof usdtToEur !== "number"
+  ) {
+    return position;
+  }
+
+  const convertedCostValue = roundCurrency(costValueQuote * usdtToEur);
+  const performanceValue = roundCurrency(currentValue - convertedCostValue);
+  return {
+    ...position,
+    costValue: convertedCostValue,
+    costCurrency: position.costCurrency ?? "USDT",
+    costValueConvertedFromQuote: true,
+    performanceValue,
+    performancePct: convertedCostValue ? performanceValue / convertedCostValue : null,
+  };
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + (parseMaybeNumber(value) ?? 0), 0);
+}
+
 async function writeFailureStatus(error) {
   const now = new Date();
   const existingStatuses = await firestore.listDocuments("agentStatus");
@@ -55,7 +96,9 @@ async function main() {
   const costBasisOverrides = (await firestore.listDocuments("sourceCostBasis")).filter(
     (override) => override.source === "bitget",
   );
-  snapshot.positions = applyCostBasisOverrides(snapshot.positions, costBasisOverrides);
+  snapshot.positions = applyCostBasisOverrides(snapshot.positions, costBasisOverrides).map((position) =>
+    enrichQuoteCostBasis(position, snapshot.usdtToEur),
+  );
 
   const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
     (position) => position.source === "bitget",
@@ -73,10 +116,18 @@ async function main() {
     });
   }
 
+  const totalCostValue = roundCurrency(sum(snapshot.positions.map((position) => position.costValue)));
+  const totalPerformanceValue =
+    totalCostValue > 0 ? roundCurrency(snapshot.currentValue - totalCostValue) : null;
+
   await firestore.setDocument("sourceSummaries", "bitget", {
     source: "bitget",
     displayName: "Bitget",
     currentValue: snapshot.currentValue,
+    netValue: snapshot.currentValue,
+    costValue: totalCostValue > 0 ? totalCostValue : null,
+    performanceValue: totalPerformanceValue,
+    performancePct: totalCostValue > 0 && totalPerformanceValue !== null ? totalPerformanceValue / totalCostValue : null,
     valuationDate: snapshot.valuationDate,
     positionCount: snapshot.positions.length,
     componentsUsdt: snapshot.accountComponents,

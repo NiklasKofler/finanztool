@@ -83,6 +83,59 @@ function isCashPosition(position) {
   return position.category === "Cash" || /cash|konto|kontostand/i.test(`${position.id ?? ""} ${position.name ?? ""}`);
 }
 
+function previousHistoryForInstrument(priceHistory, instrumentId, currentHistoryDate) {
+  return priceHistory
+    .filter((entry) => {
+      const entryDate = String(entry.historyDate ?? "");
+      return (
+        entry.instrumentId === instrumentId &&
+        entry.status === "OK" &&
+        typeof parseMaybeNumber(entry.priceEur) === "number" &&
+        entryDate &&
+        entryDate < currentHistoryDate
+      );
+    })
+    .sort((left, right) => String(right.historyDate ?? "").localeCompare(String(left.historyDate ?? "")))[0] ?? null;
+}
+
+function dayChangeForPosition({ position, currentValue, priceEur, previousPriceEur, preserveSourceValue }) {
+  if (typeof previousPriceEur !== "number" || previousPriceEur <= 0) {
+    return {
+      previousCloseValue: null,
+      dayChangeValue: null,
+      dayChangePct: null,
+    };
+  }
+
+  const quantity = parseMaybeNumber(position.quantity);
+  if (typeof quantity !== "number" || quantity <= 0) {
+    return {
+      previousCloseValue: null,
+      dayChangeValue: null,
+      dayChangePct: null,
+    };
+  }
+
+  const quoteBasedPreviousValue = roundCurrency(quantity * previousPriceEur);
+  if (!preserveSourceValue) {
+    const dayChangeValue = roundCurrency((currentValue ?? 0) - quoteBasedPreviousValue);
+    return {
+      previousCloseValue: quoteBasedPreviousValue,
+      dayChangeValue,
+      dayChangePct: quoteBasedPreviousValue ? dayChangeValue / quoteBasedPreviousValue : null,
+    };
+  }
+
+  const quoteBasedDayChange = roundCurrency(quantity * (priceEur - previousPriceEur));
+  const previousCloseValue =
+    typeof currentValue === "number" ? roundCurrency(currentValue - quoteBasedDayChange) : quoteBasedPreviousValue;
+  return {
+    previousCloseValue,
+    dayChangeValue: quoteBasedDayChange,
+    dayChangePct: previousCloseValue ? quoteBasedDayChange / previousCloseValue : null,
+  };
+}
+
 async function getOrCreateMapping({ firestore, isin, representative, existingMappings }) {
   const id = instrumentIdForIsin(isin);
   const existing = existingMappings.get(id);
@@ -147,10 +200,11 @@ async function main() {
     accessToken: await getFirebaseCliAccessToken(),
   });
   const now = new Date();
-  const [allPositions, mappings, summaries] = await Promise.all([
+  const [allPositions, mappings, summaries, priceHistory] = await Promise.all([
     firestore.listDocuments("sourcePositions"),
     firestore.listDocuments("instrumentMappings"),
     firestore.listDocuments("sourceSummaries"),
+    firestore.listDocuments("priceHistory"),
   ]);
   const existingMappings = new Map(mappings.map((mapping) => [mapping.id, mapping]));
   const positions = uniqueIsinPositions(allPositions);
@@ -174,6 +228,9 @@ async function main() {
   for (const [isin, group] of groupedEntries) {
     const representative = group[0];
     const instrumentId = instrumentIdForIsin(isin);
+    const currentHistoryDate = historyDateId(now);
+    const previousHistory = previousHistoryForInstrument(priceHistory, instrumentId, currentHistoryDate);
+    const previousPriceEur = parseMaybeNumber(previousHistory?.priceEur);
     const mapping = await getOrCreateMapping({
       firestore,
       isin,
@@ -278,6 +335,13 @@ async function main() {
       const costValue = parseMaybeNumber(position.costValue);
       const performanceValue =
         typeof costValue === "number" ? roundCurrency(currentValue - costValue) : position.performanceValue ?? null;
+      const dayChange = dayChangeForPosition({
+        position,
+        currentValue,
+        priceEur,
+        previousPriceEur,
+        preserveSourceValue,
+      });
       const updated = {
         ...position,
         name:
@@ -304,6 +368,9 @@ async function main() {
         valuationMethod: preserveSourceValue ? position.valuationMethod : `${quoteProvider}_quote_v1`,
         performanceValue,
         performancePct: costValue ? performanceValue / costValue : position.performancePct ?? null,
+        previousCloseValue: dayChange.previousCloseValue,
+        dayChangeValue: dayChange.dayChangeValue,
+        dayChangePct: dayChange.dayChangePct,
         updatedAt: now,
       };
       updatedPositionsById.set(position.id, updated);

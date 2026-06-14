@@ -793,7 +793,8 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
   Health und der App-Button verfolgt den Command-Status bis `DONE`/`ERROR`;
   Mengen werden in der GUI auf maximal 5 Nachkommastellen gerundet; G/V-Text
   wird in Karten und Tabellen verlaesslich gruen/rot eingefaerbt;
-  Privatsphaere-Modus ist beim Laden der App standardmaessig aktiv
+  Privatsphaere-Modus ist beim Laden der App standardmaessig aus, Werte sind
+  also standardmaessig sichtbar
   und alle Depotkarten haben dieselbe innere Hauptmetrik-Reihenfolge mit
   `G/V` unter `Depotwert`, `Heute` daneben und `Aktualisiert` oben rechts;
   Ginmon-Unterdepots bleiben beim Laden standardmaessig eingeklappt; die
@@ -809,6 +810,15 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
   `Heute`, `Heute %`, `Menge`, `Kurs`, `Einstand`, `Kategorie`,
   `Aktualisiert`; die separate Kartenmetrik `Positionen` ist entfernt,
   weil die Anzahl bereits im aufklappbaren `Positionen anzeigen`-Element
-  steht;
+  steht; `Heute` und `Heute %` wurden repariert: der Quote-Sync schreibt
+  fuer Flatex/Trade-Republic-Positionen jetzt `previousCloseValue`,
+  `dayChangeValue` und `dayChangePct` aus dem letzten gespeicherten
+  `priceHistory`-Preis vor dem aktuellen Tag; die Positions-Tabelle zeigt
+  Tagesaenderung und Tagesprozent mit Vorzeichen; der 22:00-Lauf schreibt
+  zusaetzlich eine generische Positions-Historie fuer alle `sourcePositions`
+  mit `currentValue`, also auch Bitget/Krypto, Ginmon, Intergold usw.; Bitget
+  Summary-G/V wird aus EUR-Kosten und aus USDT-Kostenbasis via aktuellem
+  USDT/EUR-Faktor aggregiert; am 2026-06-14 wurden 6/6 Bitget-Positionen in
+  `priceHistory` geschrieben;
   verifiziert mit 393x852 Viewport ohne horizontalen Ueberlauf; Firebase
   Deploy fuer Hosting, Firestore Rules/Indexes und Storage Rules erfolgreich
