@@ -54,7 +54,7 @@ Bekannter Bitget-Hinweis:
 ## Mac Studio Startfolge
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 git pull
 npm run install:all
 firebase login
@@ -63,7 +63,7 @@ firebase login
 Secrets importieren:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run secrets:import
 npm run secrets:list
 ```

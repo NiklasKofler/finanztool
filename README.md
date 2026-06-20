@@ -4,7 +4,7 @@ Persoenliches Portfolio- und Performance-Tool fuer Flatex, Trade Republic,
 Ginmon, Intergold, EquatePlus, Bitget, Capital.com und VBV. Bankkonten,
 Kreditkarten und Trading 212 sind als naechste Integrationen geplant.
 
-Stand: 2026-06-13
+Stand: 2026-06-20
 
 ## Ziel
 
@@ -21,6 +21,35 @@ Gebuehren, Steuern, Gewinn/Verlust und Performance ausweisen.
 - Firestore ist zentrale Datenbank.
 - Originaldateien werden aus Google Drive gelesen und nach Import archiviert.
 - Node-Version: siehe `.nvmrc` (`22`).
+- Geraetewechsel und Codex-Zahlencodes sind in
+  `docs/device_workflow.md` dokumentiert.
+- Wechselprobleme zwischen Mac Studio und MacBook Pro werden in
+  `docs/device_switch_log.md` dokumentiert.
+
+## Geraetewechsel
+
+Wichtigste Datei:
+
+```bash
+docs/device_workflow.md
+docs/device_switch_log.md
+```
+
+Kurzlogik:
+
+- `1111`: Projekt auf aktueller Maschine herunterladen/aktualisieren.
+- `2222`: Projekt nur lokal speichern/committen.
+- `3333`: Projekt bauen, auf GitHub pushen und Firebase deployen.
+
+Nach `1111` muss Codex kurz melden, welcher Stand aktiv ist, wo am alten
+Geraet aufgehoert wurde, welche naechsten Schritte geplant sind und ob
+Wechselprobleme bestehen.
+
+Das Projekt soll auf Mac Studio und MacBook Pro gleich liegen:
+
+```bash
+/Users/niklaskofler/Documents/finanztool
+```
 
 ## Produktiv umgesetzt
 
@@ -166,7 +195,7 @@ Sie sind absichtlich per `.gitignore` ausgeschlossen.
 
 ```bash
 cd /Users/niklaskofler/Documents
-git clone https://github.com/NiklasKofler/finanztool.git
+git clone https://github.com/NiklasKofler/finanztool.git finanztool
 cd finanztool
 nvm install
 nvm use

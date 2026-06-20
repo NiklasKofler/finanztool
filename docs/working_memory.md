@@ -7,14 +7,26 @@ Es ersetzt nicht den Chat, aber es bewahrt die wichtigen Entscheidungen, den let
 
 Vor jeder neuen Session:
 
-1. `git pull`
-2. dieses Dokument lesen
-3. dann erst mit Codex weiterarbeiten
+1. Wenn das Projekt vom anderen Geraet uebernommen werden soll: `1111`
+2. `docs/device_workflow.md` lesen
+3. `docs/device_switch_log.md` lesen
+4. dieses Dokument lesen
+5. dann erst mit Codex weiterarbeiten
+
+Nach `1111` muss Codex im Chat kurz melden:
+
+- auf welchem Geraet gearbeitet wird
+- welcher Stand/Commit aktiv ist
+- wo am alten Geraet aufgehoert wurde
+- welche naechsten Schritte geplant sind
+- ob Wechselprobleme, fehlende Secrets oder lokale Abweichungen bestehen
 
 Nach jeder wichtigen Session:
 
 1. dieses Dokument aktualisieren
-2. `git add`, `git commit`, `git push`
+2. bei Geraetewechseln oder Problemen `docs/device_switch_log.md`
+   aktualisieren
+3. lokal sichern mit `2222` oder uebergeben/deployen mit `3333`
 
 ## Projektziel
 
@@ -27,12 +39,16 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Wichtige Entscheidungen, Beschluesse und offener Stand muessen waehrend der
   Arbeit im Repo dokumentiert werden, vor allem in dieser Datei
 - MacBook Pro und Mac Studio arbeiten auf demselben Branch `main`
+- Der gemeinsame Standardpfad auf beiden Geraeten ist
+  `/Users/niklaskofler/Documents/finanztool`
 - Waehrend aktiver Entwicklung wird nicht automatisch gepusht oder deployed.
   Lokal wird ueber `localhost:5173` gearbeitet. GitHub/Firebase erst am Ende
   oder wenn der Nutzer es ausdruecklich verlangt.
 - Wenn Codex mit dem Nutzer etwas fachlich oder technisch festlegt, muss Codex
   die Entscheidung direkt in `docs/working_memory.md` nachziehen, damit ein
   Geraetewechsel nicht den Kontext verliert.
+- Wenn beim Wechsel zwischen Mac Studio und MacBook Pro ein Problem auftritt,
+  muss Codex es in `docs/device_switch_log.md` festhalten.
 
 ## Rollen der Geraete
 
@@ -40,13 +56,14 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - aktive Entwicklung
 - UI, Parser, Architektur, Debugging, Review
+- keine produktiven Studio-LaunchAgents starten
 
 ### Mac Studio
 
 - Dauerbetrieb
-- Import-Agent
-- Dateiueberwachung
-- Backfills und spaeter Automationen
+- produktive Import-/API-/Kurs-Agents
+- Dateiueberwachung und Google-Drive-Sync
+- Backfills und Automationen
 
 ## Wichtige Architekturentscheidungen
 
@@ -88,6 +105,19 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - App darf nur `automationCommands/sync_quotes_manual` schreiben
 - Finanzdaten werden lokal durch Agents geschrieben, nicht direkt aus der App
 - Mac Studio ist der Zielort fuer Dauerbetrieb
+
+## Aktueller Geraete-Handoff
+
+- Stand: 2026-06-20 17:47 CEST
+- Aktion: `3333` vom Mac Studio Richtung MacBook Pro
+- Ausgangscommit: `0c65ab4`
+- Inhalt: Geraetewechsel-Regeln, Zahlencodes, Wechselprotokoll und
+  Startprompt fuer neue Codex-Sessions dokumentiert
+- Naechster Schritt auf dem MacBook Pro: Projekt mit dem Erstprompt aus
+  `docs/device_workflow.md` starten und `1111` ausfuehren lassen
+- Wichtig: Codex muss nach `1111` kurz melden, welcher Commit aktiv ist, wo
+  am Mac Studio aufgehoert wurde und ob lokale Secrets/Agents fehlen oder
+  bewusst nicht laufen
 
 ## Fachlich bereits umgesetzt
 
@@ -198,7 +228,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   nicht generisch genug. `sourcePositions` darf nur die aktuelle App-Ansicht
   sein, nicht die einzige Wahrheit.
 - Verbindlicher Ginmon-Datenvertrag liegt in
-  [Ginmon Konzept](/Users/niklaskofler/Documents/Finanztool/docs/ginmon_import_konzept.md):
+  [Ginmon Konzept](/Users/niklaskofler/Documents/finanztool/docs/ginmon_import_konzept.md):
   - Dokumente liefern echte Stueckzahlen, Einstand, Kosten, Steuern,
     Transaktionen, Rechnungen und Strategie-/Risikoinformationen
   - API liefert fuer Ginmon nur noch aktuelle Werte und daraus abgeleitete
@@ -246,7 +276,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Preisimport ist gebaut
 - Bestandsbewertung aus Belegen ist gebaut
 - Preisimport und Belegimport bleiben getrennt
-- Kurzfassung liegt in [intergold_preisimport_kurzfassung.md](/Users/niklaskofler/Documents/Finanztool/docs/intergold_preisimport_kurzfassung.md)
+- Kurzfassung liegt in [intergold_preisimport_kurzfassung.md](/Users/niklaskofler/Documents/finanztool/docs/intergold_preisimport_kurzfassung.md)
 
 ### EquatePlus
 
@@ -325,8 +355,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 ## Wichtige lokale Pfade
 
 - Projekt:
-  - `/Users/niklaskofler/Documents/finanztool` auf dem Mac Studio
-  - `/Users/niklaskofler/Documents/Finanztool` auf diesem MacBook
+  - `/Users/niklaskofler/Documents/finanztool` auf Mac Studio und MacBook Pro
 - Automation:
   - `automation/`
 - Drive Originale:
@@ -346,14 +375,16 @@ Diese Dateien muessen pro Geraet lokal vorhanden sein.
 
 ## Wichtige Dokumente im Repo
 
-- [Import Masterplan](/Users/niklaskofler/Documents/Finanztool/docs/import_masterplan.md)
-- [Arbeitsstand](/Users/niklaskofler/Documents/Finanztool/docs/arbeitsstand_2026-05-25.md)
-- [Mac Studio Runbook](/Users/niklaskofler/Documents/Finanztool/docs/export_import_runbook_mac_studio.md)
-- [Mac Studio Handoff 2026-06-13](/Users/niklaskofler/Documents/Finanztool/docs/mac_studio_handoff_2026-06-13.md)
-- [README](/Users/niklaskofler/Documents/Finanztool/README.md)
-- [Intergold Kurzfassung](/Users/niklaskofler/Documents/Finanztool/docs/intergold_preisimport_kurzfassung.md)
-- [Trade Republic Strategie](/Users/niklaskofler/Documents/Finanztool/docs/traderepublic_import_strategie.md)
-- [Ginmon Konzept](/Users/niklaskofler/Documents/Finanztool/docs/ginmon_import_konzept.md)
+- [Geraetewechsel und Codex-Workflow](/Users/niklaskofler/Documents/finanztool/docs/device_workflow.md)
+- [Geraetewechsel-Protokoll](/Users/niklaskofler/Documents/finanztool/docs/device_switch_log.md)
+- [Import Masterplan](/Users/niklaskofler/Documents/finanztool/docs/import_masterplan.md)
+- [Arbeitsstand](/Users/niklaskofler/Documents/finanztool/docs/arbeitsstand_2026-05-25.md)
+- [Mac Studio Runbook](/Users/niklaskofler/Documents/finanztool/docs/export_import_runbook_mac_studio.md)
+- [Mac Studio Handoff 2026-06-13](/Users/niklaskofler/Documents/finanztool/docs/mac_studio_handoff_2026-06-13.md)
+- [README](/Users/niklaskofler/Documents/finanztool/README.md)
+- [Intergold Kurzfassung](/Users/niklaskofler/Documents/finanztool/docs/intergold_preisimport_kurzfassung.md)
+- [Trade Republic Strategie](/Users/niklaskofler/Documents/finanztool/docs/traderepublic_import_strategie.md)
+- [Ginmon Konzept](/Users/niklaskofler/Documents/finanztool/docs/ginmon_import_konzept.md)
 
 ## Wichtige Befehle
 
@@ -753,14 +784,53 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
 
 ## Bedienkuerzel
 
+- Die Zahlencodes gelten auf Mac Studio und MacBook Pro gleich, wenn Niklas
+  sie allein schreibt.
+- `1111`: Projekt auf der aktuellen Maschine vom gemeinsamen GitHub-Stand
+  aktualisieren/herunterladen.
+  Ablauf:
+  1. Zuerst `docs/device_workflow.md`, `docs/device_switch_log.md`,
+     `docs/working_memory.md` und `README.md` lesen.
+  2. Dann `git status` pruefen.
+  3. Falls lokale Aenderungen vorhanden sind, nicht ueberschreiben; zuerst
+     `2222` ausfuehren oder den Nutzer kurz auf den Konflikt hinweisen.
+  4. `git fetch origin` und `git pull --ff-only origin main`.
+  5. Dependencies aktualisieren:
+     `npm --prefix app install` und `npm --prefix automation install`.
+  6. `npm --prefix app run build` ausfuehren.
+  7. Auf dem Mac Studio zusaetzlich Automation/Agents beachten, weil dort die
+     produktiven Agents laufen: bei geaenderten LaunchAgent-Templates oder
+     Agent-Scripts `npm --prefix automation run install:all-agents` bzw. die
+     betroffenen Agenten neu installieren/starten und danach
+     `npm --prefix automation run sync:health` pruefen.
+  8. Auf dem MacBook Pro keine Studio-Agents starten; dort nur Code/App bauen
+     und weiterentwickeln.
+  9. Danach im Chat kurz zusammenfassen: aktives Geraet, Commit/Stand, letzter
+     Stand vom alten Geraet, naechste Schritte und eventuelle
+     Wechselprobleme.
+- `2222`: Projekt lokal speichern, ohne GitHub-Push und ohne Firebase-Deploy.
+  Ablauf:
+  1. Relevante Checks ausfuehren, mindestens `npm --prefix app run build`.
+  2. `git status` und `git diff --stat` pruefen.
+  3. Sinnvolle Aenderungen committen.
+  4. Nicht pushen und nicht deployen.
 - Wenn Niklas allein `3333` schreibt, bedeutet das: aktuellen Stand bauen,
-  auf GitHub pushen und nach Firebase deployen.
+  lokal speichern/committen, auf GitHub pushen und nach Firebase deployen.
+  Danach ist das Projekt an das jeweils andere Geraet uebergeben. Beispiel:
+  auf Mac Studio entwickeln -> `3333` -> auf MacBook Pro `1111`; oder
+  auf MacBook Pro entwickeln -> `3333` -> auf Mac Studio `1111`, damit die
+  dort laufenden Agents den neuen Code erhalten.
+  Vor dem Commit muss Codex `docs/working_memory.md` und bei Geraetewechseln
+  `docs/device_switch_log.md` aktualisieren.
 
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-13 22:47 CEST
+- Datum: 2026-06-20 CEST
 - Quelle: Lokale Codex-Session, Agent-Audit und UI-Arbeit auf `localhost`
-- Status: Nicht pushen/deployen waehrend Entwicklung; Agenten lokal geprueft
+- Status: Geraetewechsel-Regeln und Zahlencodes liegen zentral in
+  `docs/device_workflow.md`; Standardpfad auf Mac Studio und MacBook Pro ist
+  `/Users/niklaskofler/Documents/finanztool`; Nicht pushen/deployen waehrend
+  Entwicklung; Agenten lokal geprueft
   und repariert; Ginmon-Live-Stand hat 3 Depots/26 Positionen; Health ist
   `OK`; `sourceAccounts` erkennt neue oder verschwundene Depots/Konten;
   Ginmon-Datenvertrag ergaenzt; alle aktuell per Portal-API sichtbaren

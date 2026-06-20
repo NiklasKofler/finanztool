@@ -60,21 +60,21 @@ und dort wieder importiert werden.
 Auf dem MacBook:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run secrets:export
 ```
 
 Die Datei liegt danach standardmaessig hier:
 
 ```text
-/Users/niklaskofler/Documents/Finanztool/automation/runtime/secrets/finanztool-keychain-secrets.enc
+/Users/niklaskofler/Documents/finanztool/automation/runtime/secrets/finanztool-keychain-secrets.enc
 ```
 
 Diese verschluesselte Datei auf den Mac Studio kopieren, z. B. ueber iCloud
 Drive. Auf dem Mac Studio dann:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run secrets:import
 npm run secrets:list
 ```
@@ -158,7 +158,7 @@ API-Key in der Web-Plattform erzeugen:
 Zugangsdaten lokal im macOS-Schluesselbund speichern:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run setup:capitalcom
 ```
 
@@ -191,7 +191,7 @@ Vorsorgekasse samt Stichtag nach `sourceSummaries/vbv` geschrieben.
 Einmalig Zugangsdaten lokal im macOS-Schluesselbund speichern:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run setup:vbv
 ```
 
@@ -222,7 +222,7 @@ liegen im macOS-Schluesselbund, die Session-TAN bleibt deaktiviert.
 Einmalig Zugangsdaten lokal hinterlegen:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run setup:flatex
 ```
 
@@ -342,7 +342,7 @@ Die Dateien landen hier:
 Trockenlauf ohne Firestore-Schreibzugriff:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 npm --prefix automation run reconcile:traderepublic-mail -- --no-firestore
 ```
 
@@ -350,7 +350,7 @@ PDFs verarbeiten, neue Dokumente auf Positionen anwenden und danach Kurse
 aktualisieren:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 npm --prefix automation run sync:traderepublic-mail
 ```
 

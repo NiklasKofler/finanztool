@@ -8,7 +8,7 @@ dauerhafter Import-Knoten und schreibt aktuelle Finanzdaten nach Firestore.
 ## 0. Vor jeder Codex-Session am Mac Studio
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 git pull
 ```
 
@@ -23,13 +23,13 @@ Dann zuerst lesen:
 Standardpfad auf MacBook und Mac Studio:
 
 ```text
-/Users/niklaskofler/Documents/Finanztool
+/Users/niklaskofler/Documents/finanztool
 ```
 
 Automation:
 
 ```text
-/Users/niklaskofler/Documents/Finanztool/automation
+/Users/niklaskofler/Documents/finanztool/automation
 ```
 
 Google-Drive-Depotordner:
@@ -43,7 +43,7 @@ Google-Drive-Depotordner:
 ### 2.1 Dependencies
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 npm run install:all
 ```
 
@@ -74,14 +74,14 @@ finanzperformance-tool
 Auf dem MacBook:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run secrets:export
 ```
 
 Die erzeugte Datei:
 
 ```text
-/Users/niklaskofler/Documents/Finanztool/automation/runtime/secrets/finanztool-keychain-secrets.enc
+/Users/niklaskofler/Documents/finanztool/automation/runtime/secrets/finanztool-keychain-secrets.enc
 ```
 
 per iCloud/Drive auf den Mac Studio kopieren.
@@ -89,7 +89,7 @@ per iCloud/Drive auf den Mac Studio kopieren.
 Auf dem Mac Studio:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run secrets:import
 npm run secrets:list
 ```
@@ -112,7 +112,7 @@ npm run setup:vbv
 Im Ordner `automation` ausfuehren:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run check:bitget
 npm run check:capitalcom
 npm run reconcile:quotes -- --max-instruments=5
@@ -134,7 +134,7 @@ npm run reconcile:vbv
 Wenn Smoke-Tests plausibel sind:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool/automation
+cd /Users/niklaskofler/Documents/finanztool/automation
 npm run install:all-agents
 ```
 
@@ -247,7 +247,7 @@ Firestore-Kontrolle in der App:
 Deployment vom MacBook oder Mac Studio:
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 firebase deploy --only hosting,firestore:rules
 ```
 
@@ -266,7 +266,7 @@ Firestore Rules erlauben:
 ## 8. Nach jeder groesseren Session
 
 ```bash
-cd /Users/niklaskofler/Documents/Finanztool
+cd /Users/niklaskofler/Documents/finanztool
 git status
 git add .
 git commit -m "..."
