@@ -41,6 +41,8 @@ Commit/Stand: Ausgangscommit `1f659c5`; Handoff-Commit wird in diesem
 Aktion: MacBook-Pro-Stand bauen, Uebergabe dokumentieren, auf GitHub pushen
 und Firebase deployen
 Erledigt:
+- Handoff-Commit `f054467` auf GitHub gepusht
+- Firebase Deploy am 2026-06-20 18:43 CEST erfolgreich ausgefuehrt
 - Projekt auf dem MacBook Pro per `1111` von GitHub aktualisiert
 - Pflichtdokumente gelesen und aktiver Stand uebernommen
 - Node `22.23.0` per `nvm use` fuer Build verwendet
@@ -67,6 +69,9 @@ Wechselprobleme:
   werden
 - Ein LaunchAgent `com.niklas.finanztool.bitget-import` war auf dem MacBook
   Pro sichtbar; produktive Agenten sollen aber auf dem Mac Studio laufen
+- `npx firebase-tools` `15.22.0` scheiterte wiederholt mit `Premature close`;
+  der Deploy war mit der lokal installierten Firebase CLI `14.9.0`
+  erfolgreich
 Lokale Besonderheiten:
 - `app/.env.local` ist auf dem MacBook Pro vorhanden
 - Google-Drive-Depotordner sind auf dem MacBook Pro erreichbar

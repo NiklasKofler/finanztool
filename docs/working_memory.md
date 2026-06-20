@@ -96,7 +96,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - Firebase-Projekt: `finanzperformance-tool`
 - Hosting URL: `https://finanzperformance-tool.web.app`
-- Letzter Deploy: 2026-06-20 17:48 CEST, Hosting, Firestore Rules/Indexes
+- Letzter Deploy: 2026-06-20 18:43 CEST, Hosting, Firestore Rules/Indexes
   und Storage Rules
 - Firestore Database ist erstellt
 - Firebase Hosting ist konfiguriert
@@ -111,7 +111,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Stand: 2026-06-20 18:38 CEST
 - Aktion: `3333` vom MacBook Pro Richtung Mac Studio
 - Ausgangscommit: `1f659c5`
-- Vorheriger Firebase Deploy: 2026-06-20 17:48 CEST erfolgreich
+- Handoff-Commit: `f054467`
+- Firebase Deploy: 2026-06-20 18:43 CEST erfolgreich
 - Inhalt:
   - MacBook Pro hat `1111` erfolgreich ausgefuehrt
   - Projekt liegt im Standardpfad
@@ -134,6 +135,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
     `missing field sandboxPolicy` nicht automatisiert geoeffnet werden
   - auf dem MacBook Pro war ein Bitget-LaunchAgent sichtbar, soll aber dort
     nicht produktiv betrieben werden
+  - `npx firebase-tools` `15.22.0` scheiterte mit `Premature close`; Deploy
+    mit lokal installierter Firebase CLI `14.9.0` war erfolgreich
 
 ## Fachlich bereits umgesetzt
 
