@@ -96,7 +96,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - Firebase-Projekt: `finanzperformance-tool`
 - Hosting URL: `https://finanzperformance-tool.web.app`
-- Letzter Deploy: 2026-06-13 20:30 CEST, Hosting, Firestore Rules/Indexes
+- Letzter Deploy: 2026-06-20 17:48 CEST, Hosting, Firestore Rules/Indexes
   und Storage Rules
 - Firestore Database ist erstellt
 - Firebase Hosting ist konfiguriert
@@ -111,6 +111,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Stand: 2026-06-20 17:47 CEST
 - Aktion: `3333` vom Mac Studio Richtung MacBook Pro
 - Ausgangscommit: `0c65ab4`
+- Handoff-Commit: `1f659c5`
+- Firebase Deploy: 2026-06-20 17:48 CEST erfolgreich
 - Inhalt: Geraetewechsel-Regeln, Zahlencodes, Wechselprotokoll und
   Startprompt fuer neue Codex-Sessions dokumentiert
 - Naechster Schritt auf dem MacBook Pro: Projekt mit dem Erstprompt aus

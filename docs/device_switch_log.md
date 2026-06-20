@@ -36,8 +36,8 @@ Lokale Besonderheiten:
 Datum/Zeit: 2026-06-20 17:47 CEST
 Quellgeraet: Mac Studio von Niklas
 Zielgeraet: MacBook Pro
-Commit/Stand: Ausgangscommit `0c65ab4`; Handoff-Commit wird in diesem
-`3333`-Lauf erstellt
+Commit/Stand: Ausgangscommit `0c65ab4`; Handoff-Commit `1f659c5`;
+Firebase Deploy erfolgreich am 2026-06-20 17:48 CEST
 Aktion: Projektstand fuer Geraetewechsel dokumentieren, bauen, auf GitHub
 pushen und Firebase deployen
 Erledigt:
@@ -45,6 +45,7 @@ Erledigt:
 - Wechselprotokoll `docs/device_switch_log.md` angelegt
 - README und Working Memory verweisen auf `device_workflow` und
   `device_switch_log`
+- Build, GitHub-Push und Firebase Deploy wurden erfolgreich ausgefuehrt
 - Standardpfad auf beiden Geraeten bleibt:
   `/Users/niklaskofler/Documents/finanztool`
 - Zahlencodes gelten auf beiden Geraeten gleich:
