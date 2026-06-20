@@ -108,18 +108,32 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-20 17:47 CEST
-- Aktion: `3333` vom Mac Studio Richtung MacBook Pro
-- Ausgangscommit: `0c65ab4`
-- Handoff-Commit: `1f659c5`
-- Firebase Deploy: 2026-06-20 17:48 CEST erfolgreich
-- Inhalt: Geraetewechsel-Regeln, Zahlencodes, Wechselprotokoll und
-  Startprompt fuer neue Codex-Sessions dokumentiert
-- Naechster Schritt auf dem MacBook Pro: Projekt mit dem Erstprompt aus
-  `docs/device_workflow.md` starten und `1111` ausfuehren lassen
-- Wichtig: Codex muss nach `1111` kurz melden, welcher Commit aktiv ist, wo
-  am Mac Studio aufgehoert wurde und ob lokale Secrets/Agents fehlen oder
-  bewusst nicht laufen
+- Stand: 2026-06-20 18:38 CEST
+- Aktion: `3333` vom MacBook Pro Richtung Mac Studio
+- Ausgangscommit: `1f659c5`
+- Vorheriger Firebase Deploy: 2026-06-20 17:48 CEST erfolgreich
+- Inhalt:
+  - MacBook Pro hat `1111` erfolgreich ausgefuehrt
+  - Projekt liegt im Standardpfad
+    `/Users/niklaskofler/Documents/finanztool`
+  - App-Build mit Node `22.23.0` war erfolgreich
+  - Projektordner wurde in Visual Studio Code geoeffnet
+  - keine produktiven Mac-Studio-Agents wurden auf dem MacBook Pro gestartet
+- Naechster Schritt auf dem Mac Studio:
+  - `1111` ausfuehren
+  - lokale Secrets/Env-Dateien pruefen
+  - `npm --prefix automation run sync:health` ausfuehren
+  - `launchctl list | grep finanztool` pruefen
+  - produktive Agents nur auf dem Mac Studio installieren oder neu starten
+- Bekannte Wechselpunkte:
+  - `automation/.env` und `secrets/firebase-service-account.json` fehlen auf
+    dem MacBook Pro lokal
+  - ohne `nvm use` nutzt die MacBook-Pro-Shell Node `20.19.3`; fuer
+    Agenten/PDF-Tooling ist Node 22 erforderlich
+  - der interne Codex-Browser konnte auf dem MacBook Pro wegen
+    `missing field sandboxPolicy` nicht automatisiert geoeffnet werden
+  - auf dem MacBook Pro war ein Bitget-LaunchAgent sichtbar, soll aber dort
+    nicht produktiv betrieben werden
 
 ## Fachlich bereits umgesetzt
 

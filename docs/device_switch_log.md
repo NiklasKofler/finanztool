@@ -31,6 +31,46 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-20 18:38 CEST - 3333 Handoff MacBook Pro zu Mac Studio
+
+Datum/Zeit: 2026-06-20 18:38 CEST
+Quellgeraet: MacBook Pro
+Zielgeraet: Mac Studio von Niklas
+Commit/Stand: Ausgangscommit `1f659c5`; Handoff-Commit wird in diesem
+`3333`-Lauf erstellt
+Aktion: MacBook-Pro-Stand bauen, Uebergabe dokumentieren, auf GitHub pushen
+und Firebase deployen
+Erledigt:
+- Projekt auf dem MacBook Pro per `1111` von GitHub aktualisiert
+- Pflichtdokumente gelesen und aktiver Stand uebernommen
+- Node `22.23.0` per `nvm use` fuer Build verwendet
+- App-Build erfolgreich ausgefuehrt
+- Projektordner in Visual Studio Code geoeffnet:
+  `/Users/niklaskofler/Documents/finanztool`
+- Kein produktiver Mac-Studio-Agent wurde auf dem MacBook Pro gestartet
+Naechste Schritte:
+- Auf dem Mac Studio `1111` ausfuehren
+- Danach pruefen:
+  - lokale Secrets/Env-Dateien
+  - `npm --prefix automation run sync:health`
+  - `launchctl list | grep finanztool`
+- Danach nur auf dem Mac Studio die produktiven Agents installieren oder neu
+  starten, falls der Code-/Template-Stand es verlangt
+Wechselprobleme:
+- `automation/.env` und `secrets/firebase-service-account.json` fehlen auf
+  dem MacBook Pro lokal; das ist fuer Entwicklung ok, aber nicht fuer
+  lokale Agent-/Admin-Syncs
+- Die Shell auf dem MacBook Pro nutzt ohne `nvm use` weiterhin Node `20.19.3`;
+  fuer Agenten/PDF-Tooling ist Node 22 erforderlich
+- Der interne Codex-Browser konnte auf dem MacBook Pro wegen eines
+  Pluginfehlers `missing field sandboxPolicy` nicht automatisiert geoeffnet
+  werden
+- Ein LaunchAgent `com.niklas.finanztool.bitget-import` war auf dem MacBook
+  Pro sichtbar; produktive Agenten sollen aber auf dem Mac Studio laufen
+Lokale Besonderheiten:
+- `app/.env.local` ist auf dem MacBook Pro vorhanden
+- Google-Drive-Depotordner sind auf dem MacBook Pro erreichbar
+
 ### 2026-06-20 17:47 CEST - 3333 Handoff Mac Studio zu MacBook Pro
 
 Datum/Zeit: 2026-06-20 17:47 CEST
