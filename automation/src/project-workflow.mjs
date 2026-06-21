@@ -44,6 +44,7 @@ function run(cmd, cmdArgs = [], options = {}) {
     stdio: options.capture ? "pipe" : "inherit",
     encoding: "utf8",
     shell: false,
+    env: options.env ? { ...process.env, ...options.env } : process.env,
   });
 
   if (result.error) {
@@ -371,13 +372,17 @@ function firebaseDeploy() {
   const firebasePath = existsSync(preferred) ? preferred : capture("command -v firebase 2>/dev/null");
   const command = firebasePath || "npx";
   const args = firebasePath ? deployArgs : ["firebase-tools", ...deployArgs];
+  const nodeOptions = process.env.NODE_OPTIONS?.includes("--dns-result-order=ipv4first")
+    ? process.env.NODE_OPTIONS
+    : [process.env.NODE_OPTIONS, "--dns-result-order=ipv4first"].filter(Boolean).join(" ");
+  const env = { NODE_OPTIONS: nodeOptions };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (attempt > 1) {
       console.log(`Firebase Deploy Versuch ${attempt}/${maxAttempts} nach kurzem Retry...`);
     }
 
-    const result = run(command, args, { allowFailure: true });
+    const result = run(command, args, { allowFailure: true, env });
     if (result.status === 0) return;
     if (attempt < maxAttempts) run("sleep", [String(attempt * 3)], { allowFailure: true });
   }
