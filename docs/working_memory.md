@@ -123,12 +123,12 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-21 19:01 CEST
-- Aktion: `ftu` vom MacBook Pro Richtung Mac Studio von Niklas
-- Ausgangscommit: `1bbd429`
-- Handoff-Commit: `d1fff3c`
-- Firebase Deploy: 2026-06-21 19:01 CEST erfolgreich
-- Naechster Schritt auf Mac Studio von Niklas: `ftd` ausfuehren
+- Stand: 2026-06-21 19:40 CEST
+- Aktion: `ftu` vom Mac Studio von Niklas Richtung MacBook Pro
+- Ausgangscommit: `4de12e8`
+- Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
+- Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
   - Mac Studio bleibt produktiver Agent-Knoten
