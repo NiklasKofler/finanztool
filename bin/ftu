@@ -12,5 +12,23 @@ if [[ ! -x "$FIREBASE_BIN" ]]; then
   FIREBASE_BIN="$(command -v firebase)"
 fi
 
-NODE_OPTIONS="--dns-result-order=ipv4first" "$FIREBASE_BIN" deploy --only hosting --project finanzperformance-tool
+DEPLOY_OK=0
+for ATTEMPT in 1 2 3 4 5; do
+  if [[ "$ATTEMPT" -gt 1 ]]; then
+    echo "Firebase Deploy Versuch $ATTEMPT/5 nach Retry..."
+  fi
+
+  if NODE_OPTIONS="--dns-result-order=ipv4first" "$FIREBASE_BIN" deploy --only hosting --project finanzperformance-tool; then
+    DEPLOY_OK=1
+    break
+  fi
+
+  sleep $((ATTEMPT * 5))
+done
+
+if [[ "$DEPLOY_OK" -ne 1 ]]; then
+  echo "FEHLER: Firebase Deploy ist nach 5 Versuchen fehlgeschlagen." >&2
+  exit 1
+fi
+
 exec node automation/src/project-workflow.mjs upload-finalize
