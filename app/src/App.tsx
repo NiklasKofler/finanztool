@@ -246,6 +246,10 @@ function getSourceDisplayValue(source: SourceOverview) {
   return source.netValue ?? source.currentValue;
 }
 
+function getSourceDepotDisplayValue(source: SourceOverview) {
+  return source.depotValue ?? source.currentValue ?? source.netValue;
+}
+
 function sourceUsesAuthoritativeSummary(sourceId: string) {
   return sourceId === "bitget";
 }
@@ -907,7 +911,7 @@ function App() {
                     <dl className="source-card__metrics">
                       <div>
                         <dt>Depotwert</dt>
-                        <dd>{privacyMode ? maskMoney(getSourceDisplayValue(source)) : formatCurrency(getSourceDisplayValue(source))}</dd>
+                        <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
                       </div>
                       <div>
                         <dt>Cash</dt>
