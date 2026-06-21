@@ -1,6 +1,7 @@
 automation/.env
 secrets/
 app/.env.local
+.firebase/
 automation/node_modules/
 automation/runtime/
 .DS_Store
