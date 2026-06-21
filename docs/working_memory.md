@@ -59,9 +59,14 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   muss das Terminal in `/Users/niklaskofler/Documents/finanztool` stehen.
   Wird nur `bin/ftd` als Script ausgefuehrt, kann es das Terminal-Verzeichnis
   nach dem Ende technisch nicht dauerhaft aendern.
+- Der Projektpfad muss exakt `/Users/niklaskofler/Documents/finanztool` sein.
+  Alte Checkouts wie `/Users/niklaskofler/Documents/Finanztool` duerfen fuer
+  die Kurzbefehle nicht benutzt werden.
 - Alte numerische Befehle sind deaktiviert.
 - Sicherheitsregeln:
   - `ftd` ueberschreibt keine lokalen Aenderungen.
+  - Bei auseinander gelaufenen lokalen/remote Commits erstellt `ftd` einen
+    Backup-Branch und rebasiert lokale Commits auf `origin/main`.
   - `ftd --force` ist der bewusste Notfall-Download mit Backup-Branch und
     Datei-Backup.
   - `ftu` prueft vor dem Commit, ob GitHub neuer ist, und bricht dann ab.

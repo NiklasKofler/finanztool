@@ -13,6 +13,11 @@ Das Projekt soll auf beiden Geraeten am gleichen Pfad liegen:
 /Users/niklaskofler/Documents/finanztool
 ```
 
+Der Pfad ist bewusst kleingeschrieben. Ein alter oder abweichender Checkout wie
+`/Users/niklaskofler/Documents/Finanztool` ist nicht zulaessig, weil dann alte
+Kurzbefehle und alte Deploy-Logik laufen koennen. Die Kurzbefehle brechen
+kuenftig ab, wenn sie nicht aus dem Standardpfad gestartet wurden.
+
 GitHub ist die Code-Uebergabe zwischen den Geraeten.
 Firebase ist die produktive App-/Datenbank-Umgebung.
 Der Mac Studio ist der produktive Agent-Knoten.
@@ -100,6 +105,9 @@ Wichtig fuer alle Kurzbefehle:
 - `ftd` ueberschreibt keine lokalen Aenderungen. Wenn lokale Aenderungen,
   ein Merge, ein Rebase oder ein anderer Git-Zwischenzustand vorhanden ist,
   bricht `ftd` ab.
+- Wenn lokaler Stand und GitHub auseinander gelaufen sind, erstellt `ftd`
+  einen Backup-Branch `backup/ftd-diverged-*` und setzt lokale Commits per
+  Rebase auf `origin/main`. Es wird dabei kein lokaler Commit geloescht.
 - `ftd --force` ist der bewusste Notfall-Download. Dabei wird vorher ein
   Backup-Branch unter `backup/ftd-force-*` angelegt und lokale geaenderte
   Dateien werden nach `automation/runtime/force-download-backups/*`

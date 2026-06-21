@@ -73,6 +73,10 @@ Das Projekt soll auf Mac Studio und MacBook Pro gleich liegen:
 /Users/niklaskofler/Documents/finanztool
 ```
 
+Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
+`/Users/niklaskofler/Documents/Finanztool` duerfen nicht mehr fuer `ftd`,
+`fts` oder `ftu` verwendet werden.
+
 ## Produktiv umgesetzt
 
 - Firestore-Live-Daten werden in der App geladen.

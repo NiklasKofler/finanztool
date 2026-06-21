@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
+const expectedRepoRoot = "/Users/niklaskofler/Documents/finanztool";
 const handoffStatePath = path.join(repoRoot, "automation/runtime/ftu-handoff-state.json");
 const backupRoot = path.join(repoRoot, "automation/runtime/force-download-backups");
 const commandName = path.basename(process.argv[1]);
@@ -40,6 +41,8 @@ if (rawCommand === "--help" || rawCommand === "-h" || args.includes("--help") ||
   process.exit(0);
 }
 
+ensureStandardRepoPath();
+
 function section(title) {
   console.log(`\n== ${title} ==`);
 }
@@ -47,6 +50,21 @@ function section(title) {
 function fail(message, code = 1) {
   console.error(`\nFEHLER: ${message}`);
   process.exit(code);
+}
+
+function ensureStandardRepoPath() {
+  if (repoRoot === expectedRepoRoot) return;
+
+  fail(
+    [
+      `Dieser Kurzbefehlslauf kommt aus dem falschen Projektpfad: ${repoRoot}`,
+      `Erlaubter Standardpfad ist: ${expectedRepoRoot}`,
+      "Bitte auf diesem Geraet die Kurzbefehle aus dem Standardprojekt neu installieren:",
+      `cd ${expectedRepoRoot}`,
+      "npm run ft:install",
+      "source ~/.zshrc",
+    ].join("\n"),
+  );
 }
 
 function run(cmd, cmdArgs = [], options = {}) {
@@ -163,6 +181,35 @@ function ensureRemoteIsIncluded() {
       "GitHub ist neuer oder die Historie ist auseinander gelaufen. Bitte zuerst `ftd` ausfuehren; bei bewusstem Reset `ftd --force`.",
     );
   }
+}
+
+function reconcileWithRemoteForDownload() {
+  git(["fetch", "origin", "--prune"]);
+
+  const head = gitRev("HEAD");
+  const remote = gitRev("origin/main");
+
+  if (head === remote) {
+    console.log("GitHub und lokaler Stand sind bereits identisch.");
+    return;
+  }
+
+  if (isAncestor(head, remote)) {
+    console.log("GitHub ist neuer. Lokaler Stand wird per Fast-Forward aktualisiert.");
+    git(["merge", "--ff-only", "origin/main"]);
+    return;
+  }
+
+  if (isAncestor(remote, head)) {
+    console.log("Lokaler Stand ist bereits vor GitHub. Es gibt nichts herunterzuladen.");
+    return;
+  }
+
+  const backupBranch = `backup/ftd-diverged-${timestampId()}`;
+  git(["branch", backupBranch, "HEAD"]);
+  console.log(`GitHub und lokaler Stand sind auseinander gelaufen. Backup-Branch: ${backupBranch}`);
+  console.log("Lokale Commits werden jetzt per Rebase auf origin/main gesetzt.");
+  git(["rebase", "origin/main"]);
 }
 
 function writeHandoffState(state) {
@@ -383,8 +430,7 @@ function runDownload() {
     ensureNormalGitState();
     ensureCleanWorkingTree();
   }
-  git(["fetch", "origin", "--prune"]);
-  git(["pull", "--ff-only", "origin", "main"]);
+  reconcileWithRemoteForDownload();
   installDependenciesAndBuild();
 
   const device = getDevice();
