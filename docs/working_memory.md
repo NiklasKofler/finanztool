@@ -125,7 +125,7 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - Stand: 2026-06-21 18:49 CEST
 - Aktion: `ftu` vom MacBook Pro Richtung Mac Studio von Niklas
-- Ausgangscommit: `2ff76f0`
+- Ausgangscommit: `4215bf0`
 - Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
 - Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
 - Naechster Schritt auf Mac Studio von Niklas: `ftd` ausfuehren
