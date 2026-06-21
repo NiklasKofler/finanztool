@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
+const handoffStatePath = path.join(repoRoot, "automation/runtime/ftu-handoff-state.json");
 const commandName = path.basename(process.argv[1]);
 const rawCommand = process.argv[2] ?? commandName;
 const args = process.argv.slice(3);
@@ -24,6 +25,8 @@ const commandAliases = {
   ftu: "upload",
   upload: "upload",
   u: "upload",
+  "upload-pre": "upload-pre",
+  "upload-finalize": "upload-finalize",
   context: "context",
 };
 
@@ -70,6 +73,21 @@ function shell(commandLine, options = {}) {
   return run("zsh", ["-lc", commandLine], options);
 }
 
+function formatViennaTime() {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Vienna",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  })
+    .format(new Date())
+    .replace("GMT+2", "CEST")
+    .replace("GMT+1", "CET");
+}
+
 function runWithProjectNode(commandLine, options = {}) {
   return shell(`source ~/.zshrc >/dev/null 2>&1 || true; nvm use >/dev/null; ${commandLine}`, options);
 }
@@ -88,6 +106,20 @@ function gitOutput(args) {
 
 function gitStatusPorcelain() {
   return gitOutput(["status", "--porcelain"]);
+}
+
+function writeHandoffState(state) {
+  mkdirSync(path.dirname(handoffStatePath), { recursive: true });
+  writeFileSync(handoffStatePath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function readHandoffState() {
+  if (!existsSync(handoffStatePath)) return null;
+  try {
+    return JSON.parse(readFileSync(handoffStatePath, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function ensureCleanWorkingTree() {
@@ -262,19 +294,7 @@ function runSave() {
 }
 
 function updateHandoffDocs({ phase, source, target, baseCommit, handoffCommit, deployTime }) {
-  const now = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Vienna",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  })
-    .format(new Date())
-    .replace(" ", " ")
-    .replace("GMT+2", "CEST")
-    .replace("GMT+1", "CET");
+  const now = formatViennaTime();
 
   const switchPath = path.join(repoRoot, "docs/device_switch_log.md");
   const memoryPath = path.join(repoRoot, "docs/working_memory.md");
@@ -388,8 +408,8 @@ function firebaseDeploy() {
   fail(`${command} ${args.join(" ")} ist nach ${maxAttempts} Versuchen fehlgeschlagen`);
 }
 
-function runUpload() {
-  section("ftu / Upload");
+function runUploadPrepare() {
+  section("ftu / Upload vorbereiten");
   const device = getDevice();
   const source = device.computerName;
   const target = targetFor(device);
@@ -418,23 +438,20 @@ function runUpload() {
   git(["push", "origin", "main"]);
 
   const handoffCommit = gitOutput(["rev-parse", "--short", "HEAD"]);
-
+  writeHandoffState({ source, target, baseCommit, handoffCommit });
   section("Firebase Deploy");
-  firebaseDeploy();
+  console.log("Vorbereitung abgeschlossen. Firebase Deploy wird vom Shell-Wrapper ausgefuehrt.");
+}
 
-  const deployTime = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Vienna",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  })
-    .format(new Date())
-    .replace("GMT+2", "CEST")
-    .replace("GMT+1", "CET");
-
+function runUploadFinalize() {
+  section("ftu / Upload abschliessen");
+  const device = getDevice();
+  const state = readHandoffState() ?? {};
+  const source = state.source ?? device.computerName;
+  const target = state.target ?? targetFor(device);
+  const baseCommit = state.baseCommit ?? gitOutput(["rev-parse", "--short", "HEAD"]);
+  const handoffCommit = state.handoffCommit ?? gitOutput(["rev-parse", "--short", "HEAD"]);
+  const deployTime = formatViennaTime();
   updateHandoffDocs({ phase: "deployed", source, target, baseCommit, handoffCommit, deployTime });
 
   if (gitStatusPorcelain()) {
@@ -450,6 +467,13 @@ function runUpload() {
   console.log(`Naechster Schritt auf ${target}: ftd`);
 }
 
+function runUpload() {
+  runUploadPrepare();
+  section("Firebase Deploy");
+  firebaseDeploy();
+  runUploadFinalize();
+}
+
 if (!command) {
   console.log("Nutzung: ftd | fts [commit-message] | ftu [commit-message]");
   process.exit(0);
@@ -459,4 +483,6 @@ if (command === "context") printContext();
 else if (command === "download") runDownload();
 else if (command === "save") runSave();
 else if (command === "upload") runUpload();
+else if (command === "upload-pre") runUploadPrepare();
+else if (command === "upload-finalize") runUploadFinalize();
 else fail(`Unbekannter Workflow: ${rawCommand}`);

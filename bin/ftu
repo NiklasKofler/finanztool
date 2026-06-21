@@ -5,4 +5,12 @@ REPO="/Users/niklaskofler/Documents/finanztool"
 cd "$REPO"
 source "$HOME/.zshrc" >/dev/null 2>&1 || true
 nvm use >/dev/null
-exec node automation/src/project-workflow.mjs upload "$@"
+node automation/src/project-workflow.mjs upload-pre "$@"
+
+FIREBASE_BIN="$HOME/.nvm/versions/node/v20.19.3/bin/firebase"
+if [[ ! -x "$FIREBASE_BIN" ]]; then
+  FIREBASE_BIN="$(command -v firebase)"
+fi
+
+NODE_OPTIONS="--dns-result-order=ipv4first" "$FIREBASE_BIN" deploy --only hosting --project finanzperformance-tool
+exec node automation/src/project-workflow.mjs upload-finalize
