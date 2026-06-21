@@ -123,9 +123,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-21 18:54 CEST
+- Stand: 2026-06-21 18:56 CEST
 - Aktion: `ftu` vom MacBook Pro Richtung Mac Studio von Niklas
-- Ausgangscommit: `d8b450c`
+- Ausgangscommit: `3d2f705`
 - Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
 - Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
 - Naechster Schritt auf Mac Studio von Niklas: `ftd` ausfuehren
