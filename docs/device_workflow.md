@@ -63,6 +63,35 @@ cd /Users/niklaskofler/Documents/finanztool
 Die Zahlencodes gelten auf Mac Studio und MacBook Pro gleich, wenn Niklas sie
 allein schreibt.
 
+## Kurzbefehle
+
+Die bevorzugten Kurzbefehle sind:
+
+```bash
+ftd   # download: frueher 1111
+fts   # save:     frueher 2222
+ftu   # upload:   frueher 3333
+```
+
+Installation pro Geraet:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool
+npm run ft:install
+source ~/.zshrc
+```
+
+Die alten Chat-Codes bleiben als Bedeutung erhalten:
+
+- `1111` = `ftd`
+- `2222` = `fts`
+- `3333` = `ftu`
+
+Die Kurzbefehle lesen den Projektkontext aus dem Repo, pruefen das aktuelle
+Geraet und fuehren die passende Rolle aus. Auf dem MacBook Pro werden keine
+produktiven Studio-Agents gestartet. Auf dem Mac Studio fuehrt `ftd` zusaetzlich
+Agent-Installation/Health-Checks aus.
+
 Wichtig fuer alle Zahlencodes:
 
 - zuerst den aktuellen Projektstand pruefen, nicht blind ausfuehren
@@ -77,6 +106,12 @@ Wichtig fuer alle Zahlencodes:
 ### 1111
 
 Projekt auf der aktuellen Maschine richtig herunterladen/aktualisieren.
+
+Neuer Kurzmodus:
+
+```bash
+ftd
+```
 
 Ablauf:
 
@@ -111,14 +146,20 @@ Zusatz auf MacBook Pro:
 
 Nach erfolgreichem `1111` muss Codex kurz zusammenfassen:
 
-- letzter dokumentierter Arbeitsstand aus `docs/working_memory.md`
 - letzter Geraetewechsel-Eintrag aus `docs/device_switch_log.md`
+- kurzer Arbeitsstand aus `docs/working_memory.md`
 - naechster empfohlener Schritt
 - ob lokale Secrets/Agents auf diesem Geraet fehlen oder bewusst nicht laufen
 
 ### 2222
 
 Projekt lokal speichern, aber nicht uebergeben.
+
+Neuer Kurzmodus:
+
+```bash
+fts "optionale Commit Message"
+```
 
 Ablauf:
 
@@ -142,6 +183,12 @@ Geraet bekommt ihn erst nach `3333`.
 ### 3333
 
 Projekt hochladen, Firebase deployen und an das andere Geraet uebergeben.
+
+Neuer Kurzmodus:
+
+```bash
+ftu "optionale Commit Message"
+```
 
 Ablauf:
 
@@ -177,8 +224,9 @@ Uebergabe-Beispiele:
 
 Bei `3333` muss Codex vor dem Commit die Arbeitsdoku aktualisieren:
 
-- `docs/working_memory.md`
 - `docs/device_switch_log.md`
+- `docs/working_memory.md` nur als kurze Orientierung, nicht als zweite
+  Handoff-Wahrheit
 - falls betroffen: README oder fachliche Konzept-/Runbook-Dateien
 
 Der `docs/device_switch_log.md`-Eintrag muss enthalten:
@@ -290,10 +338,10 @@ lokalen Aenderungen. Gib mir danach kurz Feedback:
    laufen sollen?
 
 Merke dir fuer diesen Chat die Projektcodes:
-1111 = Projekt herunterladen/aktualisieren
-2222 = lokal speichern/committen
-3333 = bauen, GitHub pushen, Firebase deployen und an das andere Geraet
-       uebergeben
+1111 bzw. ftd = Projekt herunterladen/aktualisieren
+2222 bzw. fts = lokal speichern/committen
+3333 bzw. ftu = bauen, GitHub pushen, Firebase deployen und an das andere
+                Geraet uebergeben
 ```
 
 ## Was immer dokumentiert werden muss

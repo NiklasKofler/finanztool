@@ -37,9 +37,18 @@ docs/device_switch_log.md
 
 Kurzlogik:
 
-- `1111`: Projekt auf aktueller Maschine herunterladen/aktualisieren.
-- `2222`: Projekt nur lokal speichern/committen.
-- `3333`: Projekt bauen, auf GitHub pushen und Firebase deployen.
+- `ftd`: Projekt auf aktueller Maschine herunterladen/aktualisieren
+  (`1111`).
+- `fts`: Projekt nur lokal speichern/committen (`2222`).
+- `ftu`: Projekt bauen, auf GitHub pushen und Firebase deployen (`3333`).
+
+Kurzbefehle pro Geraet installieren:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool
+npm run ft:install
+source ~/.zshrc
+```
 
 Nach `1111` muss Codex kurz melden, welcher Stand aktiv ist, wo am alten
 Geraet aufgehoert wurde, welche naechsten Schritte geplant sind und ob
@@ -247,6 +256,20 @@ App lokal starten:
 
 ```bash
 npm run dev
+```
+
+Kurzbefehle installieren:
+
+```bash
+npm run ft:install
+```
+
+Geraete-Workflow:
+
+```bash
+ftd
+fts "Commit Message"
+ftu "Commit Message"
 ```
 
 App bauen:

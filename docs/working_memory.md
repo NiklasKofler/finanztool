@@ -49,6 +49,12 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   Geraetewechsel nicht den Kontext verliert.
 - Wenn beim Wechsel zwischen Mac Studio und MacBook Pro ein Problem auftritt,
   muss Codex es in `docs/device_switch_log.md` festhalten.
+- Die bevorzugten Terminal-Kurzbefehle sind:
+  - `ftd` = Download/Update, entspricht `1111`
+  - `fts` = Save/lokaler Commit, entspricht `2222`
+  - `ftu` = Upload/Push/Firebase Deploy/Handoff, entspricht `3333`
+- Installation der Kurzbefehle pro Geraet:
+  `npm run ft:install`
 
 ## Rollen der Geraete
 
@@ -117,35 +123,18 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-20 18:38 CEST
-- Aktion: `3333` vom MacBook Pro Richtung Mac Studio
-- Ausgangscommit: `1f659c5`
-- Handoff-Commit: `f054467`
-- Firebase Deploy: 2026-06-20 18:43 CEST erfolgreich
-- Inhalt:
-  - MacBook Pro hat `1111` erfolgreich ausgefuehrt
-  - Projekt liegt im Standardpfad
-    `/Users/niklaskofler/Documents/finanztool`
-  - App-Build mit Node `22.23.0` war erfolgreich
-  - Projektordner wurde in Visual Studio Code geoeffnet
-  - keine produktiven Mac-Studio-Agents wurden auf dem MacBook Pro gestartet
-- Naechster Schritt auf dem Mac Studio:
-  - `1111` ausfuehren
-  - lokale Secrets/Env-Dateien pruefen
-  - `npm --prefix automation run sync:health` ausfuehren
-  - `launchctl list | grep finanztool` pruefen
-  - produktive Agents nur auf dem Mac Studio installieren oder neu starten
-- Bekannte Wechselpunkte:
-  - `automation/.env` und `secrets/firebase-service-account.json` fehlen auf
-    dem MacBook Pro lokal
-  - ohne `nvm use` nutzt die MacBook-Pro-Shell Node `20.19.3`; fuer
-    Agenten/PDF-Tooling ist Node 22 erforderlich
-  - der interne Codex-Browser konnte auf dem MacBook Pro wegen
-    `missing field sandboxPolicy` nicht automatisiert geoeffnet werden
-  - auf dem MacBook Pro war ein Bitget-LaunchAgent sichtbar, soll aber dort
-    nicht produktiv betrieben werden
-  - `npx firebase-tools` `15.22.0` scheiterte mit `Premature close`; Deploy
-    mit lokal installierter Firebase CLI `14.9.0` war erfolgreich
+- Verbindliche Handoff-Wahrheit ist ab jetzt der neueste Eintrag in
+  `docs/device_switch_log.md`.
+- `ftd` liest diesen Eintrag automatisch und gibt ihn beim Start aus.
+- Dieses Working Memory enthaelt nur noch eine kurze Orientierung, damit es
+  nicht mehr mit dem Wechselprotokoll auseinanderlaeuft.
+- Letzter gelesener Handoff:
+  - Stand: 2026-06-21 15:25 CEST
+  - Aktion: `3333` vom Mac Studio zum MacBook Pro
+  - Inhalt: Flatex-Broker-Snapshot, Bitget-Ledger, Firestore-Datenvertrag,
+    Full-Refresh und neue Kursstrategie
+  - Naechster Schritt auf dem MacBook Pro: `ftd`, lokal entwickeln, keine
+    produktiven Studio-Agents starten
 
 ## Fachlich bereits umgesetzt
 
@@ -502,6 +491,10 @@ Diese Dateien muessen pro Geraet lokal vorhanden sein.
 nvm install
 nvm use
 npm run install:all
+npm run ft:install
+ftd
+fts "Commit Message"
+ftu "Commit Message"
 npm run dev
 firebase deploy --only hosting,firestore:rules
 
@@ -916,12 +909,11 @@ npm run sync:health
 
 ## Naechster empfohlener Schritt
 
-Aktuelle Version auf GitHub pullen, diese Datei lesen, Secrets importieren und
-alle Agents auf dem Mac Studio installieren. Danach App-Warnkarte,
-`agentStatus/*`, `systemHealth/current` und `sourceAccounts/*` kontrollieren.
-Danach fachlich zuerst die App-Ansicht fuer Ginmon gegen die neuen
-Dokumentfakten + API-Kurse kontrollieren. Erst danach Bankkonten/Kreditkarten,
-Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
+Auf dem aktuellen Entwicklungsgeraet `ftd` ausfuehren und den neuesten Eintrag
+aus `docs/device_switch_log.md` beachten. Auf dem MacBook Pro keine
+produktiven Studio-Agents starten. Bei Rueckgabe an den Mac Studio `ftu`
+ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
+`launchctl list | grep finanztool` pruefen.
 
 ## Bedienkuerzel
 

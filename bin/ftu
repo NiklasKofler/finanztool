@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -euo pipefail
+
+REPO="/Users/niklaskofler/Documents/finanztool"
+cd "$REPO"
+source "$HOME/.zshrc" >/dev/null 2>&1 || true
+nvm use >/dev/null
+exec node automation/src/project-workflow.mjs upload "$@"

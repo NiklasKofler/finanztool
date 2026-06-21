@@ -12,7 +12,11 @@
     "backfill:summaries": "npm --prefix automation run backfill:summaries",
     "deploy:firestore-rules": "npm --prefix automation run deploy:firestore-rules",
     "serve:app": "npm --prefix automation run serve:app",
-    "install:all": "npm --prefix app install && npm --prefix automation install"
+    "install:all": "npm --prefix app install && npm --prefix automation install",
+    "ftd": "zsh bin/ftd",
+    "fts": "zsh bin/fts",
+    "ftu": "zsh bin/ftu",
+    "ft:install": "zsh automation/src/install-ft-shortcuts.sh"
   },
   "engines": {
     "node": ">=20.19"
