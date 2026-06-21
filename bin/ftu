@@ -18,7 +18,13 @@ for ATTEMPT in 1 2 3 4 5; do
     echo "Firebase Deploy Versuch $ATTEMPT/5 nach Retry..."
   fi
 
-  if NODE_OPTIONS="--dns-result-order=ipv4first" "$FIREBASE_BIN" deploy --only hosting --project finanzperformance-tool; then
+  if env -i \
+    HOME="$HOME" \
+    USER="$USER" \
+    PATH="$HOME/.nvm/versions/node/v20.19.3/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    LANG="${LANG:-en_US.UTF-8}" \
+    NODE_OPTIONS="--dns-result-order=ipv4first" \
+    "$FIREBASE_BIN" deploy --only hosting --project finanzperformance-tool; then
     DEPLOY_OK=1
     break
   fi
