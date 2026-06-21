@@ -24,6 +24,8 @@ Zielgeraet:
 Commit/Stand:
 Aktion:
 Erledigt:
+- Handoff-Commit `d1fff3c` auf GitHub gepusht
+- Firebase Deploy 2026-06-21 19:01 CEST erfolgreich
 - Handoff-Commit `3874bf2` auf GitHub gepusht
 - Firebase Deploy 2026-06-21 18:08 CEST erfolgreich
 Naechste Schritte:
@@ -39,7 +41,7 @@ Datum/Zeit: 2026-06-21 19:01 CEST
 Quellgeraet: MacBook Pro
 Zielgeraet: Mac Studio von Niklas
 Commit/Stand: Ausgangscommit `1bbd429`; Handoff-Commit wird in diesem
-`ftu`-Lauf erstellt
+`ftu`-Lauf erstellt; Handoff-Commit `d1fff3c`
 Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
 Firebase deployen
 Erledigt:
