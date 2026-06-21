@@ -55,6 +55,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - `ftu` = Upload/Push/Firebase Deploy/Handoff
 - Installation der Kurzbefehle pro Geraet:
   `npm run ft:install`
+- Alte numerische Befehle sind deaktiviert.
+- Sicherheitsregeln:
+  - `ftd` ueberschreibt keine lokalen Aenderungen.
+  - `ftd --force` ist der bewusste Notfall-Download mit Backup-Branch und
+    Datei-Backup.
+  - `ftu` prueft vor dem Commit, ob GitHub neuer ist, und bricht dann ab.
+  - `ftu` deployed Firebase erst nach verifiziertem Push und nur Hosting.
 
 ## Rollen der Geraete
 
@@ -123,9 +130,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-21 19:40 CEST
+- Stand: 2026-06-21 19:46 CEST
 - Aktion: `ftu` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `4de12e8`
+- Ausgangscommit: `1d17793`
 - Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
 - Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren

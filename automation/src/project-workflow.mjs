@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const handoffStatePath = path.join(repoRoot, "automation/runtime/ftu-handoff-state.json");
+const backupRoot = path.join(repoRoot, "automation/runtime/force-download-backups");
 const commandName = path.basename(process.argv[1]);
 const rawCommand = process.argv[2] ?? commandName;
 const args = process.argv.slice(3);
@@ -115,6 +116,55 @@ function gitStatusPorcelain() {
   return gitOutput(["status", "--porcelain"]);
 }
 
+function gitRev(ref) {
+  return git(["rev-parse", "--verify", ref], { capture: true, allowFailure: true }).stdout;
+}
+
+function currentBranch() {
+  return git(["rev-parse", "--abbrev-ref", "HEAD"], { capture: true, allowFailure: true }).stdout;
+}
+
+function isAncestor(ancestor, descendant) {
+  if (!ancestor || !descendant) return false;
+  return git(["merge-base", "--is-ancestor", ancestor, descendant], { allowFailure: true }).status === 0;
+}
+
+function hasGitOperationInProgress() {
+  return [
+    ".git/rebase-merge",
+    ".git/rebase-apply",
+    ".git/MERGE_HEAD",
+    ".git/CHERRY_PICK_HEAD",
+    ".git/REVERT_HEAD",
+  ].some((item) => existsSync(path.join(repoRoot, item)));
+}
+
+function ensureNormalGitState() {
+  if (hasGitOperationInProgress()) {
+    fail(
+      "Git hat noch einen angefangenen Merge/Rebase/Cherry-Pick. Erst manuell klaeren oder bewusst `ftd --force` verwenden.",
+    );
+  }
+
+  const branch = currentBranch();
+  if (branch !== "main") {
+    fail(`Aktiver Branch ist '${branch}'. Bitte auf 'main' wechseln, bevor ftd/fts/ftu laufen.`);
+  }
+}
+
+function ensureRemoteIsIncluded() {
+  section("Git Sicherheitscheck");
+  ensureNormalGitState();
+  git(["fetch", "origin", "--prune"]);
+  const head = gitRev("HEAD");
+  const remote = gitRev("origin/main");
+  if (!isAncestor(remote, head)) {
+    fail(
+      "GitHub ist neuer oder die Historie ist auseinander gelaufen. Bitte zuerst `ftd` ausfuehren; bei bewusstem Reset `ftd --force`.",
+    );
+  }
+}
+
 function writeHandoffState(state) {
   mkdirSync(path.dirname(handoffStatePath), { recursive: true });
   writeFileSync(handoffStatePath, `${JSON.stringify(state, null, 2)}\n`);
@@ -137,6 +187,59 @@ function ensureCleanWorkingTree() {
   fail(
     "Lokale Aenderungen vorhanden. Bitte zuerst `fts` ausfuehren oder manuell klaeren. `ftd` ueberschreibt nichts.",
   );
+}
+
+function timestampId() {
+  return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
+}
+
+function statusPathFromLine(line) {
+  const raw = line.slice(3);
+  if (raw.includes(" -> ")) return raw.split(" -> ").at(-1);
+  return raw.replace(/^"|"$/g, "");
+}
+
+function backupDirtyFiles(label) {
+  const status = gitStatusPorcelain();
+  const backupDir = path.join(backupRoot, label);
+  if (!status) return null;
+  mkdirSync(backupDir, { recursive: true });
+  for (const line of status.split("\n").filter(Boolean)) {
+    const relativePath = statusPathFromLine(line);
+    const sourcePath = path.join(repoRoot, relativePath);
+    if (!existsSync(sourcePath)) continue;
+    const targetPath = path.join(backupDir, relativePath);
+    mkdirSync(path.dirname(targetPath), { recursive: true });
+    cpSync(sourcePath, targetPath, { recursive: true });
+  }
+  writeFileSync(path.join(backupDir, "git-status.txt"), `${status}\n`);
+  return backupDir;
+}
+
+function newestMtime(paths) {
+  return paths
+    .filter((item) => existsSync(item))
+    .map((item) => statSync(item).mtimeMs)
+    .reduce((max, value) => Math.max(max, value), 0);
+}
+
+function dependenciesNeedInstall(projectDir) {
+  const nodeModules = path.join(projectDir, "node_modules");
+  if (!existsSync(nodeModules)) return true;
+  const manifests = [
+    path.join(projectDir, "package.json"),
+    path.join(projectDir, "package-lock.json"),
+  ];
+  return newestMtime(manifests) > statSync(nodeModules).mtimeMs;
+}
+
+function installIfNeeded(relativeDir, label) {
+  const projectDir = path.join(repoRoot, relativeDir);
+  if (dependenciesNeedInstall(projectDir)) {
+    runWithProjectNode(`npm --prefix ${relativeDir} install`);
+  } else {
+    console.log(`${label}: dependencies aktuell, npm install uebersprungen`);
+  }
 }
 
 function getDevice() {
@@ -249,8 +352,8 @@ function printLocalStatus() {
 
 function installDependenciesAndBuild() {
   section("Dependencies und Build");
-  runWithProjectNode("npm --prefix app install");
-  runWithProjectNode("npm --prefix automation install");
+  installIfNeeded("app", "App");
+  installIfNeeded("automation", "Automation");
   runWithProjectNode("npm --prefix app run build");
 }
 
@@ -258,7 +361,28 @@ function runDownload() {
   section("ftd / Download");
   printContext();
   section("Git");
-  ensureCleanWorkingTree();
+  const force = args.includes("--force");
+  if (force) {
+    git(["fetch", "origin", "--prune"]);
+    const label = `ftd-force-${timestampId()}`;
+    const backupBranch = `backup/${label}`;
+    git(["branch", backupBranch, "HEAD"], { allowFailure: true });
+    const backupDir = backupDirtyFiles(label);
+    if (existsSync(path.join(repoRoot, ".git/rebase-merge")) || existsSync(path.join(repoRoot, ".git/rebase-apply"))) {
+      git(["rebase", "--abort"], { allowFailure: true });
+    }
+    if (existsSync(path.join(repoRoot, ".git/MERGE_HEAD"))) {
+      git(["merge", "--abort"], { allowFailure: true });
+    }
+    git(["checkout", "main"]);
+    git(["reset", "--hard", "origin/main"]);
+    git(["clean", "-fd"]);
+    console.log(`Force-Download: Backup-Branch ${backupBranch}`);
+    if (backupDir) console.log(`Force-Download: Datei-Backup ${backupDir}`);
+  } else {
+    ensureNormalGitState();
+    ensureCleanWorkingTree();
+  }
   git(["fetch", "origin", "--prune"]);
   git(["pull", "--ff-only", "origin", "main"]);
   installDependenciesAndBuild();
@@ -281,6 +405,7 @@ function runDownload() {
 
 function runSave() {
   section("fts / Save");
+  ensureNormalGitState();
   runWithProjectNode("npm --prefix app run build");
   const status = gitStatusPorcelain();
   if (!status) {
@@ -422,6 +547,7 @@ function runUploadPrepare() {
   const target = targetFor(device);
   const baseCommit = gitOutput(["rev-parse", "--short", "HEAD"]);
 
+  ensureRemoteIsIncluded();
   printContext();
   runWithProjectNode("npm --prefix app run build");
   updateHandoffDocs({ phase: "start", source, target, baseCommit });
@@ -437,12 +563,23 @@ function runUploadPrepare() {
     git(["commit", "-m", message]);
   }
 
-  section("Rebase/Pull");
+  section("Remote-Pruefung");
   git(["fetch", "origin", "--prune"]);
-  git(["pull", "--rebase", "origin", "main"]);
+  const head = gitRev("HEAD");
+  const remote = gitRev("origin/main");
+  if (!isAncestor(remote, head)) {
+    fail("GitHub wurde waehrend des Uploads aktualisiert. Kein Push/Deploy. Bitte zuerst `ftd` ausfuehren.");
+  }
 
   section("Push");
   git(["push", "origin", "main"]);
+
+  git(["fetch", "origin", "--prune"]);
+  const pushedHead = gitRev("HEAD");
+  const pushedRemote = gitRev("origin/main");
+  if (pushedHead !== pushedRemote) {
+    fail("Push-Verifikation fehlgeschlagen: lokaler HEAD und origin/main unterscheiden sich. Kein Firebase Deploy.");
+  }
 
   const handoffCommit = gitOutput(["rev-parse", "--short", "HEAD"]);
   writeHandoffState({ source, target, baseCommit, handoffCommit });

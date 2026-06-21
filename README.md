@@ -41,6 +41,15 @@ Kurzlogik:
 - `fts`: Projekt nur lokal speichern/committen.
 - `ftu`: Projekt bauen, auf GitHub pushen und Firebase deployen.
 
+Sicherheitslogik:
+
+- `ftd` bricht bei lokalen Aenderungen oder offenem Merge/Rebase ab.
+- `ftd --force` setzt bewusst auf GitHub-Stand zurueck und legt vorher
+  Backup-Branch/Datei-Backup an.
+- `ftu` pusht nur, wenn der lokale Stand `origin/main` enthaelt.
+- Firebase wird erst deployed, nachdem der Push verifiziert wurde.
+- `ftu` deployed bewusst nur Hosting.
+
 Kurzbefehle pro Geraet installieren:
 
 ```bash

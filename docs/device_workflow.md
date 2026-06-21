@@ -68,6 +68,9 @@ fts   # save/lokaler commit
 ftu   # upload/push/deploy/handoff
 ```
 
+Alte numerische Befehle sind deaktiviert und duerfen nicht mehr verwendet
+werden.
+
 Installation pro Geraet:
 
 ```bash
@@ -91,6 +94,23 @@ Wichtig fuer alle Kurzbefehle:
   - wo am alten Geraet aufgehoert wurde
   - welche naechsten Schritte geplant sind
   - ob es Wechselprobleme oder lokale Abweichungen gibt
+
+## Sicherheitsprinzip
+
+- `ftd` ueberschreibt keine lokalen Aenderungen. Wenn lokale Aenderungen,
+  ein Merge, ein Rebase oder ein anderer Git-Zwischenzustand vorhanden ist,
+  bricht `ftd` ab.
+- `ftd --force` ist der bewusste Notfall-Download. Dabei wird vorher ein
+  Backup-Branch unter `backup/ftd-force-*` angelegt und lokale geaenderte
+  Dateien werden nach `automation/runtime/force-download-backups/*`
+  kopiert. Erst danach wird hart auf `origin/main` gesetzt.
+- `ftu` startet nur von Branch `main` und nur ohne offenen Merge/Rebase.
+- `ftu` prueft vor dem Commit, ob `origin/main` im lokalen Stand enthalten
+  ist. Wenn GitHub neuer ist, wird nicht gepusht und nicht deployed.
+- Nach dem Push verifiziert `ftu`, dass lokaler `HEAD` und `origin/main`
+  identisch sind. Firebase wird nur danach deployed.
+- `ftu` deployed bewusst nur Firebase Hosting. Firestore/Storage-Regeln und
+  Indexes werden dadurch nicht versehentlich ueberschrieben.
 
 ### ftd
 
@@ -133,6 +153,14 @@ Nach erfolgreichem `ftd` muss Codex kurz zusammenfassen:
 - kurzer Arbeitsstand aus `docs/working_memory.md`
 - naechster empfohlener Schritt
 - ob lokale Secrets/Agents auf diesem Geraet fehlen oder bewusst nicht laufen
+
+Bewusster Notfall-Reset auf GitHub-Stand:
+
+```bash
+ftd --force
+```
+
+Nur verwenden, wenn klar ist, dass der GitHub-Stand die Wahrheit ist.
 
 ### fts
 
@@ -180,6 +208,12 @@ git add <relevante-dateien>
 git commit -m "<kurze beschreibung>" # nur wenn Aenderungen vorhanden
 git push origin main
 npx firebase-tools deploy --project finanzperformance-tool
+```
+
+Der Kurzworkflow deployed aktuell bewusst nur Hosting:
+
+```bash
+npx firebase-tools deploy --only hosting --project finanzperformance-tool
 ```
 
 Nach einem Firebase Deploy kann sich diese Datei aendern:
