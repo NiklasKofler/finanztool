@@ -123,18 +123,16 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Verbindliche Handoff-Wahrheit ist ab jetzt der neueste Eintrag in
-  `docs/device_switch_log.md`.
-- `ftd` liest diesen Eintrag automatisch und gibt ihn beim Start aus.
-- Dieses Working Memory enthaelt nur noch eine kurze Orientierung, damit es
-  nicht mehr mit dem Wechselprotokoll auseinanderlaeuft.
-- Letzter gelesener Handoff:
-  - Stand: 2026-06-21 15:25 CEST
-  - Aktion: `3333` vom Mac Studio zum MacBook Pro
-  - Inhalt: Flatex-Broker-Snapshot, Bitget-Ledger, Firestore-Datenvertrag,
-    Full-Refresh und neue Kursstrategie
-  - Naechster Schritt auf dem MacBook Pro: `ftd`, lokal entwickeln, keine
-    produktiven Studio-Agents starten
+- Stand: 2026-06-21 18:01 CEST
+- Aktion: `ftu` vom MacBook Pro Richtung Mac Studio von Niklas
+- Ausgangscommit: `8a20c5d`
+- Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
+- Naechster Schritt auf Mac Studio von Niklas: `ftd` ausfuehren
+- Bekannte Wechselpunkte:
+  - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+  - Mac Studio bleibt produktiver Agent-Knoten
+  - Kurzbefehle sind `ftd`, `fts`, `ftu`
 
 ## Fachlich bereits umgesetzt
 
