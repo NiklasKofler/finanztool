@@ -4,6 +4,12 @@ set -euo pipefail
 REPO="/Users/niklaskofler/Documents/finanztool"
 cd "$REPO"
 source "$HOME/.zshrc" >/dev/null 2>&1 || true
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  node automation/src/project-workflow.mjs upload-pre --help
+  exit 0
+fi
+
 nvm use >/dev/null
 node automation/src/project-workflow.mjs upload-pre "$@"
 

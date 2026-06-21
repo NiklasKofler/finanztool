@@ -8,9 +8,9 @@ oder Geraeteunterschiede im Chat verloren gehen.
 
 ## Regeln
 
-- Jeder `3333`-Handoff bekommt hier einen neuen Eintrag.
+- Jeder `ftu`-Handoff bekommt hier einen neuen Eintrag.
 - Jeder erkannte Wechsel-Fehler bekommt hier einen neuen Eintrag.
-- Jeder `1111`-Start liest den letzten Eintrag und meldet ihn im Chat kurz
+- Jeder `ftd`-Start liest den letzten Eintrag und meldet ihn im Chat kurz
   zurueck.
 - Secrets werden hier nie ausgeschrieben. Nur Pfade, Keychain-Service-Namen
   oder der Hinweis "fehlt/lokal vorhanden" sind erlaubt.
@@ -35,7 +35,7 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
-### 2026-06-21 19:01 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 19:01 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 19:01 CEST
 Quellgeraet: MacBook Pro
@@ -58,7 +58,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:59 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:59 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:59 CEST
 Quellgeraet: MacBook Pro
@@ -81,7 +81,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:58 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:58 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:58 CEST
 Quellgeraet: MacBook Pro
@@ -105,7 +105,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:56 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:56 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:56 CEST
 Quellgeraet: MacBook Pro
@@ -128,7 +128,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:54 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:54 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:54 CEST
 Quellgeraet: MacBook Pro
@@ -151,7 +151,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:53 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:53 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:53 CEST
 Quellgeraet: MacBook Pro
@@ -174,7 +174,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:52 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:52 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:52 CEST
 Quellgeraet: MacBook Pro
@@ -198,7 +198,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:51 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:51 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:51 CEST
 Quellgeraet: MacBook Pro
@@ -222,7 +222,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:50 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:50 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:50 CEST
 Quellgeraet: MacBook Pro
@@ -245,7 +245,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:49 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:49 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:49 CEST
 Quellgeraet: MacBook Pro
@@ -269,7 +269,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:49 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:49 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:49 CEST
 Quellgeraet: MacBook Pro
@@ -292,7 +292,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:48 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:48 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:48 CEST
 Quellgeraet: MacBook Pro
@@ -315,7 +315,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:40 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:40 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:40 CEST
 Quellgeraet: MacBook Pro
@@ -338,7 +338,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:08 CEST - 3333 Handoff Mac Studio von Niklas zu MacBook Pro
+### 2026-06-21 18:08 CEST - ftu Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-21 18:08 CEST
 Quellgeraet: Mac Studio von Niklas
@@ -361,7 +361,7 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 18:01 CEST - 3333 Handoff MacBook Pro zu Mac Studio von Niklas
+### 2026-06-21 18:01 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 18:01 CEST
 Quellgeraet: MacBook Pro
@@ -384,13 +384,13 @@ Wechselprobleme:
 Lokale Besonderheiten:
 - Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
 
-### 2026-06-21 15:25 CEST - 3333 Handoff Mac Studio zu MacBook Pro
+### 2026-06-21 15:25 CEST - ftu Handoff Mac Studio zu MacBook Pro
 
 Datum/Zeit: 2026-06-21 15:25 CEST
 Quellgeraet: Mac Studio von Niklas (`Mac.fritz.box`)
 Zielgeraet: MacBook Pro
 Commit/Stand: Ausgangscommit `7808ec6`; Handoff-Doku-Commit wird in diesem
-`3333`-Lauf erstellt
+`ftu`-Lauf erstellt
 Aktion: Lokal gespeicherten Depot-Agent-/Kursstrategie-Stand bauen, auf
 GitHub pushen und nach Firebase deployen
 Erledigt:
@@ -403,13 +403,13 @@ Erledigt:
   `quoteFreshness` sind produktiv im Datenmodell vorgesehen
 - App-Build und Agent-Tests waren vor dem Handoff erfolgreich
 Naechste Schritte:
-- Auf dem MacBook Pro `1111` ausfuehren
+- Auf dem MacBook Pro `ftd` ausfuehren
 - Danach Pflichtdokumente lesen und kurz rueckmelden:
   `docs/device_workflow.md`, `docs/device_switch_log.md`,
   `docs/working_memory.md`, `README.md`
 - Auf dem MacBook Pro keine produktiven LaunchAgents starten
-- Falls weiter an Agents gearbeitet wird, spaeter per `3333` wieder an den
-  Mac Studio uebergeben und dort `1111` plus Agent-Installation/Health pruefen
+- Falls weiter an Agents gearbeitet wird, spaeter per `ftu` wieder an den
+  Mac Studio uebergeben und dort `ftd` plus Agent-Installation/Health pruefen
 Wechselprobleme:
 - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
 - Der Mac Studio bleibt produktiver Agent-Knoten fuer Drive, Browser-Syncs,
@@ -422,19 +422,19 @@ Lokale Besonderheiten:
 - `com.niklas.finanztool.quote-history` laeuft auf dem Mac Studio taeglich
   um 22:00 Europe/Vienna
 
-### 2026-06-20 18:38 CEST - 3333 Handoff MacBook Pro zu Mac Studio
+### 2026-06-20 18:38 CEST - ftu Handoff MacBook Pro zu Mac Studio
 
 Datum/Zeit: 2026-06-20 18:38 CEST
 Quellgeraet: MacBook Pro
 Zielgeraet: Mac Studio von Niklas
 Commit/Stand: Ausgangscommit `1f659c5`; Handoff-Commit wird in diesem
-`3333`-Lauf erstellt
+`ftu`-Lauf erstellt
 Aktion: MacBook-Pro-Stand bauen, Uebergabe dokumentieren, auf GitHub pushen
 und Firebase deployen
 Erledigt:
 - Handoff-Commit `f054467` auf GitHub gepusht
 - Firebase Deploy am 2026-06-20 18:43 CEST erfolgreich ausgefuehrt
-- Projekt auf dem MacBook Pro per `1111` von GitHub aktualisiert
+- Projekt auf dem MacBook Pro per `ftd` von GitHub aktualisiert
 - Pflichtdokumente gelesen und aktiver Stand uebernommen
 - Node `22.23.0` per `nvm use` fuer Build verwendet
 - App-Build erfolgreich ausgefuehrt
@@ -442,7 +442,7 @@ Erledigt:
   `/Users/niklaskofler/Documents/finanztool`
 - Kein produktiver Mac-Studio-Agent wurde auf dem MacBook Pro gestartet
 Naechste Schritte:
-- Auf dem Mac Studio `1111` ausfuehren
+- Auf dem Mac Studio `ftd` ausfuehren
 - Danach pruefen:
   - lokale Secrets/Env-Dateien
   - `npm --prefix automation run sync:health`
@@ -467,7 +467,7 @@ Lokale Besonderheiten:
 - `app/.env.local` ist auf dem MacBook Pro vorhanden
 - Google-Drive-Depotordner sind auf dem MacBook Pro erreichbar
 
-### 2026-06-20 17:47 CEST - 3333 Handoff Mac Studio zu MacBook Pro
+### 2026-06-20 17:47 CEST - ftu Handoff Mac Studio zu MacBook Pro
 
 Datum/Zeit: 2026-06-20 17:47 CEST
 Quellgeraet: Mac Studio von Niklas
@@ -484,18 +484,18 @@ Erledigt:
 - Build, GitHub-Push und Firebase Deploy wurden erfolgreich ausgefuehrt
 - Standardpfad auf beiden Geraeten bleibt:
   `/Users/niklaskofler/Documents/finanztool`
-- Zahlencodes gelten auf beiden Geraeten gleich:
-  `1111`, `2222`, `3333`
+- Kurzbefehle gelten auf beiden Geraeten gleich:
+  `ftd`, `fts`, `ftu`
 Naechste Schritte:
 - Auf dem MacBook Pro Codex mit dem Erstprompt aus
   `docs/device_workflow.md` starten
-- Danach `1111` ausfuehren lassen
+- Danach `ftd` ausfuehren lassen
 - Codex muss am MacBook Pro kurz melden: aktives Geraet, Commit/Stand,
   letzter Stand vom Mac Studio, naechste Schritte und Wechselprobleme
 Wechselprobleme:
 - Secrets und produktive Agents werden nicht per Git uebertragen
 - MacBook Pro darf keine produktiven Mac-Studio-LaunchAgents starten
-- Falls lokale Aenderungen am MacBook Pro existieren, darf `1111` sie nicht
+- Falls lokale Aenderungen am MacBook Pro existieren, darf `ftd` sie nicht
   ueberschreiben
 Lokale Besonderheiten:
 - Produktive Agents laufen weiter auf dem Mac Studio
@@ -508,18 +508,18 @@ Datum/Zeit: 2026-06-20 CEST
 Quellgeraet: Mac Studio
 Zielgeraet: MacBook Pro spaeter
 Commit/Stand: lokal mit uncommitteten Doku-Aenderungen nach Commit `0c65ab4`
-Aktion: Geraetewechsel-Regeln und Zahlencodes dokumentiert
+Aktion: Geraetewechsel-Regeln und Kurzbefehle dokumentiert
 Erledigt:
 - Standardpfad auf beiden Geraeten festgelegt:
   `/Users/niklaskofler/Documents/finanztool`
-- `1111`, `2222`, `3333` als Projektcodes definiert
+- `ftd`, `fts`, `ftu` als Kurzbefehle definiert
 - Mac Studio als produktiver Agent-Knoten festgelegt
 - MacBook Pro als Entwicklungsgeraet ohne produktive Studio-Agents festgelegt
 - Erstprompt fuer neue Codex-Sessions dokumentiert
 Naechste Schritte:
-- Bei spaeterem `3333`: Doku-Aenderungen committen, GitHub pushen und
+- Bei spaeterem `ftu`: Doku-Aenderungen committen, GitHub pushen und
   Firebase deployen
-- Danach auf dem MacBook Pro mit `1111` uebernehmen
+- Danach auf dem MacBook Pro mit `ftd` uebernehmen
 Wechselprobleme:
 - Bisher wichtigster Risikopunkt: lokale Secrets und produktive Agents sind
   nicht automatisch zwischen den Geraeten identisch

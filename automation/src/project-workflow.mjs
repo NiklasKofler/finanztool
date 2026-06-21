@@ -13,15 +13,12 @@ const rawCommand = process.argv[2] ?? commandName;
 const args = process.argv.slice(3);
 
 const commandAliases = {
-  "1111": "download",
   ftd: "download",
   download: "download",
   d: "download",
-  "2222": "save",
   fts: "save",
   save: "save",
   s: "save",
-  "3333": "upload",
   ftu: "upload",
   upload: "upload",
   u: "upload",
@@ -31,6 +28,16 @@ const commandAliases = {
 };
 
 const command = commandAliases[rawCommand] ?? commandAliases[commandName];
+
+function printUsage() {
+  console.log("Nutzung: ftd | fts [commit-message] | ftu [commit-message]");
+  console.log("Hinweis: Alte numerische Kurzbefehle sind deaktiviert. Bitte nur ftd, fts und ftu verwenden.");
+}
+
+if (rawCommand === "--help" || rawCommand === "-h" || args.includes("--help") || args.includes("-h")) {
+  printUsage();
+  process.exit(0);
+}
 
 function section(title) {
   console.log(`\n== ${title} ==`);
@@ -301,7 +308,7 @@ function updateHandoffDocs({ phase, source, target, baseCommit, handoffCommit, d
   const status = gitStatusPorcelain().split("\n").filter(Boolean).slice(0, 30).join("\n");
 
   if (phase === "start") {
-    const entry = `### ${now} - 3333 Handoff ${source} zu ${target}
+    const entry = `### ${now} - ftu Handoff ${source} zu ${target}
 
 Datum/Zeit: ${now}
 Quellgeraet: ${source}
@@ -475,8 +482,8 @@ function runUpload() {
 }
 
 if (!command) {
-  console.log("Nutzung: ftd | fts [commit-message] | ftu [commit-message]");
-  process.exit(0);
+  printUsage();
+  fail(`Unbekannter Workflow: ${rawCommand}`, 2);
 }
 
 if (command === "context") printContext();

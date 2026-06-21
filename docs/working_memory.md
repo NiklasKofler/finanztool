@@ -7,13 +7,13 @@ Es ersetzt nicht den Chat, aber es bewahrt die wichtigen Entscheidungen, den let
 
 Vor jeder neuen Session:
 
-1. Wenn das Projekt vom anderen Geraet uebernommen werden soll: `1111`
+1. Wenn das Projekt vom anderen Geraet uebernommen werden soll: `ftd`
 2. `docs/device_workflow.md` lesen
 3. `docs/device_switch_log.md` lesen
 4. dieses Dokument lesen
 5. dann erst mit Codex weiterarbeiten
 
-Nach `1111` muss Codex im Chat kurz melden:
+Nach `ftd` muss Codex im Chat kurz melden:
 
 - auf welchem Geraet gearbeitet wird
 - welcher Stand/Commit aktiv ist
@@ -26,7 +26,7 @@ Nach jeder wichtigen Session:
 1. dieses Dokument aktualisieren
 2. bei Geraetewechseln oder Problemen `docs/device_switch_log.md`
    aktualisieren
-3. lokal sichern mit `2222` oder uebergeben/deployen mit `3333`
+3. lokal sichern mit `fts` oder uebergeben/deployen mit `ftu`
 
 ## Projektziel
 
@@ -50,9 +50,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Wenn beim Wechsel zwischen Mac Studio und MacBook Pro ein Problem auftritt,
   muss Codex es in `docs/device_switch_log.md` festhalten.
 - Die bevorzugten Terminal-Kurzbefehle sind:
-  - `ftd` = Download/Update, entspricht `1111`
-  - `fts` = Save/lokaler Commit, entspricht `2222`
-  - `ftu` = Upload/Push/Firebase Deploy/Handoff, entspricht `3333`
+  - `ftd` = Download/Update
+  - `fts` = Save/lokaler Commit
+  - `ftu` = Upload/Push/Firebase Deploy/Handoff
 - Installation der Kurzbefehle pro Geraet:
   `npm run ft:install`
 
@@ -915,16 +915,15 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 ## Bedienkuerzel
 
-- Die Zahlencodes gelten auf Mac Studio und MacBook Pro gleich, wenn Niklas
-  sie allein schreibt.
-- `1111`: Projekt auf der aktuellen Maschine vom gemeinsamen GitHub-Stand
+- Es gelten nur noch die Kurzbefehle `ftd`, `fts` und `ftu`.
+- `ftd`: Projekt auf der aktuellen Maschine vom gemeinsamen GitHub-Stand
   aktualisieren/herunterladen.
   Ablauf:
   1. Zuerst `docs/device_workflow.md`, `docs/device_switch_log.md`,
      `docs/working_memory.md` und `README.md` lesen.
   2. Dann `git status` pruefen.
   3. Falls lokale Aenderungen vorhanden sind, nicht ueberschreiben; zuerst
-     `2222` ausfuehren oder den Nutzer kurz auf den Konflikt hinweisen.
+     `fts` ausfuehren oder den Nutzer kurz auf den Konflikt hinweisen.
   4. `git fetch origin` und `git pull --ff-only origin main`.
   5. Dependencies aktualisieren:
      `npm --prefix app install` und `npm --prefix automation install`.
@@ -939,17 +938,17 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   9. Danach im Chat kurz zusammenfassen: aktives Geraet, Commit/Stand, letzter
      Stand vom alten Geraet, naechste Schritte und eventuelle
      Wechselprobleme.
-- `2222`: Projekt lokal speichern, ohne GitHub-Push und ohne Firebase-Deploy.
+- `fts`: Projekt lokal speichern, ohne GitHub-Push und ohne Firebase-Deploy.
   Ablauf:
   1. Relevante Checks ausfuehren, mindestens `npm --prefix app run build`.
   2. `git status` und `git diff --stat` pruefen.
   3. Sinnvolle Aenderungen committen.
   4. Nicht pushen und nicht deployen.
-- Wenn Niklas allein `3333` schreibt, bedeutet das: aktuellen Stand bauen,
-  lokal speichern/committen, auf GitHub pushen und nach Firebase deployen.
+- `ftu`: aktuellen Stand bauen, lokal speichern/committen, auf GitHub pushen
+  und nach Firebase deployen.
   Danach ist das Projekt an das jeweils andere Geraet uebergeben. Beispiel:
-  auf Mac Studio entwickeln -> `3333` -> auf MacBook Pro `1111`; oder
-  auf MacBook Pro entwickeln -> `3333` -> auf Mac Studio `1111`, damit die
+  auf Mac Studio entwickeln -> `ftu` -> auf MacBook Pro `ftd`; oder
+  auf MacBook Pro entwickeln -> `ftu` -> auf Mac Studio `ftd`, damit die
   dort laufenden Agents den neuen Code erhalten.
   Vor dem Commit muss Codex `docs/working_memory.md` und bei Geraetewechseln
   `docs/device_switch_log.md` aktualisieren.
@@ -958,8 +957,8 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 - Datum: 2026-06-21 CEST
 - Quelle: Lokale Codex-Session, Agent-Audit, Flatex-/Kursstrategie und UI-Arbeit auf `localhost`
-- Uebergabestand: Lokaler Savepoint `7808ec6` wurde mit `2222`
-  gespeichert; anschliessend wurde `3333` gestartet, um diesen Stand an
+- Uebergabestand: Lokaler Savepoint `7808ec6` wurde mit `fts`
+  gespeichert; anschliessend wurde `ftu` gestartet, um diesen Stand an
   GitHub/Firebase und danach ans MacBook Pro zu uebergeben.
 - Zusatzstand 2026-06-21: Kursstrategie fuer Wertpapiere umgestellt auf
   haeufige aktuelle Kurse und sparsame Tageshistorie. `quotesCurrent` wird
@@ -972,7 +971,7 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   statt nur den Firestore-Schreibzeitpunkt. Wenn eine Position einen
   Handelsplatz mitliefert, versucht der Boerse-Frankfurt-Provider diesen MIC
   zuerst und faellt erst danach auf Provider-Standard/Xetra/Frankfurt zurueck.
-- Status: Geraetewechsel-Regeln und Zahlencodes liegen zentral in
+- Status: Geraetewechsel-Regeln und Kurzbefehle liegen zentral in
   `docs/device_workflow.md`; Standardpfad auf Mac Studio und MacBook Pro ist
   `/Users/niklaskofler/Documents/finanztool`; Nicht pushen/deployen waehrend
   Entwicklung; Agenten lokal geprueft

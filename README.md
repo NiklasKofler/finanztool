@@ -21,7 +21,7 @@ Gebuehren, Steuern, Gewinn/Verlust und Performance ausweisen.
 - Firestore ist zentrale Datenbank.
 - Originaldateien werden aus Google Drive gelesen und nach Import archiviert.
 - Node-Version: siehe `.nvmrc` (`22`).
-- Geraetewechsel und Codex-Zahlencodes sind in
+- Geraetewechsel und Codex-Kurzbefehle sind in
   `docs/device_workflow.md` dokumentiert.
 - Wechselprobleme zwischen Mac Studio und MacBook Pro werden in
   `docs/device_switch_log.md` dokumentiert.
@@ -37,10 +37,9 @@ docs/device_switch_log.md
 
 Kurzlogik:
 
-- `ftd`: Projekt auf aktueller Maschine herunterladen/aktualisieren
-  (`1111`).
-- `fts`: Projekt nur lokal speichern/committen (`2222`).
-- `ftu`: Projekt bauen, auf GitHub pushen und Firebase deployen (`3333`).
+- `ftd`: Projekt auf aktueller Maschine herunterladen/aktualisieren.
+- `fts`: Projekt nur lokal speichern/committen.
+- `ftu`: Projekt bauen, auf GitHub pushen und Firebase deployen.
 
 Kurzbefehle pro Geraet installieren:
 
@@ -50,7 +49,7 @@ npm run ft:install
 source ~/.zshrc
 ```
 
-Nach `1111` muss Codex kurz melden, welcher Stand aktiv ist, wo am alten
+Nach `ftd` muss Codex kurz melden, welcher Stand aktiv ist, wo am alten
 Geraet aufgehoert wurde, welche naechsten Schritte geplant sind und ob
 Wechselprobleme bestehen.
 

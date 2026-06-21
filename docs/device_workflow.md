@@ -58,19 +58,14 @@ git clone https://github.com/NiklasKofler/finanztool.git finanztool
 cd /Users/niklaskofler/Documents/finanztool
 ```
 
-## Zahlencodes
-
-Die Zahlencodes gelten auf Mac Studio und MacBook Pro gleich, wenn Niklas sie
-allein schreibt.
-
 ## Kurzbefehle
 
-Die bevorzugten Kurzbefehle sind:
+Es gelten nur noch diese Kurzbefehle:
 
 ```bash
-ftd   # download: frueher 1111
-fts   # save:     frueher 2222
-ftu   # upload:   frueher 3333
+ftd   # download/update
+fts   # save/lokaler commit
+ftu   # upload/push/deploy/handoff
 ```
 
 Installation pro Geraet:
@@ -81,18 +76,12 @@ npm run ft:install
 source ~/.zshrc
 ```
 
-Die alten Chat-Codes bleiben als Bedeutung erhalten:
-
-- `1111` = `ftd`
-- `2222` = `fts`
-- `3333` = `ftu`
-
 Die Kurzbefehle lesen den Projektkontext aus dem Repo, pruefen das aktuelle
 Geraet und fuehren die passende Rolle aus. Auf dem MacBook Pro werden keine
 produktiven Studio-Agents gestartet. Auf dem Mac Studio fuehrt `ftd` zusaetzlich
 Agent-Installation/Health-Checks aus.
 
-Wichtig fuer alle Zahlencodes:
+Wichtig fuer alle Kurzbefehle:
 
 - zuerst den aktuellen Projektstand pruefen, nicht blind ausfuehren
 - `git status --short`, letzter Commit und relevante Doku lesen
@@ -103,15 +92,9 @@ Wichtig fuer alle Zahlencodes:
   - welche naechsten Schritte geplant sind
   - ob es Wechselprobleme oder lokale Abweichungen gibt
 
-### 1111
+### ftd
 
 Projekt auf der aktuellen Maschine richtig herunterladen/aktualisieren.
-
-Neuer Kurzmodus:
-
-```bash
-ftd
-```
 
 Ablauf:
 
@@ -128,7 +111,7 @@ npm --prefix app run build
 Wenn `git status --short` lokale Aenderungen zeigt:
 
 - nichts ueberschreiben
-- zuerst `2222` ausfuehren oder den Konflikt melden
+- zuerst `fts` ausfuehren oder den Konflikt melden
 
 Zusatz auf Mac Studio:
 
@@ -144,18 +127,16 @@ Zusatz auf MacBook Pro:
 - keine produktiven LaunchAgents starten
 - nur App/Code bauen und weiterentwickeln
 
-Nach erfolgreichem `1111` muss Codex kurz zusammenfassen:
+Nach erfolgreichem `ftd` muss Codex kurz zusammenfassen:
 
 - letzter Geraetewechsel-Eintrag aus `docs/device_switch_log.md`
 - kurzer Arbeitsstand aus `docs/working_memory.md`
 - naechster empfohlener Schritt
 - ob lokale Secrets/Agents auf diesem Geraet fehlen oder bewusst nicht laufen
 
-### 2222
+### fts
 
 Projekt lokal speichern, aber nicht uebergeben.
-
-Neuer Kurzmodus:
 
 ```bash
 fts "optionale Commit Message"
@@ -177,14 +158,12 @@ Nicht ausfuehren:
 - kein `git push`
 - kein Firebase Deploy
 
-Wichtig: Ein `2222`-Commit ist nur auf diesem Geraet sichtbar. Das andere
-Geraet bekommt ihn erst nach `3333`.
+Wichtig: Ein `fts`-Commit ist nur auf diesem Geraet sichtbar. Das andere
+Geraet bekommt ihn erst nach `ftu`.
 
-### 3333
+### ftu
 
 Projekt hochladen, Firebase deployen und an das andere Geraet uebergeben.
-
-Neuer Kurzmodus:
 
 ```bash
 ftu "optionale Commit Message"
@@ -219,10 +198,10 @@ git push origin main
 
 Uebergabe-Beispiele:
 
-- Mac Studio entwickelt -> `3333` -> MacBook Pro `1111`
-- MacBook Pro entwickelt -> `3333` -> Mac Studio `1111`
+- Mac Studio entwickelt -> `ftu` -> MacBook Pro `ftd`
+- MacBook Pro entwickelt -> `ftu` -> Mac Studio `ftd`
 
-Bei `3333` muss Codex vor dem Commit die Arbeitsdoku aktualisieren:
+Bei `ftu` muss Codex vor dem Commit die Arbeitsdoku aktualisieren:
 
 - `docs/device_switch_log.md`
 - `docs/working_memory.md` nur als kurze Orientierung, nicht als zweite
@@ -326,7 +305,7 @@ docs/device_switch_log.md
 docs/working_memory.md
 README.md
 
-Fuehre dann die Regel fuer 1111 aus: aktuellen Stand pruefen, GitHub-Stand
+Fuehre dann `ftd` aus: aktuellen Stand pruefen, GitHub-Stand
 holen, Dependencies aktualisieren und Build pruefen. Ueberschreibe keine
 lokalen Aenderungen. Gib mir danach kurz Feedback:
 
@@ -337,16 +316,15 @@ lokalen Aenderungen. Gib mir danach kurz Feedback:
 5. Gibt es Wechselprobleme, fehlende Secrets oder Agenten, die hier nicht
    laufen sollen?
 
-Merke dir fuer diesen Chat die Projektcodes:
-1111 bzw. ftd = Projekt herunterladen/aktualisieren
-2222 bzw. fts = lokal speichern/committen
-3333 bzw. ftu = bauen, GitHub pushen, Firebase deployen und an das andere
-                Geraet uebergeben
+Merke dir fuer diesen Chat die Finanztool-Kurzbefehle:
+ftd = Projekt herunterladen/aktualisieren
+fts = lokal speichern/committen
+ftu = bauen, GitHub pushen, Firebase deployen und an das andere Geraet uebergeben
 ```
 
 ## Was immer dokumentiert werden muss
 
-- neue Zahlencodes oder geaenderte Bedeutung
+- neue Kurzbefehle oder geaenderte Bedeutung
 - neue lokale Pfade
 - neue Secrets oder Schluesselbund-Service-Namen
 - neue LaunchAgents
