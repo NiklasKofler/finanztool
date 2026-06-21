@@ -968,6 +968,9 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
 
 - Datum: 2026-06-21 CEST
 - Quelle: Lokale Codex-Session, Agent-Audit, Flatex-/Kursstrategie und UI-Arbeit auf `localhost`
+- Uebergabestand: Lokaler Savepoint `7808ec6` wurde mit `2222`
+  gespeichert; anschliessend wurde `3333` gestartet, um diesen Stand an
+  GitHub/Firebase und danach ans MacBook Pro zu uebergeben.
 - Zusatzstand 2026-06-21: Kursstrategie fuer Wertpapiere umgestellt auf
   haeufige aktuelle Kurse und sparsame Tageshistorie. `quotesCurrent` wird
   durch `com.niklas.finanztool.quote-sync` alle 5 Minuten aktualisiert und

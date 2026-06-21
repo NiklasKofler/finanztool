@@ -31,6 +31,44 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-21 15:25 CEST - 3333 Handoff Mac Studio zu MacBook Pro
+
+Datum/Zeit: 2026-06-21 15:25 CEST
+Quellgeraet: Mac Studio von Niklas (`Mac.fritz.box`)
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `7808ec6`; Handoff-Doku-Commit wird in diesem
+`3333`-Lauf erstellt
+Aktion: Lokal gespeicherten Depot-Agent-/Kursstrategie-Stand bauen, auf
+GitHub pushen und nach Firebase deployen
+Erledigt:
+- Lokaler Savepoint `7808ec6` enthaelt die Agent-/DB-/GUI-Aenderungen:
+  Flatex-Broker-Snapshot als primaere Bewertung, Bitget-Ledger-Erweiterungen,
+  Firestore-Datenvertrag, manueller Vollrefresh und neue Kursstrategie
+- Boerse-Frankfurt-Kurse laufen auf dem Mac Studio alle 5 Minuten in
+  `quotesCurrent`; Tageshistorie laeuft getrennt um 22:00 in `priceHistory`
+- `quoteAsOf`, `quoteFetchedAt`, `quoteVenue`, `quoteAgeMinutes` und
+  `quoteFreshness` sind produktiv im Datenmodell vorgesehen
+- App-Build und Agent-Tests waren vor dem Handoff erfolgreich
+Naechste Schritte:
+- Auf dem MacBook Pro `1111` ausfuehren
+- Danach Pflichtdokumente lesen und kurz rueckmelden:
+  `docs/device_workflow.md`, `docs/device_switch_log.md`,
+  `docs/working_memory.md`, `README.md`
+- Auf dem MacBook Pro keine produktiven LaunchAgents starten
+- Falls weiter an Agents gearbeitet wird, spaeter per `3333` wieder an den
+  Mac Studio uebergeben und dort `1111` plus Agent-Installation/Health pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Der Mac Studio bleibt produktiver Agent-Knoten fuer Drive, Browser-Syncs,
+  API-Syncs und Kurslaeufe
+- Firestore/Hosting-Deploy kann nach erfolgreichem Deploy die Firebase
+  Hosting-Cache-Datei veraendern; falls das passiert, muss sie nachcommittet
+  und erneut gepusht werden
+Lokale Besonderheiten:
+- `com.niklas.finanztool.quote-sync` laeuft auf dem Mac Studio alle 5 Minuten
+- `com.niklas.finanztool.quote-history` laeuft auf dem Mac Studio taeglich
+  um 22:00 Europe/Vienna
+
 ### 2026-06-20 18:38 CEST - 3333 Handoff MacBook Pro zu Mac Studio
 
 Datum/Zeit: 2026-06-20 18:38 CEST
