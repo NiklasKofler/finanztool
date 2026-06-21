@@ -367,9 +367,7 @@ function replaceSection(text, heading, replacement) {
 function firebaseDeploy() {
   const deployTarget = process.env.FT_FIREBASE_ONLY || "hosting";
   const maxAttempts = Number.parseInt(process.env.FT_FIREBASE_DEPLOY_ATTEMPTS || "5", 10);
-  const nodeOptions = process.env.NODE_OPTIONS?.includes("--dns-result-order=ipv4first")
-    ? process.env.NODE_OPTIONS
-    : [process.env.NODE_OPTIONS, "--dns-result-order=ipv4first"].filter(Boolean).join(" ");
+  const nodeOptions = "--dns-result-order=ipv4first";
   const commandLine = `NODE_OPTIONS=${JSON.stringify(nodeOptions)} firebase deploy --only ${JSON.stringify(
     deployTarget,
   )} --project finanzperformance-tool`;
