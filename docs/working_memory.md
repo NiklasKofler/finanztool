@@ -55,6 +55,10 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - `ftu` = Upload/Push/Firebase Deploy/Handoff
 - Installation der Kurzbefehle pro Geraet:
   `npm run ft:install`
+- `ftd` wird dabei als Shell-Funktion installiert. Nach erfolgreichem Download
+  muss das Terminal in `/Users/niklaskofler/Documents/finanztool` stehen.
+  Wird nur `bin/ftd` als Script ausgefuehrt, kann es das Terminal-Verzeichnis
+  nach dem Ende technisch nicht dauerhaft aendern.
 - Alte numerische Befehle sind deaktiviert.
 - Sicherheitsregeln:
   - `ftd` ueberschreibt keine lokalen Aenderungen.

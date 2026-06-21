@@ -116,6 +116,12 @@ Wichtig fuer alle Kurzbefehle:
 
 Projekt auf der aktuellen Maschine richtig herunterladen/aktualisieren.
 
+Wichtig: `ftd` muss nach `npm run ft:install` und `source ~/.zshrc` als
+Shell-Funktion verfuegbar sein. Nur dann kann `ftd` das aktuelle Terminal nach
+erfolgreichem Lauf dauerhaft nach
+`/Users/niklaskofler/Documents/finanztool` setzen. Wird direkt das Script
+`bin/ftd` gestartet, wechselt nur der Kindprozess intern in den Projektordner.
+
 Ablauf:
 
 ```bash

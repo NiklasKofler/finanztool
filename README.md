@@ -58,6 +58,11 @@ npm run ft:install
 source ~/.zshrc
 ```
 
+`ftd` wird als Shell-Funktion installiert. Dadurch bleibt das Terminal nach
+einem erfolgreichen Download automatisch in
+`/Users/niklaskofler/Documents/finanztool`. Ein reines Script koennte das
+Terminal-Verzeichnis nach dem Ende nicht dauerhaft aendern.
+
 Nach `ftd` muss Codex kurz melden, welcher Stand aktiv ist, wo am alten
 Geraet aufgehoert wurde, welche naechsten Schritte geplant sind und ob
 Wechselprobleme bestehen.
