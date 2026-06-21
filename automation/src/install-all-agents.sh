@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root/automation"
 
 npm run install:bitget-agent
+npm run install:bitget-ledger-agent
 npm run install:capitalcom-agent
 npm run install:flatex-agent
 npm run install:ginmon-agent

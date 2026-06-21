@@ -25,6 +25,15 @@ function runQuoteSync() {
   if (result.status !== 0) throw new Error(`Kurs-Sync fehlgeschlagen: Exit ${result.status}`);
 }
 
+function runFullRefresh() {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "run-full-refresh-local.mjs")], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`Gesamtaktualisierung fehlgeschlagen: Exit ${result.status}`);
+}
+
 const firestore = new FirestoreRest({
   projectId,
   accessToken: await getFirebaseCliAccessToken(),
@@ -35,12 +44,13 @@ const [commands, statuses] = await Promise.all([
   firestore.listDocuments("agentStatus"),
 ]);
 const quoteAgentStatus = statuses.find((status) => status.id === "quotes");
-if (quoteAgentStatus?.status === "RUNNING") {
-  console.log("[info] Kurs-Sync laeuft bereits. Offene Befehle bleiben fuer den naechsten Lauf liegen.");
+const manualRefreshStatus = statuses.find((status) => status.id === "manual_refresh");
+if (quoteAgentStatus?.status === "RUNNING" || manualRefreshStatus?.status === "RUNNING") {
+  console.log("[info] Aktualisierung laeuft bereits. Offene Befehle bleiben fuer den naechsten Lauf liegen.");
   process.exit(0);
 }
 const pendingCommands = commands
-  .filter((command) => command.type === "sync_quotes" && command.status === "REQUESTED")
+  .filter((command) => ["sync_quotes", "full_refresh"].includes(command.type) && command.status === "REQUESTED")
   .sort((left, right) => {
     const leftDate = parseDate(left.requestedAt)?.getTime() ?? 0;
     const rightDate = parseDate(right.requestedAt)?.getTime() ?? 0;
@@ -62,7 +72,8 @@ for (const command of pendingCommands) {
   });
 
   try {
-    if (command.type === "sync_quotes") runQuoteSync();
+    if (command.type === "sync_quotes") runFullRefresh();
+    if (command.type === "full_refresh") runFullRefresh();
     const completedAt = new Date();
     await firestore.setDocument("automationCommands", command.id, {
       ...command,

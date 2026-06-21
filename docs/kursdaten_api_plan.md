@@ -22,6 +22,11 @@ instrumentMappings
 
 quotesCurrent
   Letzter Kurs je Instrument inklusive Preis in Originalwaehrung, FX-Rate und EUR-Preis.
+  Wird fuer die App haeufig ueberschrieben und ist kein Historienlog.
+
+priceHistory
+  Tageshistorie je Instrument/Position. Wird bewusst nur im History-Lauf
+  geschrieben, damit keine 5-Minuten-Intraday-Historie entsteht.
 ```
 
 ## Bewertungslogik
@@ -54,8 +59,38 @@ Der Abgleich funktioniert dynamisch:
 1. Neue Positionen mit ISIN werden aus `sourcePositions` gelesen.
 2. Fuer jede ISIN wird automatisch das Instrument bei Boerse Frankfurt gesucht.
 3. Das Mapping wird in `instrumentMappings` gespeichert.
-4. Der Kurs wird bevorzugt ueber Xetra (`XETR`) geladen, sonst ueber Frankfurt (`XFRA`) oder den von Boerse Frankfurt gelieferten Standardplatz.
-5. `sourcePositions.currentValue` und `sourceSummaries` werden aus den Einzelpositionen neu berechnet.
+4. Wenn die Position einen Handelsplatz liefert, wird daraus ein bevorzugter
+   MIC abgeleitet, z. B. `XETR`, `XFRA`, `XGAT`, `XSTU`. Dieser Handelsplatz
+   wird zuerst versucht. Falls er ueber Deutsche-Boerse-Live nicht bepreist
+   werden kann, faellt der Agent auf den Provider-Standard, Xetra oder
+   Frankfurt zurueck.
+5. `quotesCurrent` und `sourcePositions` werden aktualisiert. Dabei werden
+   `quoteVenue`, `quoteAsOf`, `quoteFetchedAt`, `quoteAgeMinutes` und
+   `quoteFreshness` geschrieben, damit die GUI zwischen Agent-Laufzeit und
+   echtem Kursstand unterscheiden kann.
+6. `sourcePositions.currentValue` und `sourceSummaries` werden aus den Einzelpositionen neu berechnet.
+
+## Aktualisierungsrhythmus
+
+Aktuelle Kurse:
+
+```bash
+npm --prefix automation run sync:quotes:current
+```
+
+Dieser Lauf ueberschreibt `quotesCurrent` und aktualisiert die aktuellen
+Positionen/Summaries. Der LaunchAgent `com.niklas.finanztool.quote-sync`
+laeuft alle 5 Minuten.
+
+Tageshistorie:
+
+```bash
+npm --prefix automation run sync:quotes:history
+```
+
+Dieser Lauf schreibt zusaetzlich `priceHistory` und die generische
+Positionshistorie. Der LaunchAgent `com.niklas.finanztool.quote-history`
+laeuft taeglich um 22:00 Europe/Vienna.
 
 Dry-Run ohne Firestore-Schreibzugriff:
 

@@ -1,0 +1,345 @@
+import "dotenv/config";
+import fs from "node:fs/promises";
+import { createBitgetClientFromLocalSecrets } from "./bitget-client.mjs";
+import {
+  costEventFromBitgetFill,
+  incomeEventFromEarnRecord,
+  normalizeBitgetBill,
+  normalizeBitgetEarnRecord,
+  normalizeBitgetFill,
+  normalizeBitgetTaxRecord,
+} from "./bitget-ledger-normalizer.mjs";
+import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
+import { FirestoreRest } from "./firestore-rest.mjs";
+
+const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
+const importId = "api_bitget_ledger_latest";
+const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+const ledgerWindowDays = Number.parseInt(process.env.BITGET_LEDGER_WINDOW_DAYS ?? "90", 10);
+const taxWindowDays = Math.min(30, ledgerWindowDays);
+const maxPages = Number.parseInt(process.env.BITGET_LEDGER_MAX_PAGES ?? "20", 10);
+const writeConcurrency = Number.parseInt(process.env.BITGET_LEDGER_WRITE_CONCURRENCY ?? "20", 10);
+const lockPath = process.env.BITGET_LEDGER_LOCK_PATH ?? "/tmp/finanztool-bitget-ledger.lock";
+const staleLockMs = 50 * 60 * 1000;
+
+const accessToken = await getFirebaseCliAccessToken();
+const firestore = new FirestoreRest({ projectId, accessToken });
+
+function millisDaysAgo(days) {
+  return Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireRunLock() {
+  const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+  try {
+    const handle = await fs.open(lockPath, "wx");
+    await handle.writeFile(payload);
+    await handle.close();
+    return async () => {
+      await fs.unlink(lockPath).catch(() => {});
+    };
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+
+    const existing = await fs.readFile(lockPath, "utf8").catch(() => "");
+    const lockInfo = (() => {
+      try {
+        return JSON.parse(existing || "{}");
+      } catch {
+        return {};
+      }
+    })();
+    const startedAt = lockInfo?.startedAt;
+    const age = startedAt ? Date.now() - new Date(startedAt).getTime() : Number.POSITIVE_INFINITY;
+    if (age > staleLockMs) {
+      await fs.unlink(lockPath).catch(() => {});
+      return acquireRunLock();
+    }
+
+    console.log("[info] Bitget Ledger-Sync laeuft bereits; zweiter Lauf wird uebersprungen.");
+    return null;
+  }
+}
+
+function normalizeResponseList(response) {
+  if (Array.isArray(response)) return response;
+  return response?.resultList ?? response?.dataList ?? response?.list ?? response?.records ?? [];
+}
+
+function responseEndId(response) {
+  if (!response || Array.isArray(response)) return null;
+  return response.endId ?? response.lastEndId ?? null;
+}
+
+async function fetchPagedArray(fetchPage, { idField, limit = 500, pageDelayMs = 0 } = {}) {
+  const rows = [];
+  let idLessThan = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const response = await fetchPage({ idLessThan, limit: String(limit) });
+    const list = normalizeResponseList(response);
+    if (!list.length) break;
+    rows.push(...list);
+
+    const nextId = responseEndId(response) ?? list.at(-1)?.[idField];
+    if (!nextId || nextId === idLessThan || list.length < limit) break;
+    idLessThan = nextId;
+    if (pageDelayMs) await sleep(pageDelayMs);
+  }
+
+  return rows;
+}
+
+async function fetchSpotBills(client, startTime, endTime) {
+  return fetchPagedArray(
+    ({ idLessThan, limit }) =>
+      client.getSpotBills({
+        startTime: String(startTime),
+        endTime: String(endTime),
+        limit,
+        ...(idLessThan ? { idLessThan } : {}),
+      }),
+    { idField: "billId", limit: 500 },
+  );
+}
+
+async function fetchSpotFills(client, startTime, endTime) {
+  return fetchPagedArray(
+    ({ idLessThan, limit }) =>
+      client.getSpotFills({
+        startTime: String(startTime),
+        endTime: String(endTime),
+        limit,
+        ...(idLessThan ? { idLessThan } : {}),
+      }),
+    { idField: "tradeId", limit: 100 },
+  );
+}
+
+async function fetchSavingsRecords(client, startTime, endTime) {
+  const rows = [];
+  for (const periodType of ["flexible", "fixed"]) {
+    for (const orderType of ["pay_interest", "subscribe", "redeem", "deduction"]) {
+      const records = await fetchPagedArray(
+        ({ idLessThan, limit }) =>
+          client.getSavingsRecords({
+            periodType,
+            orderType,
+            startTime: String(startTime),
+            endTime: String(endTime),
+            limit,
+            ...(idLessThan ? { idLessThan } : {}),
+          }),
+        { idField: "orderId", limit: 100 },
+      ).catch((error) => {
+        console.warn(`[warn] Bitget savings records skipped (${periodType}/${orderType}): ${error.message}`);
+        return [];
+      });
+      rows.push(...records);
+    }
+  }
+  return rows;
+}
+
+async function fetchSavingsAssets(client, startTime, endTime) {
+  const assets = [];
+  for (const periodType of ["flexible", "fixed"]) {
+    const rows = await fetchPagedArray(
+      ({ idLessThan, limit }) =>
+        client.getSavingsAssets({
+          periodType,
+          startTime: String(startTime),
+          endTime: String(endTime),
+          limit,
+          ...(idLessThan ? { idLessThan } : {}),
+        }),
+      { idField: "orderId", limit: 100 },
+    ).catch((error) => {
+      console.warn(`[warn] Bitget savings assets skipped (${periodType}): ${error.message}`);
+      return [];
+    });
+    assets.push(...rows);
+  }
+  return assets;
+}
+
+async function fetchTaxSpotRecords(client, startTime, endTime) {
+  return fetchPagedArray(
+    ({ idLessThan, limit }) =>
+      client.getTaxSpotRecords({
+        startTime: String(startTime),
+        endTime: String(endTime),
+        limit,
+        ...(idLessThan ? { idLessThan } : {}),
+      }),
+    { idField: "id", limit: 500, pageDelayMs: 1_100 },
+  ).catch((error) => {
+    console.warn(`[warn] Bitget tax spot records skipped: ${error.message}`);
+    return [];
+  });
+}
+
+async function fetchTaxFutureRecords(client, startTime, endTime) {
+  return fetchPagedArray(
+    ({ idLessThan, limit }) =>
+      client.getTaxFutureRecords({
+        startTime: String(startTime),
+        endTime: String(endTime),
+        limit,
+        ...(idLessThan ? { idLessThan } : {}),
+      }),
+    { idField: "id", limit: 500, pageDelayMs: 1_100 },
+  ).catch((error) => {
+    console.warn(`[warn] Bitget tax future records skipped: ${error.message}`);
+    return [];
+  });
+}
+
+async function writeFailureStatus(error) {
+  const now = new Date();
+  await firestore.setDocument("agentStatus", "bitget_ledger", {
+    source: "bitget",
+    status: "FEHLER",
+    message: error instanceof Error ? error.message : String(error),
+    importId,
+    failedRunId: runId,
+    updatedAt: now,
+  });
+  await firestore.setDocument("imports", importId, {
+    source: "bitget",
+    parser: "bitget_ledger_api_v1",
+    status: "FEHLER",
+    message: error instanceof Error ? error.message : String(error),
+    runId,
+    updatedAt: now,
+  });
+}
+
+async function writeDocuments(collection, documents) {
+  for (let offset = 0; offset < documents.length; offset += writeConcurrency) {
+    const chunk = documents.slice(offset, offset + writeConcurrency);
+    await Promise.all(chunk.map((document) => firestore.setDocument(collection, document.id, document)));
+  }
+}
+
+function uniqueById(documents) {
+  return [...new Map(documents.map((document) => [document.id, document])).values()];
+}
+
+async function main() {
+  const client = await createBitgetClientFromLocalSecrets();
+  const now = new Date();
+  const endTime = Date.now();
+  const startTime = millisDaysAgo(ledgerWindowDays);
+  const taxStartTime = millisDaysAgo(taxWindowDays);
+
+  const [bills, fills, savingsRecords, savingsAssets] = await Promise.all([
+    fetchSpotBills(client, startTime, endTime),
+    fetchSpotFills(client, startTime, endTime),
+    fetchSavingsRecords(client, startTime, endTime),
+    fetchSavingsAssets(client, startTime, endTime),
+  ]);
+  await sleep(1_100);
+  const taxSpotRecords = await fetchTaxSpotRecords(client, taxStartTime, endTime);
+  await sleep(1_100);
+  const taxFutureRecords = await fetchTaxFutureRecords(client, taxStartTime, endTime);
+
+  const ledgerEntries = uniqueById(bills.map((bill) => normalizeBitgetBill(bill, { importId, now })));
+  const transactions = uniqueById(fills.map((fill) => normalizeBitgetFill(fill, { importId, now })));
+  const costEvents = uniqueById(transactions
+    .map((transaction) => costEventFromBitgetFill(transaction, { now }))
+    .filter(Boolean));
+  const earnEvents = uniqueById(
+    savingsRecords.map((record) => normalizeBitgetEarnRecord(record, { importId, now })),
+  );
+  const incomeEvents = uniqueById(earnEvents
+    .map((record) => incomeEventFromEarnRecord(record, { now }))
+    .filter(Boolean));
+  const taxFacts = uniqueById([
+    ...taxSpotRecords.map((record) => normalizeBitgetTaxRecord(record, { importId, now })),
+    ...taxFutureRecords.map((record) => ({
+      ...normalizeBitgetTaxRecord(record, { importId, now }),
+      id: `bitget_tax_future_${record.id ?? record.bizOrderId ?? record.ts}`,
+      factType: "tax_future_record",
+    })),
+  ]);
+
+  console.log(
+    `[info] Bitget Ledger fetched: ${ledgerEntries.length} bills, ` +
+      `${transactions.length} fills, ${costEvents.length} fees, ` +
+      `${incomeEvents.length} income events, ${taxFacts.length} tax facts`,
+  );
+
+  await writeDocuments("ledgerEntries", ledgerEntries);
+  await writeDocuments("transactions", transactions);
+  await writeDocuments("costEvents", costEvents);
+  await writeDocuments("incomeEvents", incomeEvents);
+  await writeDocuments("sourceDocumentFacts", taxFacts);
+
+  await firestore.setDocument("rawDocuments", importId, {
+    source: "bitget",
+    importId,
+    fileType: "api",
+    parserVersion: "bitget_ledger_api_v1",
+    windowDays: ledgerWindowDays,
+    taxWindowDays,
+    bills,
+    fills,
+    savingsRecords,
+    savingsAssets,
+    taxSpotRecords,
+    taxFutureRecords,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("imports", importId, {
+    source: "bitget",
+    parser: "bitget_ledger_api_v1",
+    status: "IMPORTED",
+    runId,
+    windowDays: ledgerWindowDays,
+    taxWindowDays,
+    billCount: bills.length,
+    ledgerEntryCount: ledgerEntries.length,
+    fillCount: fills.length,
+    transactionCount: transactions.length,
+    costEventCount: costEvents.length,
+    savingsRecordCount: savingsRecords.length,
+    savingsAssetCount: savingsAssets.length,
+    incomeEventCount: incomeEvents.length,
+    taxSpotRecordCount: taxSpotRecords.length,
+    taxFutureRecordCount: taxFutureRecords.length,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("agentStatus", "bitget_ledger", {
+    source: "bitget",
+    status: "OK",
+    message:
+      `${ledgerEntries.length} Ledger, ${transactions.length} Trades, ` +
+      `${costEvents.length} Kosten, ${incomeEvents.length} Zinsen synchronisiert`,
+    lastSuccessAt: now,
+    importId,
+  });
+
+  console.log(
+    `[ok] Bitget Ledger synchronisiert: ${ledgerEntries.length} Ledger, ` +
+      `${transactions.length} Trades, ${costEvents.length} Kosten, ${incomeEvents.length} Zinsen`,
+  );
+}
+
+let releaseLock = null;
+try {
+  releaseLock = await acquireRunLock();
+  if (releaseLock) await main();
+} catch (error) {
+  await writeFailureStatus(error);
+  console.error(`[error] Bitget Ledger-Sync fehlgeschlagen: ${error instanceof Error ? error.message : error}`);
+  process.exitCode = 1;
+} finally {
+  if (releaseLock) await releaseLock();
+}

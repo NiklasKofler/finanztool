@@ -114,6 +114,7 @@ Im Ordner `automation` ausfuehren:
 ```bash
 cd /Users/niklaskofler/Documents/finanztool/automation
 npm run check:bitget
+npm run sync:bitget-ledger
 npm run check:capitalcom
 npm run reconcile:quotes -- --max-instruments=5
 npm run sync:health
@@ -140,15 +141,17 @@ npm run install:all-agents
 
 Das installiert aktuell:
 
-- Bitget API-Agent alle 15 Minuten
+- Bitget API-Agent alle 5 Minuten
+- Bitget Ledger-Agent stuendlich
 - Capital.com API-Agent stuendlich
 - Flatex Browser-Export-Agent taeglich um 08:00, 10:00, 13:00, 17:00, 22:00
 - Ginmon Sync-Agent alle 6 Stunden
 - Intergold Sync-Agent taeglich um 08:20
 - Trade-Republic-Mail-Agent stuendlich
 - VBV Sync-Agent quartalsweise am 5.1., 5.4., 5.7., 5.10. um 09:15
-- Boerse-Frankfurt-Kursagent stuendlich
-- Command-Runner fuer den App-Button `Kurse aktualisieren`
+- Boerse-Frankfurt-Kursagent alle 5 Minuten fuer aktuelle Kurse
+- Boerse-Frankfurt-Historienagent taeglich um 22:00 fuer `priceHistory`
+- Command-Runner fuer den App-Button `Alles aktualisieren`
 
 ## 5. Agenten pruefen
 
@@ -161,20 +164,22 @@ Logs:
 ```bash
 ls -lh /tmp/finanztool-*.log
 tail -n 80 /tmp/finanztool-bitget-import.err.log
+tail -n 80 /tmp/finanztool-bitget-ledger.err.log
 tail -n 80 /tmp/finanztool-capitalcom-import.err.log
 tail -n 80 /tmp/finanztool-flatex-sync.err.log
 tail -n 80 /tmp/finanztool-ginmon-sync.err.log
 tail -n 80 /tmp/finanztool-intergold-sync.err.log
 tail -n 80 /tmp/finanztool-traderepublic-mail.err.log
 tail -n 80 /tmp/finanztool-quote-sync.err.log
+tail -n 80 /tmp/finanztool-quote-history.err.log
 ```
 
 Firestore-Kontrolle in der App:
 
 - Warnkarte oben rechts pruefen
 - Depotkarten pruefen
-- `Aktualisiert` je Quelle pruefen
-- `Kurse aktualisieren` anklicken und nach einigen Minuten erneut laden
+- `Kursstand`/`Aktualisiert` je Quelle pruefen
+- `Alles aktualisieren` anklicken und nach einigen Minuten erneut laden
 
 ## 6. Aktuelle Importlogik je Quelle
 
@@ -184,8 +189,12 @@ Firestore-Kontrolle in der App:
 - Positionen in `sourcePositions`
 - Summary in `sourceSummaries/bitget`
 - Agentstatus in `agentStatus/bitget`
-- Bekannte Health-Warnung: kleine Summary-Abweichung zwischen Positionssumme und
-  Bitget-Gesamtsummary ist noch zu pruefen
+- Bewegungen in `ledgerEntries`
+- Trades in `transactions`
+- Trading-Gebuehren in `costEvents`
+- Earn-Zinsen in `incomeEvents`
+- Tax-Facts in `sourceDocumentFacts`
+- Ledger-Agentstatus in `agentStatus/bitget_ledger`
 
 ### Capital.com
 
@@ -204,8 +213,15 @@ Firestore-Kontrolle in der App:
 - Session-TAN bleibt deaktiviert
 - Exportzeitraum standardmaessig `zwei Wochen`
 - Kontoumsaetze und Depotumsaetze werden per CSV verarbeitet
-- Cash/Kreditlinie kommt rechnerisch aus Konto-/Depotdaten, nicht aus Dashboard-Screenshot
-- Aktuelle Wertpapierkurse kommen aus Boerse Frankfurt
+- Nach dem CSV-Export liest der Agent den aktuellen Flatex-Broker-Snapshot aus
+  `Mein flatex Depot`
+- Primaere Flatex-Bewertung kommt aus dem Broker-Snapshot:
+  - `sourcePositions`
+  - `sourceSummaries/flatex`
+  - `rawDocuments/flatex_broker_snapshot_latest`
+  - `imports/flatex_broker_snapshot_latest`
+- Boerse-Frankfurt-Kurse bleiben Vergleichs-/Historienquelle und duerfen den
+  Flatex-Brokerwert nicht still ueberschreiben
 
 ### Ginmon
 
@@ -279,4 +295,3 @@ Vor Commit pruefen:
 - keine Secret-Datei
 - keine Klartext-Keys
 - keine Download-Originale
-

@@ -3,11 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.quote-sync</string>
+    <string>com.niklas.finanztool.quote-history</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_PATH__</string>
       <string>src/run-quote-sync-local.mjs</string>
+      <string>--write-history</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -20,13 +21,16 @@
       <key>FINANZTOOL_TIME_ZONE</key>
       <string>Europe/Vienna</string>
     </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StartInterval</key>
-    <integer>300</integer>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>22</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-quote-sync.out.log</string>
+    <string>/tmp/finanztool-quote-history.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-quote-sync.err.log</string>
+    <string>/tmp/finanztool-quote-history.err.log</string>
   </dict>
 </plist>

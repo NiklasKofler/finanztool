@@ -69,6 +69,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - Frontend: React + Vite in `app/`
 - Datenhaltung: Firestore
+- Firestore-Datenvertrag: `docs/firestore_data_contract.md`
+  - alle Quellen schreiben in dieselben fachlichen Collections
+  - aktuelle Anzeige: `sourcePositions` und `sourceSummaries`
+  - Historie/Analyse: `transactions`, `ledgerEntries`, `costEvents`,
+    `incomeEvents`, `sourceDocumentFacts`, `priceHistory`
+  - neue/geschlossene Depots, Konten und Positionen muessen automatisch erkannt
+    und nachvollziehbar markiert werden
 - Hosting: Firebase Hosting
 - Regeln: `firestore.rules`, `storage.rules`
 - Import-Automation: lokaler Agent in `automation/`
@@ -102,7 +109,9 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Firebase Hosting ist konfiguriert
 - Die App liest Live-Daten aus Firestore
 - App-Login ist auf `niklas.kofler@gmail.com` begrenzt
-- App darf nur `automationCommands/sync_quotes_manual` schreiben
+- App darf nur `automationCommands/sync_quotes_manual` schreiben; der
+  Command-Runner interpretiert diesen historisch so benannten Command inzwischen
+  als Full-Refresh
 - Finanzdaten werden lokal durch Agents geschrieben, nicht direkt aus der App
 - Mac Studio ist der Zielort fuer Dauerbetrieb
 
@@ -148,8 +157,26 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Exportzeitraum: `zwei Wochen`
 - Zeitplan: taeglich 08:00, 10:00, 13:00, 17:00, 22:00
 - Bestand und Cash werden aus Konto-/Depotumsaetzen berechnet
-- Broker-Dashboardzahlen werden nicht als Bewertungsquelle importiert
-- Wertpapierkurse kommen aus Boerse Frankfurt
+- Seit 2026-06-21 liest der Flatex-Agent nach dem Umsatzexport zusaetzlich den
+  aktuellen Broker-Snapshot aus `Mein flatex Depot`
+  - Dashboardwerte: Depotwert, Kontosaldo, Gesamtvermoegen, verfuegbares
+    Guthaben, Kreditlinie
+  - Positionswerte: ISIN, WKN, Handelsplatz, Stueck, Kurszeit, Kurs,
+    Gesamtwert, Einstand, Gesamtentwicklung, Tagesentwicklung
+  - Firestore:
+    - `sourcePositions`: aktuelle Flatex-Positionen aus Broker-Snapshot
+    - `sourceSummaries/flatex`: Broker-Depotwert als primaerer Flatex-Wert
+    - `rawDocuments/flatex_broker_snapshot_latest`
+    - `imports/flatex_broker_snapshot_latest`
+- Boerse-Frankfurt-Kurse bleiben fuer Flatex Vergleichs-/Historienquelle und
+  duerfen den Flatex-Brokerwert nicht mehr still ueberschreiben
+- Verifizierter Stand 2026-06-21 00:43 CEST:
+  - Flatex Broker-Depotwert: `22.435,45 EUR`
+  - Flatex Cash: `-5.843,79 EUR`
+  - Flatex Gesamtvermoegen: `16.591,66 EUR`
+  - Boerse-Frankfurt-Vergleichswert: `22.578,42 EUR`
+  - Differenz Broker vs. externe Kursbewertung: `142,97 EUR`
+  - Health: `OK`, 0 Fehler, 0 Warnungen
 - Flatex-Postfach inklusive PDFs ist jetzt als generischer Dokumentfaktenlayer
   in Firestore abgebildet:
   - Parser: `automation/src/flatex-document-parser.mjs`
@@ -317,29 +344,93 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Firestore enthaelt aktuelle Bitget-Positionen aus einem erfolgreichen Lauf
 - API-Key, Secret und Passphrase liegen lokal im macOS-Schluesselbund
 - Spot- und Earn-Bestand werden in `sourcePositions` geschrieben
-- `sourceSummaries/bitget` wurde auf die Summe der sichtbaren, inkludierten
-  Positionen korrigiert, damit die App keine doppelt gezaehlten Zusatzwerte zeigt
+- Der produktive Bitget-LaunchAgent laeuft auf dem Mac Studio alle 5 Minuten
+- Bitget nutzt fuer Bitget-Bewertungen ausschliesslich Bitget-Daten:
+  Bitget-Ticker, `all-account-balance`, Spot-Assets und Earn-Assets
+- Keine externen Preisfallbacks fuer Bitget, also kein CoinGecko und keine
+  Frankfurter Boerse fuer Krypto
+- Sauberer Schnitt vom 2026-06-20:
+  - TRUMP und MELANIA sind keine aktuellen Portfolio-Positionen mehr
+  - Spot-BTC-Dust `0,0000000381 BTC` wird ausgeblendet, weil er in der GUI auf
+    `0,00 EUR` rundet
+  - Ausgeschlossene Bitget-Bestaende bleiben im Rohsnapshot
+    `rawDocuments/api_bitget_latest.rawPositions` und in
+    `excludedPositions` nachvollziehbar
+  - `sourcePositions` ist fuer Bitget ab diesem Schnitt die saubere aktuelle
+    Portfolioansicht, nicht die ungefilterte API-Rohliste
+- `sourceSummaries/bitget.currentValue` und `netValue` nutzen den von Bitget
+  gelieferten kontenuebergreifenden Kontowert (`all-account-balance`, in USDT,
+  mit Bitget `USDTEUR` nach EUR umgerechnet)
+- Zusaetzlich werden gespeichert:
+  - `positionsValue`: Summe aller Bitget-Positionen
+  - `includedPositionsValue`: Summe aller bewertbaren Bitget-Positionen
+  - `positionSummaryDifference`: Differenz zwischen bewertbarer
+    Positionssumme und Bitget-Kontowert
+  - `exchangeAccountValue`: Wert aus Bitget `all-account-balance` in EUR
+  - `totalAccountValueUsdt`: Bitget-Kontowert in USDT
+  - `componentsUsdt`: Bitget-Kontokomponenten
+  - `unpricedPositionCount` und `unpricedPositions`: Assets, die Bitget als
+    Bestand liefert, fuer die Bitget aber keinen Kurs liefert
+  - `excludedPositionCount` und `excludedPositions`: Rohbestaende, die bewusst
+    nicht in die aktuelle Portfolioansicht geschrieben werden
 - `agentStatus/bitget` dokumentiert den letzten erfolgreichen Lauf
-- Automatischer Import ist vorgesehen; aktueller lokaler Test auf dem MacBook
-  meldet jedoch `Bitget API Fehler 400/40009 ... sign signature error`
-- Naechster Bitget-Schritt: API-Key, Secret und Passphrase im Schluesselbund
-  exakt gegen den Bitget-Key pruefen oder Key neu erzeugen
-- Firestore erhaelt hoechstens ein Bitget-Importdokument pro Kalendertag
+- Der aktuelle Mac-Studio-Test vom 2026-06-20 war erfolgreich:
+  `npm run check:bitget`, `npm run import:bitget:local`,
+  `npm run sync:health`
+- Firestore ueberschreibt ab 2026-06-20 bei jedem Lauf denselben aktuellen
+  Importstand:
+  - `imports/api_bitget_latest`
+  - `rawDocuments/api_bitget_latest`
+- Damit schreibt der 5-Minuten-Lauf keine endlose 5-Minuten-Historie. Historie
+  soll separat ueber geplante Tages-/Preishistorie entstehen.
 - Historische Self-Service-Exporte von 13.06.2024 bis 13.06.2026 liegen in
   `My Drive/Depot/01_Originale/Bitget/API_Exports/`
 - Verifizierte Einstandswerte:
-  - TRUMP: `990,80114 USDT` fuer aktuell `20,20977 TRUMP`
+  - TRUMP: `990,80114 USDT` fuer urspruenglich `20,20977 TRUMP`; bei aktueller
+    Restposition wird die Kostenbasis proportional auf die aktuelle Menge
+    heruntergerechnet
   - MELANIA: `289,53119 USDT` fuer aktuell `66,20373 MELANIA`
 - Persistente Kostenbasis liegt in Firestore unter `sourceCostBasis` und wird
   bei jedem Bitget-Import zugemischt
-- Coins ohne aktuellen Bitget-Ticker werden fuer die Bewertung ueber einen
-  CoinGecko-Fallback bepreist; aktuell betrifft das MELANIA
+- Coins ohne aktuellen Bitget-Ticker bleiben sichtbar, werden aber nicht
+  bewertet und mit `quoteStatus=NO_BITGET_PRICE` markiert; nach dem sauberen
+  Schnitt betrifft das keine aktuelle Bitget-Position mehr, weil MELANIA
+  ausgeschlossen ist
 - BTC-Einstand wurde vom Nutzer mit insgesamt `3.000 EUR` fuer den Earn-Bestand
   von `0,066856 BTC` bestaetigt; rechnerischer Einstandskurs:
   `44.872,561924 EUR/BTC`
 - EUR-Einstandswerte fuer TRUMP und MELANIA bleiben bis zum Abgleich mit Bank-
   oder Kreditkartenbuchungen bewusst leer
-- Health-Warnung zur Bitget-Summary wurde am 2026-06-13 bereinigt
+- Health-Fehler zu alten Bitget-Importen werden ab 2026-06-20 ignoriert, wenn
+  danach ein erfolgreicher `agentStatus/bitget.lastSuccessAt` vorhanden ist
+- Verifizierter Stand 2026-06-20:
+  - `agentStatus/bitget`: `OK`
+  - `sourcePositions`: 3 Bitget-Positionen (`BTC Earn`, `EUR`, `USDT`)
+  - `sourceSummaries/bitget.currentValue`: ca. `3.838 EUR`
+  - `sourceSummaries/bitget.costValue`: `3.000 EUR`
+  - `sourceSummaries/bitget.excludedPositionCount`: `3`
+    (`bitget_spot_BTC`, `bitget_spot_TRUMP`, `bitget_spot_MELANIA`)
+  - `sourceSummaries/bitget.unpricedPositionCount`: `0`
+  - `systemHealth/current`: `OK`
+- Daten-Audit liegt in `docs/bitget_data_audit_2026-06-20.md`
+- Wichtiger Audit-Befund:
+  - aktuelle Positionen werden automatisch gepflegt
+  - Kosten, einzelne Trades, Fees und Earn-Zinsen sind ueber Bitget-API
+    abrufbar
+  - Seit 2026-06-20 existiert ein separater Bitget-Ledger-Agent:
+    - LaunchAgent `com.niklas.finanztool.bitget-ledger`
+    - stuendlicher Lauf
+    - Script `automation/src/sync-bitget-ledger-local.mjs`
+    - Lock-Datei `/tmp/finanztool-bitget-ledger.lock`
+  - Letzter verifizierter Ledger-Stand:
+    - `ledgerEntries`: 2166 historisch vorhanden, letzter Lauf 2165
+    - `transactions`: 2
+    - `costEvents`: 2
+    - `incomeEvents`: 90
+    - `sourceDocumentFacts`: 726 historisch vorhanden, letzter Lauf 725
+    - `agentStatus/bitget_ledger`: `OK`
+  - Ledger-/Fact-Dokumente werden historisch behalten und nicht geloescht,
+    wenn sie aus dem Rolling-Fenster herausfallen
 
 ### Capital.com
 
@@ -472,6 +563,30 @@ npm run sync:health
     `npm run sync:health` erfolgreich
   - Bei Bitget-Fehler soll die GUI nicht so wirken, als sei der Import
     erfolgreich gerade aktualisiert worden; daher `Letzter Erfolg`
+  - Nachpruefung am 2026-06-20: API-Key funktioniert; alter Importfehler vom
+    2026-06-16 war historisch und wird nicht mehr als aktueller Health-Fehler
+    gemeldet
+  - Bitget-Rohdaten werden als aktueller Snapshot in
+    `rawDocuments/api_bitget_latest` ueberschrieben
+  - Restpositionen wie TRUMP-Dust erhalten eine anteilige Kostenbasis statt
+    den urspruenglichen Gesamteinstand der vormaligen Gesamtmenge
+  - Bitget-App/Webansicht und Firestore koennen abweichen, wenn:
+    - Bitget ein Asset als Bestand liefert, aber keinen Bitget-Ticker dafuer
+      anbietet
+    - die Bitget-Webansicht einzelne Spot-Dust-Assets ausblendet
+    - `all-account-balance` und Spot-Ticker in unterschiedlichen Sekunden
+      bewertet werden
+    - Bitget-Webansicht, Bitget `all-account-balance` und oeffentliche
+      Bitget-Ticker unterschiedliche Bewertungswege sind; am 2026-06-20 ergab
+      `all-account-balance` ca. `3.835,78 EUR`, BTC-Menge mal `BTCEUR` ca.
+      `3.838,28 EUR`, waehrend die geladene Webansicht ca. `3.832,83 EUR`
+      zeigte
+  - Deshalb gilt fuer Bitget:
+    - Kartenwert kommt aus `exchangeAccountValue`
+    - Positionsliste zeigt alle API-Bestaende
+    - unbewertbare Positionen erzeugen Health-Warnungen
+    - groessere Differenzen zwischen Bitget-Kontowert und bewerteter
+      Positionssumme erzeugen eine eigene Health-Warnung
 - Ginmon-Agent-Fix am 2026-06-13:
   - Ursache: Der dokumentbasierte Ginmon-Abgleich hatte nur ein Depot sauber
     geschrieben, weil viele PDFs aus Google Drive mit `Unknown system error -11`
@@ -734,29 +849,36 @@ npm run sync:health
     Rohwerte in Firestore bleiben unveraendert
   - Die Depotkarten zeigen zusaetzlich die Veraenderung zum Vortag (`Heute`),
     wenn `sourcePositions` Tagesaenderungen liefern
-- Preis-Historie am 2026-06-13:
-  - `automation/src/sync-quotes-local.mjs` schreibt beim Kurs-Sync zusaetzlich
-    eine generische Collection `priceHistory`
+- Preis-Historie, Stand aktualisiert am 2026-06-21:
+  - `automation/src/sync-quotes-local.mjs` schreibt `priceHistory` nur noch
+    im History-Modus `--write-history`; normale Kurslaeufe aktualisieren
+    `quotesCurrent`, `sourcePositions` und `sourceSummaries`
   - Dokument-ID: `instrumentId_YYYY-MM-DD`, dadurch pro Instrument und Tag
     idempotent und nicht doppelt
   - Gespeichert werden u.a. `instrumentId`, `isin`, `price`, `currency`,
     `priceEur`, `provider`, `providerSymbol`, `asOf`, `historyDate`,
     `positionIds` und `sources`
-  - Der LaunchAgent `com.niklas.finanztool.quote-sync` ist im Template auf
-    taeglich `22:00` umgestellt; manuelle Kurs-Aktualisierung bleibt ueber die
-    App/Command-Runner moeglich
-  - Lokal neu installiert und per `plutil` verifiziert:
-    `StartCalendarInterval` mit `Hour=22`, `Minute=0`
-- Manueller Kurs-Sync-Fix am 2026-06-13:
+  - Der LaunchAgent `com.niklas.finanztool.quote-sync` laeuft alle 5 Minuten
+    fuer aktuelle Kurse; `com.niklas.finanztool.quote-history` laeuft
+    taeglich `22:00` und schreibt Tageshistorie
+- Manueller Refresh-Fix:
   - Ursache fuer die falsche GUI-Fehlermeldung:
     `run-quote-sync-local.mjs` hat `check-health-local.mjs` ausgefuehrt,
     waehrend `agentStatus/quotes` noch `RUNNING` war; Health hat daraus
     faelschlich `Agent quotes: RUNNING` als Fehler erzeugt
   - Fix: Quote-Agent setzt nach erfolgreichem Kurslauf zuerst
     `agentStatus/quotes=OK` und ruft danach Health auf
-  - App-Button `Kurse aktualisieren` beobachtet jetzt
+  - App-Button `Alles aktualisieren` beobachtet aus Rule-Kompatibilitaet weiter
     `automationCommands/sync_quotes_manual` und unterscheidet `REQUESTED`,
     `RUNNING`, `DONE` und `ERROR`
+  - `automationCommands/sync_quotes_manual.type` bleibt `sync_quotes`
+  - Der Command-Runner interpretiert `sync_quotes` ab 2026-06-21 als
+    Full-Refresh, nicht mehr als reinen Kurslauf
+  - Command-Runner startet dafuer `automation/src/run-full-refresh-local.mjs`
+  - Full-Refresh fuehrt aktuell nacheinander aus:
+    Bitget Snapshot, Bitget Ledger, Flatex Umsatzexport + Broker-Snapshot,
+    Trade-Republic-Mail-Agent, Ginmon API, Ginmon Dokumente, Intergold, VBV,
+    Kurse/Positionshistorie, Health
   - Nach `DONE` laedt die App `sourceSummaries`, `agentStatus`,
     `sourcePositions` und `systemHealth` neu und setzt den Button zurueck
   - Verifiziert: `npm --prefix automation run sync:quotes:local` schreibt
@@ -844,8 +966,19 @@ Trading 212 und weitere Steuer-/Kostenlogiken vertiefen.
 
 ## Letzte Aktualisierung
 
-- Datum: 2026-06-20 CEST
-- Quelle: Lokale Codex-Session, Agent-Audit und UI-Arbeit auf `localhost`
+- Datum: 2026-06-21 CEST
+- Quelle: Lokale Codex-Session, Agent-Audit, Flatex-/Kursstrategie und UI-Arbeit auf `localhost`
+- Zusatzstand 2026-06-21: Kursstrategie fuer Wertpapiere umgestellt auf
+  haeufige aktuelle Kurse und sparsame Tageshistorie. `quotesCurrent` wird
+  durch `com.niklas.finanztool.quote-sync` alle 5 Minuten aktualisiert und
+  ueberschrieben. `priceHistory` und die generische Positionshistorie werden
+  nur durch `com.niklas.finanztool.quote-history` taeglich um 22:00
+  `Europe/Vienna` geschrieben. Der Quote-Sync speichert jetzt `quoteVenue`,
+  `quoteAsOf`, `quoteFetchedAt`, `quoteAgeMinutes` und `quoteFreshness`; die
+  GUI zeigt fuer Positionen und Depotkarten bevorzugt den echten Kursstand
+  statt nur den Firestore-Schreibzeitpunkt. Wenn eine Position einen
+  Handelsplatz mitliefert, versucht der Boerse-Frankfurt-Provider diesen MIC
+  zuerst und faellt erst danach auf Provider-Standard/Xetra/Frankfurt zurueck.
 - Status: Geraetewechsel-Regeln und Zahlencodes liegen zentral in
   `docs/device_workflow.md`; Standardpfad auf Mac Studio und MacBook Pro ist
   `/Users/niklaskofler/Documents/finanztool`; Nicht pushen/deployen waehrend

@@ -20,6 +20,7 @@ const staleHoursByAgent = {
   ginmon: 48,
   intergold: 72,
   bitget: 6,
+  bitget_ledger: 26,
   capitalcom: 6,
   quotes: 2,
   vbv: 100 * 24,
@@ -303,6 +304,23 @@ for (const source of expectedSources) {
 
 for (const position of positions) {
   if (!expectedSources.includes(position.source)) continue;
+  if (position.source === "bitget" && position.quoteStatus === "NO_BITGET_PRICE") {
+    alerts.push(
+      alert(
+        `bitget_no_price_${position.id}`,
+        "warning",
+        "Bitget-Position ohne Bitget-Kurs",
+        `Bitget liefert ${position.name ?? position.id} als Bestand, aber keinen Bitget-Kurs fuer die EUR-Bewertung.`,
+        "bitget",
+        {
+          id: position.id,
+          name: position.name ?? null,
+          quantity: position.quantity ?? null,
+          accountType: position.accountType ?? null,
+        },
+      ),
+    );
+  }
   if (position.accountValueIncluded !== false && parseMaybeNumber(position.currentValue) === null) {
     alerts.push(
       alert(
@@ -374,6 +392,85 @@ for (const mapping of mappings) {
         "Instrument nicht gemappt",
         `${mapping.name ?? mapping.isin ?? mapping.id} ist bei ${mapping.source ?? "Kursquelle"} nicht automatisch gemappt.`,
         null,
+      ),
+    );
+  }
+}
+
+const bitgetSummary = summaryById.get("bitget");
+if (bitgetSummary) {
+  const bitgetDifference = parseMaybeNumber(bitgetSummary.positionSummaryDifference);
+  const bitgetAccountValue = parseMaybeNumber(
+    bitgetSummary.exchangeAccountValue ?? bitgetSummary.netValue ?? bitgetSummary.currentValue,
+  );
+  const allowedDifference =
+    bitgetAccountValue !== null ? Math.max(10, Math.abs(bitgetAccountValue) * 0.01) : 10;
+
+  if (bitgetDifference !== null && Math.abs(bitgetDifference) > allowedDifference) {
+    alerts.push(
+      alert(
+        "bitget_summary_position_mismatch",
+        "warning",
+        "Bitget-Kontowert weicht von Positionssumme ab",
+        `Bitget-Kontowert und bewertete Positionssumme unterscheiden sich um ${roundCurrency(
+          bitgetDifference,
+        ).toFixed(2)} EUR.`,
+        "bitget",
+        {
+          accountValue: bitgetAccountValue,
+          includedPositionsValue: parseMaybeNumber(bitgetSummary.includedPositionsValue),
+          positionsValue: parseMaybeNumber(bitgetSummary.positionsValue),
+          allowedDifference,
+        },
+      ),
+    );
+  }
+}
+
+const flatexSummary = summaryById.get("flatex");
+if (flatexSummary) {
+  const depotValue = parseMaybeNumber(flatexSummary.depotValue ?? flatexSummary.currentValue);
+  const brokerPositionValue = parseMaybeNumber(flatexSummary.brokerPositionValue);
+  const brokerPositionDifference = parseMaybeNumber(flatexSummary.brokerPositionSummaryDifference);
+  const externalQuoteValue = parseMaybeNumber(flatexSummary.externalQuoteDepotValue);
+  const externalQuoteDifference = parseMaybeNumber(flatexSummary.externalQuoteDifference);
+  const allowedBrokerDifference = depotValue !== null ? Math.max(5, Math.abs(depotValue) * 0.0025) : 5;
+  const allowedQuoteDifference = depotValue !== null ? Math.max(500, Math.abs(depotValue) * 0.02) : 500;
+
+  if (brokerPositionDifference !== null && Math.abs(brokerPositionDifference) > allowedBrokerDifference) {
+    alerts.push(
+      alert(
+        "flatex_broker_position_mismatch",
+        "warning",
+        "Flatex-Brokerwert passt nicht zur Positionsliste",
+        `Flatex Depotwert und Broker-Positionssumme unterscheiden sich um ${roundCurrency(
+          brokerPositionDifference,
+        ).toFixed(2)} EUR.`,
+        "flatex",
+        {
+          depotValue,
+          brokerPositionValue,
+          allowedBrokerDifference,
+        },
+      ),
+    );
+  }
+
+  if (externalQuoteDifference !== null && Math.abs(externalQuoteDifference) > allowedQuoteDifference) {
+    alerts.push(
+      alert(
+        "flatex_external_quote_mismatch",
+        "warning",
+        "Flatex-Brokerwert weicht von Marktkurs-Bewertung ab",
+        `Flatex Brokerwert und Boerse-Frankfurt-Bewertung unterscheiden sich um ${roundCurrency(
+          externalQuoteDifference,
+        ).toFixed(2)} EUR.`,
+        "flatex",
+        {
+          depotValue,
+          externalQuoteValue,
+          allowedQuoteDifference,
+        },
       ),
     );
   }
@@ -463,6 +560,7 @@ if (unclassifiedTradeRepublicDocuments.length) {
 }
 
 for (const source of expectedSources) {
+  if (source === "bitget") continue;
   const matchingStatus = statusById.get(source) ?? [...statusById.values()].find(
     (status) => status.source === source,
   );
@@ -496,6 +594,11 @@ for (const entry of imports) {
       ? statusById.get(entry.source) ?? [...statusById.values()].find((status) => status.source === entry.source)
       : null;
     if (matchingStatus?.status && matchingStatus.status !== "OK") continue;
+    const failedAt = parseDate(entry.updatedAt ?? entry.createdAt ?? entry.valuationDate);
+    const lastSuccessAt = parseDate(matchingStatus?.lastSuccessAt ?? matchingStatus?.valuationDate);
+    if (matchingStatus?.status === "OK" && failedAt && lastSuccessAt && lastSuccessAt > failedAt) {
+      continue;
+    }
 
     alerts.push(
       alert(

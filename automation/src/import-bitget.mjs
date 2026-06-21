@@ -24,7 +24,48 @@ admin.initializeApp({
 
 const db = admin.firestore();
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-const importId = `api_bitget_${runId}`;
+const importId = "api_bitget_latest";
+
+function parseMaybeNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number.parseFloat(value.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function roundCurrency(value) {
+  return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + (parseMaybeNumber(value) ?? 0), 0);
+}
+
+function enrichQuoteCostBasis(position, usdtToEur) {
+  const currentValue = parseMaybeNumber(position.currentValue);
+  const costValue = parseMaybeNumber(position.costValue);
+  if (typeof costValue === "number") return position;
+
+  const costValueQuote = parseMaybeNumber(position.costValueQuote);
+  if (
+    typeof currentValue !== "number" ||
+    typeof costValueQuote !== "number" ||
+    typeof usdtToEur !== "number"
+  ) {
+    return position;
+  }
+
+  const convertedCostValue = roundCurrency(costValueQuote * usdtToEur);
+  const performanceValue = roundCurrency(currentValue - convertedCostValue);
+  return {
+    ...position,
+    costValue: convertedCostValue,
+    costCurrency: position.costCurrency ?? "USDT",
+    costValueConvertedFromQuote: true,
+    performanceValue,
+    performancePct: convertedCostValue ? performanceValue / convertedCostValue : null,
+  };
+}
 
 function toTimestampMillis(daysAgo) {
   return String(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
@@ -71,7 +112,7 @@ const costBasisSnapshot = await db.collection("sourceCostBasis").where("source",
 snapshot.positions = applyCostBasisOverrides(
   snapshot.positions,
   costBasisSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-);
+).map((position) => enrichQuoteCostBasis(position, snapshot.usdtToEur));
 
 let bills = [];
 try {
@@ -96,6 +137,10 @@ const ledgerEntries = (bills ?? []).map((bill) => ({
   raw: bill,
 }));
 
+const totalCostValue = roundCurrency(sum(snapshot.positions.map((position) => position.costValue)));
+const totalPerformanceValue =
+  totalCostValue > 0 ? roundCurrency(snapshot.currentValue - totalCostValue) : null;
+
 await db.collection("imports").doc(importId).set(
   {
     source: "bitget",
@@ -106,7 +151,14 @@ await db.collection("imports").doc(importId).set(
     currentValue: snapshot.currentValue,
     componentsUsdt: snapshot.accountComponents,
     totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
-    additionalValue: snapshot.additionalValue,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
     valuationDate: snapshot.valuationDate,
     usdtToEur: snapshot.usdtToEur,
     runId,
@@ -123,8 +175,21 @@ await db.collection("rawDocuments").doc(importId).set(
     parserVersion: "bitget_api_v1",
     accountInfo: snapshot.accountInfo,
     accountBalances: snapshot.accountBalances,
+    accountComponents: snapshot.accountComponents,
+    totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
     earnAssets: snapshot.earnAssets,
+    rawPositions: snapshot.rawPositions,
+    positions: snapshot.positions,
     usdtToEur: snapshot.usdtToEur,
+    valuationDate: snapshot.valuationDate,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   },
   { merge: true },
@@ -138,11 +203,23 @@ await db.collection("sourceSummaries").doc("bitget").set(
     source: "bitget",
     displayName: "Bitget",
     currentValue: snapshot.currentValue,
+    netValue: snapshot.currentValue,
+    costValue: totalCostValue > 0 ? totalCostValue : null,
+    performanceValue: totalPerformanceValue,
+    performancePct: totalCostValue > 0 && totalPerformanceValue !== null ? totalPerformanceValue / totalCostValue : null,
     valuationDate: snapshot.valuationDate,
     positionCount: snapshot.positions.length,
     componentsUsdt: snapshot.accountComponents,
     totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
-    additionalValue: snapshot.additionalValue,
+    usdtToEur: snapshot.usdtToEur,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
     status: snapshot.positions.length ? "VERIFIED" : "UNVOLLSTAENDIG",
     valuationMethod: "bitget_api_v1",
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),

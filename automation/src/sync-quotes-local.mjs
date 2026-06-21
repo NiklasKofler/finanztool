@@ -8,8 +8,12 @@ import {
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const writeEnabled = process.argv.includes("--write");
+const writeHistoryEnabled =
+  process.argv.includes("--write-history") ||
+  ["1", "true", "yes"].includes(String(process.env.QUOTE_WRITE_HISTORY ?? "").toLowerCase());
 const remapEnabled = process.argv.includes("--remap");
 const quoteProvider = process.env.QUOTE_PROVIDER ?? "boerse-frankfurt";
+const historyTimeZone = process.env.FINANZTOOL_TIME_ZONE ?? "Europe/Vienna";
 const maxInstruments = Number.parseInt(readArg("--max-instruments") ?? process.env.QUOTE_MAX_INSTRUMENTS ?? "0", 10);
 const delayMs = Number.parseInt(readArg("--delay-ms") ?? process.env.QUOTE_DELAY_MS ?? "150", 10);
 const quoteSources = new Set(
@@ -31,7 +35,7 @@ function instrumentIdForIsin(isin) {
 }
 
 function historyDateId(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: historyTimeZone }).format(date);
 }
 
 function uniqueIsinPositions(positions) {
@@ -46,6 +50,87 @@ function uniqueIsinPositions(positions) {
 
 function roundCurrency(value) {
   return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+}
+
+function minutesBetween(later, earlier) {
+  if (!(later instanceof Date) || !(earlier instanceof Date)) return null;
+  if (Number.isNaN(later.getTime()) || Number.isNaN(earlier.getTime())) return null;
+  return Math.max(0, Math.round((later.getTime() - earlier.getTime()) / 60000));
+}
+
+function quoteFreshnessFor(quote, now = new Date()) {
+  const asOf = quote?.asOf ? new Date(quote.asOf) : null;
+  const ageMinutes = asOf ? minutesBetween(now, asOf) : null;
+  let freshness = "UNKNOWN";
+  if (typeof ageMinutes === "number") {
+    if (ageMinutes <= 20) freshness = "FRESH";
+    else if (ageMinutes <= 120) freshness = "DELAYED";
+    else freshness = "STALE";
+  }
+  return { quoteAgeMinutes: ageMinutes, quoteFreshness: freshness };
+}
+
+function normalizeExchangeText(value) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+function preferredMicsForPosition(position) {
+  const values = [
+    position.quoteVenue,
+    position.quoteVenueMic,
+    position.exchangeMic,
+    position.exchange,
+    position.tradingVenue,
+    position.market,
+  ]
+    .map(normalizeExchangeText)
+    .filter(Boolean);
+  const mics = [];
+  for (const value of values) {
+    if (/^[A-Z0-9]{4}$/.test(value)) mics.push(value);
+    if (value.includes("XETRA")) mics.push("XETR");
+    if (value.includes("FRANKFURT") || value.includes("BOERSE FRANKFURT") || value === "FRA") mics.push("XFRA");
+    if (value.includes("TRADEGATE")) mics.push("XGAT");
+    if (value.includes("STUTTGART")) mics.push("XSTU");
+    if (value.includes("MUENCHEN") || value.includes("MÜNCHEN")) mics.push("XMUN");
+    if (value.includes("BERLIN")) mics.push("XBER");
+    if (value.includes("DUSSELDORF") || value.includes("DÜSSELDORF")) mics.push("XDUS");
+    if (value.includes("HAMBURG")) mics.push("XHAM");
+    if (value.includes("HANNOVER")) mics.push("XHAN");
+  }
+  return [...new Set(mics)];
+}
+
+function preferredMicsForGroup(group) {
+  return [...new Set(group.flatMap(preferredMicsForPosition))];
+}
+
+function sourceQuoteMeta(positions, source) {
+  const quotePositions = positions.filter(
+    (position) =>
+      position.source === source &&
+      position.accountValueIncluded !== false &&
+      (position.isin || position.quoteProvider),
+  );
+  const asOfDates = quotePositions
+    .map((position) => position.quoteAsOf)
+    .filter(Boolean)
+    .map((value) => new Date(value))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((left, right) => left.getTime() - right.getTime());
+  const freshnessRank = { UNKNOWN: 0, FRESH: 1, DELAYED: 2, STALE: 3 };
+  const worstFreshness =
+    quotePositions
+      .map((position) => String(position.quoteFreshness ?? "UNKNOWN"))
+      .sort((left, right) => (freshnessRank[right] ?? 0) - (freshnessRank[left] ?? 0))[0] ?? null;
+  return {
+    oldestQuoteAsOf: asOfDates[0]?.toISOString() ?? null,
+    latestQuoteAsOf: asOfDates.at(-1)?.toISOString() ?? null,
+    quoteFreshness: worstFreshness,
+  };
 }
 
 function formatEstimatedQuantity(value) {
@@ -77,6 +162,15 @@ function sourceTotal(positions, source) {
       .filter((position) => position.source === source && position.accountValueIncluded !== false)
       .reduce((sum, position) => sum + (parseMaybeNumber(position.currentValue) ?? 0), 0),
   );
+}
+
+function sourceExternalQuoteTotal(positions, source) {
+  const values = positions
+    .filter((position) => position.source === source && position.accountValueIncluded !== false)
+    .map((position) => parseMaybeNumber(position.externalQuoteValue))
+    .filter((value) => typeof value === "number");
+  if (values.length === 0) return null;
+  return roundCurrency(values.reduce((sum, value) => sum + value, 0));
 }
 
 function isCashPosition(position) {
@@ -260,7 +354,11 @@ async function main() {
     }
 
     await politeDelay();
-    const quote = await fetchBoerseFrankfurtQuote(mapping.providerSymbol, mapping).catch((error) => ({
+    const quoteMapping = {
+      ...mapping,
+      preferredMics: preferredMicsForGroup(group),
+    };
+    const quote = await fetchBoerseFrankfurtQuote(mapping.providerSymbol, quoteMapping).catch((error) => ({
       status: "QUOTE_ERROR",
       error: error.message,
     }));
@@ -279,6 +377,7 @@ async function main() {
     }
 
     const priceEur = quote.price * fx.rate;
+    const quoteFreshness = quoteFreshnessFor(quote, now);
     if (writeEnabled) {
       await firestore.setDocument("quotesCurrent", instrumentId, {
         instrumentId,
@@ -292,11 +391,15 @@ async function main() {
         priceEur,
         asOf: quote.asOf,
         mic: quote.mic ?? mapping.mic ?? null,
+        quoteVenue: quote.mic ?? mapping.mic ?? null,
+        fetchedAt: now,
+        quoteAgeMinutes: quoteFreshness.quoteAgeMinutes,
+        quoteFreshness: quoteFreshness.quoteFreshness,
         sourceUrl: quote.sourceUrl ?? mapping.sourceUrl ?? null,
         status: "OK",
         updatedAt: now,
       });
-      await firestore.setDocument("priceHistory", `${instrumentId}_${historyDateId(now)}`, {
+      if (writeHistoryEnabled) await firestore.setDocument("priceHistory", `${instrumentId}_${historyDateId(now)}`, {
         instrumentId,
         isin,
         name: mapping.name ?? representative.name ?? null,
@@ -310,6 +413,10 @@ async function main() {
         asOf: quote.asOf,
         historyDate: historyDateId(now),
         mic: quote.mic ?? mapping.mic ?? null,
+        quoteVenue: quote.mic ?? mapping.mic ?? null,
+        fetchedAt: now,
+        quoteAgeMinutes: quoteFreshness.quoteAgeMinutes,
+        quoteFreshness: quoteFreshness.quoteFreshness,
         sourceUrl: quote.sourceUrl ?? mapping.sourceUrl ?? null,
         status: "OK",
         positionIds: group.map((position) => position.id),
@@ -320,10 +427,12 @@ async function main() {
     await writeInstrument(firestore, instrumentId, representative, mapping, quote);
 
     for (const position of group) {
-      const preserveSourceValue = position.source === "ginmon";
+      const preserveSourceValue =
+        position.source === "ginmon" || position.valuationMethod === "flatex_broker_snapshot_v1";
       const currentValue = preserveSourceValue
         ? parseMaybeNumber(position.currentValue)
         : roundCurrency(position.quantity * priceEur);
+      const quoteBasedCurrentValue = roundCurrency(position.quantity * priceEur);
       const estimatedQuantity =
         preserveSourceValue &&
         typeof position.quantity !== "number" &&
@@ -334,7 +443,9 @@ async function main() {
           : null;
       const costValue = parseMaybeNumber(position.costValue);
       const performanceValue =
-        typeof costValue === "number" ? roundCurrency(currentValue - costValue) : position.performanceValue ?? null;
+        typeof costValue === "number" && typeof currentValue === "number"
+          ? roundCurrency(currentValue - costValue)
+          : position.performanceValue ?? null;
       const dayChange = dayChangeForPosition({
         position,
         currentValue,
@@ -342,6 +453,16 @@ async function main() {
         previousPriceEur,
         preserveSourceValue,
       });
+      const preserveBrokerDayChange =
+        position.valuationMethod === "flatex_broker_snapshot_v1" &&
+        typeof parseMaybeNumber(position.dayChangeValue) === "number";
+      const preservedDayChangeValue = parseMaybeNumber(position.dayChangeValue);
+      const preservedDayChangePct = parseMaybeNumber(position.dayChangePct);
+      const preservedPreviousCloseValue =
+        parseMaybeNumber(position.previousCloseValue) ??
+        (typeof currentValue === "number" && typeof preservedDayChangeValue === "number"
+          ? roundCurrency(currentValue - preservedDayChangeValue)
+          : null);
       const updated = {
         ...position,
         name:
@@ -364,13 +485,23 @@ async function main() {
         quoteAsOf: quote.asOf,
         quoteStatus: "OK",
         quoteUpdatedAt: now,
+        quoteFetchedAt: now,
+        quoteVenue: quote.mic ?? mapping.mic ?? null,
+        quoteAgeMinutes: quoteFreshness.quoteAgeMinutes,
+        quoteFreshness: quoteFreshness.quoteFreshness,
+        externalQuoteValue: quoteBasedCurrentValue,
+        externalQuoteDifference:
+          typeof currentValue === "number" ? roundCurrency(quoteBasedCurrentValue - currentValue) : null,
         valuationDate: preserveSourceValue ? position.valuationDate : quote.asOf,
         valuationMethod: preserveSourceValue ? position.valuationMethod : `${quoteProvider}_quote_v1`,
         performanceValue,
-        performancePct: costValue ? performanceValue / costValue : position.performancePct ?? null,
-        previousCloseValue: dayChange.previousCloseValue,
-        dayChangeValue: dayChange.dayChangeValue,
-        dayChangePct: dayChange.dayChangePct,
+        performancePct:
+          costValue && typeof performanceValue === "number"
+            ? performanceValue / costValue
+            : position.performancePct ?? null,
+        previousCloseValue: preserveBrokerDayChange ? preservedPreviousCloseValue : dayChange.previousCloseValue,
+        dayChangeValue: preserveBrokerDayChange ? preservedDayChangeValue : dayChange.dayChangeValue,
+        dayChangePct: preserveBrokerDayChange ? preservedDayChangePct : dayChange.dayChangePct,
         updatedAt: now,
       };
       updatedPositionsById.set(position.id, updated);
@@ -397,6 +528,8 @@ async function main() {
       (position) => position.source === source && position.accountValueIncluded !== false,
     );
     const total = sourceTotal(updatedPositions, source);
+    const externalQuoteTotal = sourceExternalQuoteTotal(sourcePositions, source);
+    const quoteMeta = sourceQuoteMeta(updatedPositions, source);
     const cashValue = roundCurrency(
       sourcePositions
         .filter(isCashPosition)
@@ -413,8 +546,20 @@ async function main() {
         depotValue: hasCash ? securityValue : existingData.depotValue ?? null,
         cashValue: hasCash ? cashValue : existingData.cashValue ?? null,
         netValue: total,
+        externalQuoteDepotValue: externalQuoteTotal,
+        externalQuoteDifference:
+          typeof externalQuoteTotal === "number" && typeof securityValue === "number"
+            ? roundCurrency(externalQuoteTotal - securityValue)
+            : existingData.externalQuoteDifference ?? null,
+        latestQuoteAsOf: quoteMeta.latestQuoteAsOf,
+        oldestQuoteAsOf: quoteMeta.oldestQuoteAsOf,
+        quoteFreshness: quoteMeta.quoteFreshness,
+        quoteUpdatedAt: now,
         positionCount: sourcePositions.length,
-        valuationMethod: `position_sum_with_${quoteProvider}_quotes_v1`,
+        valuationMethod:
+          source === "flatex" && existingData.valuationMethod === "flatex_broker_snapshot_v1"
+            ? "flatex_broker_snapshot_with_market_quotes_v1"
+            : `position_sum_with_${quoteProvider}_quotes_v1`,
         updatedAt: now,
       });
     }
@@ -422,6 +567,7 @@ async function main() {
 
   const summary = {
     mode: writeEnabled ? "write" : "dry-run",
+    writeHistory: writeHistoryEnabled,
     quoteProvider,
     sourceFilter: [...quoteSources],
     instrumentCount: grouped.size,

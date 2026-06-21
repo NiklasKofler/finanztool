@@ -112,19 +112,41 @@ Das Projekt soll auf Mac Studio und MacBook Pro gleich liegen:
 
 - Bitget-Datenbestand ist in Firestore vorhanden.
 - Spot- und Earn-Positionen werden in `sourcePositions` abgebildet.
-- `sourceSummaries/bitget` nutzt die Summe der sichtbaren, inkludierten
-  Positionen, damit die App keine doppelt gezaehlten Zusatzwerte zeigt.
+- `sourceSummaries/bitget.currentValue` und `netValue` nutzen den von Bitget
+  gelieferten kontenuebergreifenden Kontowert aus `all-account-balance`,
+  um mit der Bitget-App/Webansicht moeglichst deckungsgleich zu bleiben.
+- Einzelpositionen bleiben trotzdem sichtbar. Wenn Bitget fuer ein Asset keinen
+  eigenen Kurs liefert, bleibt die Position sichtbar, wird aber mit
+  `quoteStatus=NO_BITGET_PRICE` markiert und erzeugt eine Health-Warnung.
+- Sauberer Schnitt vom 2026-06-20: TRUMP, MELANIA und Positionen, die auf
+  `0,00 EUR` runden, werden nicht mehr als aktuelle Portfolio-Positionen in
+  `sourcePositions` geschrieben. Sie bleiben in `rawDocuments/api_bitget_latest`
+  unter `rawPositions`/`excludedPositions` nachvollziehbar.
+- Bitget nutzt bewusst nur Bitget als Kursquelle. Keine CoinGecko- oder
+  Frankfurter-Boerse-Fallbacks fuer Bitget.
+- Der Bitget-Import laeuft auf dem Mac Studio alle 5 Minuten.
+- Der Bitget-Ledger-Agent laeuft auf dem Mac Studio stuendlich und schreibt
+  Bewegungen, Trades, Kosten und Earn-Zinsen historisch:
+  - `ledgerEntries`
+  - `transactions`
+  - `costEvents`
+  - `incomeEvents`
+  - `sourceDocumentFacts`
 - Importskript ist vorhanden: `npm run import:bitget`.
+- Ledger-Sync ist vorhanden: `npm run sync:bitget-ledger`.
 - Datenziel:
   - `sourcePositions`
   - `sourceSummaries/bitget`
-  - `ledgerEntries`
   - `imports`
   - `rawDocuments`
-- Aktueller Blocker fuer frische lokale Importe:
-  `Bitget API Fehler 400/40009 ... sign signature error`.
-  API-Key, Secret und Passphrase im macOS-Schluesselbund muessen geprueft oder
-  neu erzeugt werden.
+- Der aktuelle lokale Mac-Studio-Test vom 2026-06-20 ist erfolgreich:
+  `npm run check:bitget`, `npm run import:bitget:local` und
+  `npm run sync:health`.
+- `imports/api_bitget_latest` und `rawDocuments/api_bitget_latest` werden bei
+  jedem Lauf ueberschrieben. Der 5-Minuten-Lauf speichert also den aktuellen
+  Zustand, aber keine endlose 5-Minuten-Historie.
+- `rawDocuments/api_bitget_latest` enthaelt den Rohsnapshot aus Account-Info,
+  Account-Balances, Earn-Assets und normalisierten Positionen.
 
 ### Capital.com
 
@@ -280,14 +302,11 @@ Wichtige Collections:
 2. Trading 212 als eigene Quelle ergaenzen.
 3. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
    Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind.
-4. Bitget API-Key/Passphrase/Secret final korrigieren und `npm run import:bitget`
-   erfolgreich ausfuehren.
-5. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
+4. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
    Transaktionshistorie, Kosten/Steuern je Position.
-6. EquatePlus Parser fuer Holdings und Transaktionen ergaenzen.
-7. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
-8. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
-9. Launchd-Dauerbetrieb fuer den Import-Agent auf dem Mac Pro einrichten.
+5. EquatePlus Parser fuer Holdings und Transaktionen ergaenzen.
+6. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
+7. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
 
 ## Sicherheitsnotiz
 

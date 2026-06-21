@@ -10,6 +10,8 @@ import {
   acceptNecessaryCookies,
   ensureFlatexLogin,
   launchFlatexBrowser,
+  readFlatexBrokerPositions,
+  readFlatexOverviewSummary,
 } from "./flatex-browser.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -132,6 +134,239 @@ function roundCurrency(value) {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value * 100) / 100 : value;
 }
 
+function parseMaybeNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number.parseFloat(value.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isCashPosition(position) {
+  return position.category === "Cash" || /cash|konto|kontostand/i.test(`${position.id ?? ""} ${position.name ?? ""}`);
+}
+
+function positionIdForIsin(isin) {
+  return `flatex_${String(isin).toUpperCase()}`;
+}
+
+function positionQuantityText(quantity) {
+  return isNumber(quantity)
+    ? `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 6 }).format(quantity)} Stk.`
+    : null;
+}
+
+function brokerDayChange(position) {
+  const dayChangeValue = parseMaybeNumber(position.dailyValue);
+  const dayChangePct = parseMaybeNumber(position.dailyPct);
+  const currentValue = parseMaybeNumber(position.currentValue);
+  const previousCloseValue =
+    isNumber(currentValue) && isNumber(dayChangeValue)
+      ? roundCurrency(currentValue - dayChangeValue)
+      : parseMaybeNumber(position.previousValue);
+  return { dayChangeValue, dayChangePct, previousCloseValue };
+}
+
+async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requestedPeriod }) {
+  const accessToken = await getFirebaseCliAccessToken();
+  const firestore = new FirestoreRest({ projectId, accessToken });
+  const now = new Date();
+  const importId = "flatex_broker_snapshot_latest";
+  const brokerPositions = brokerSnapshot.positions.filter((position) => position.isin);
+  const overview = brokerSnapshot.overview;
+  const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
+    (position) => position.source === "flatex",
+  );
+  const existingById = new Map(existingPositions.map((position) => [position.id, position]));
+  const existingByIsin = new Map(
+    existingPositions
+      .filter((position) => position.isin)
+      .map((position) => [String(position.isin).toUpperCase(), position]),
+  );
+  const brokerIds = new Set();
+
+  for (const position of brokerPositions) {
+    const isin = String(position.isin).toUpperCase();
+    const id = positionIdForIsin(isin);
+    const existing = existingById.get(id) ?? existingByIsin.get(isin) ?? {};
+    const { id: _existingId, ...existingData } = existing;
+    const dayChange = brokerDayChange(position);
+    brokerIds.add(id);
+
+    await firestore.setDocument("sourcePositions", id, {
+      ...existingData,
+      source: "flatex",
+      name: position.name ?? existing.name ?? isin,
+      isin,
+      wkn: position.wkn ?? existing.wkn ?? null,
+      exchange: position.exchange ?? null,
+      category: existing.category ?? "Wertpapier",
+      quantity: parseMaybeNumber(position.quantity),
+      quantityText: positionQuantityText(parseMaybeNumber(position.quantity)),
+      currentValue: roundCurrency(parseMaybeNumber(position.currentValue)),
+      costValue: roundCurrency(parseMaybeNumber(position.costValue)),
+      performanceValue: roundCurrency(parseMaybeNumber(position.performanceValue)),
+      performancePct: parseMaybeNumber(position.performancePct),
+      previousCloseValue: roundCurrency(dayChange.previousCloseValue),
+      dayChangeValue: roundCurrency(dayChange.dayChangeValue),
+      dayChangePct: dayChange.dayChangePct,
+      quoteText: position.quoteText ?? null,
+      quotePrice: parseMaybeNumber(position.quotePrice),
+      quoteCurrency: "EUR",
+      quoteProvider: "flatex",
+      quoteAsOf: position.quoteTime ?? null,
+      quoteStatus: "OK",
+      priceSource: "flatex",
+      valuationDate: now,
+      valuationMethod: "flatex_broker_snapshot_v1",
+      brokerSnapshotImportId: importId,
+      accountValueIncluded: true,
+      updatedAt: now,
+    });
+  }
+
+  for (const existing of existingPositions) {
+    if (isCashPosition(existing)) continue;
+    if (existing.isin && !brokerIds.has(positionIdForIsin(existing.isin))) {
+      await firestore.deleteDocument("sourcePositions", existing.id);
+    }
+  }
+
+  const cashValue = parseMaybeNumber(overview.cashBalance);
+  if (isNumber(cashValue)) {
+    await firestore.setDocument("sourcePositions", "flatex_cash_eur", {
+      source: "flatex",
+      name: "Flatex Kontostand",
+      category: "Cash",
+      quantity: 1,
+      quantityText: "1 Konto",
+      currency: "EUR",
+      currentValue: roundCurrency(cashValue),
+      accountValueIncluded: true,
+      valuationMethod: "flatex_broker_snapshot_v1",
+      brokerSnapshotImportId: importId,
+      updatedAt: now,
+    });
+  }
+
+  const brokerPositionValue = roundCurrency(
+    brokerPositions.reduce((sum, position) => sum + (parseMaybeNumber(position.currentValue) ?? 0), 0),
+  );
+  const costValue = roundCurrency(
+    brokerPositions.reduce((sum, position) => sum + (parseMaybeNumber(position.costValue) ?? 0), 0),
+  );
+  const performanceValueFromPositions = roundCurrency(
+    brokerPositions.reduce((sum, position) => sum + (parseMaybeNumber(position.performanceValue) ?? 0), 0),
+  );
+  const depotValue = roundCurrency(parseMaybeNumber(overview.depotValue) ?? brokerPositionValue);
+  const netValue = roundCurrency(
+    parseMaybeNumber(overview.totalAssets) ??
+      (isNumber(depotValue) && isNumber(cashValue) ? depotValue + cashValue : null),
+  );
+  const performanceValue =
+    isNumber(performanceValueFromPositions) && performanceValueFromPositions !== 0
+      ? performanceValueFromPositions
+      : isNumber(depotValue) && isNumber(costValue)
+        ? roundCurrency(depotValue - costValue)
+        : null;
+  const existingSummary = (await firestore.listDocuments("sourceSummaries")).find(
+    (document) => document.id === "flatex",
+  );
+  const { id: _summaryId, ...existingSummaryData } = existingSummary ?? {};
+
+  await firestore.setDocument("sourceSummaries", "flatex", {
+    ...existingSummaryData,
+    source: "flatex",
+    displayName: "Flatex",
+    currentValue: depotValue,
+    depotValue,
+    cashValue: roundCurrency(cashValue),
+    netValue,
+    availableCash: roundCurrency(parseMaybeNumber(overview.availableCash)),
+    availableWithCredit: roundCurrency(parseMaybeNumber(overview.availableWithCredit)),
+    creditLineEstimate: roundCurrency(parseMaybeNumber(overview.creditLineEstimate)),
+    costValue,
+    performanceValue,
+    performancePct:
+      isNumber(costValue) && costValue !== 0 && isNumber(performanceValue)
+        ? performanceValue / costValue
+        : null,
+    brokerPositionValue,
+    brokerPositionSummaryDifference:
+      isNumber(depotValue) && isNumber(brokerPositionValue) ? roundCurrency(depotValue - brokerPositionValue) : null,
+    positionCount: brokerPositions.length + (isNumber(cashValue) ? 1 : 0),
+    brokerPositionCount: brokerPositions.length,
+    valuationMethod: "flatex_broker_snapshot_v1",
+    valuationDate: now,
+    brokerSnapshotImportId: importId,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("rawDocuments", importId, {
+    source: "flatex",
+    importType: "broker_snapshot",
+    importId,
+    period: requestedPeriod,
+    targets,
+    exportResults: results,
+    overview,
+    positions: brokerPositions,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("imports", importId, {
+    source: "flatex",
+    importType: "broker_snapshot",
+    status: brokerPositions.length ? "OK" : "UNVOLLSTAENDIG",
+    positionCount: brokerPositions.length,
+    depotValue,
+    cashValue: roundCurrency(cashValue),
+    netValue,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("agentStatus", "flatex", {
+    source: "flatex",
+    status: brokerPositions.length ? "OK" : "WARNUNG",
+    message: brokerPositions.length
+      ? `${brokerPositions.length} Broker-Positionen, Depot ${depotValue.toFixed(2)} EUR, Cash ${
+          isNumber(cashValue) ? cashValue.toFixed(2) : "n/a"
+        } EUR`
+      : "Flatex-Broker-Snapshot ohne Positionen gelesen",
+    lastSuccessAt: now,
+    positionCount: brokerPositions.length,
+    cashValue: roundCurrency(cashValue),
+    depotValue,
+    netValue,
+    brokerSnapshotImportId: importId,
+  });
+
+  console.log(
+    `[ok] Flatex-Broker-Snapshot geschrieben: ${brokerPositions.length} Positionen, Depot ${depotValue.toFixed(
+      2,
+    )} EUR`,
+  );
+}
+
+async function writeBrokerSnapshotFailure(error) {
+  if (!writeFirestore) return;
+  const accessToken = await getFirebaseCliAccessToken();
+  const firestore = new FirestoreRest({ projectId, accessToken });
+  const now = new Date();
+  await firestore.setDocument("agentStatus", "flatex", {
+    source: "flatex",
+    status: "WARNUNG",
+    message: `Umsaetze abgeglichen, aber Broker-Snapshot konnte nicht gelesen werden: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+    updatedAt: now,
+  });
+}
+
 await Promise.all(Object.values(inboxDirectories).map((directory) => fs.mkdir(directory, { recursive: true })));
 
 const runtimeDownloadPath =
@@ -150,6 +385,8 @@ const targets = {
 
 const { context, page } = await launchFlatexBrowser();
 const results = {};
+let brokerSnapshot = null;
+let brokerSnapshotError = null;
 try {
   await ensureFlatexLogin(page);
   await page.waitForTimeout(1000);
@@ -161,6 +398,14 @@ try {
 
   await activateTab(page, "Kontoumsätze");
   results.cash = await exportCurrentCsv(page, targets.cash);
+
+  try {
+    const overview = await readFlatexOverviewSummary(page);
+    const positions = await readFlatexBrokerPositions(page);
+    brokerSnapshot = { overview, positions };
+  } catch (error) {
+    brokerSnapshotError = error;
+  }
 } finally {
   await context.close().catch(() => {});
   await cleanupRuntimeDownloads(runtimeDownloadPath);
@@ -173,6 +418,14 @@ console.log(
       period: requestedPeriod,
       targets,
       results,
+      brokerSnapshot: brokerSnapshot
+        ? {
+            overview: brokerSnapshot.overview,
+            positionCount: brokerSnapshot.positions.length,
+          }
+        : null,
+      brokerSnapshotError:
+        brokerSnapshotError instanceof Error ? brokerSnapshotError.message : brokerSnapshotError,
       reconcileAfterDownload,
       writeFirestore,
     },
@@ -182,3 +435,8 @@ console.log(
 );
 
 if (reconcileAfterDownload) await reconcile();
+if (writeFirestore && brokerSnapshot) {
+  await writeBrokerSnapshot({ brokerSnapshot, targets, results, requestedPeriod });
+} else if (writeFirestore && brokerSnapshotError) {
+  await writeBrokerSnapshotFailure(brokerSnapshotError);
+}

@@ -5,6 +5,7 @@ import { chromium } from "playwright-core";
 import { requireLocalSecret } from "./local-secret.mjs";
 
 const FLATEX_LOGIN_URL = "https://konto.flatex.at/banking-flatex.at/";
+const FLATEX_OVERVIEW_URL = "https://konto.flatex.at/next-desktop.at/overviewFormAction.do";
 const FLATEX_USER_SERVICE = "finanztool-flatex-user-id";
 const FLATEX_PASSWORD_SERVICE = "finanztool-flatex-password";
 
@@ -118,6 +119,20 @@ export async function acceptNecessaryCookies(page) {
   }
 }
 
+export async function openFlatexOverview(page) {
+  if (!/overviewFormAction/i.test(page.url())) {
+    await page.goto(FLATEX_OVERVIEW_URL, { waitUntil: "domcontentloaded" }).catch((error) => {
+      if (!String(error?.message ?? "").includes("ERR_ABORTED")) throw error;
+    });
+  }
+  await Promise.race([
+    page.getByText("Mein flatex Depot", { exact: false }).waitFor({ state: "visible", timeout: 15000 }),
+    page.getByText("Depot und Guthaben", { exact: false }).waitFor({ state: "visible", timeout: 15000 }),
+  ]).catch(() => {});
+  await acceptNecessaryCookies(page);
+  await page.waitForTimeout(1000);
+}
+
 function parseGermanEuro(value) {
   if (!value) return null;
   const normalized = value.replace(/\./g, "").replace(",", ".");
@@ -159,6 +174,7 @@ function readEuroAfterLabel(text, label) {
 }
 
 export async function readFlatexOverviewSummary(page) {
+  await openFlatexOverview(page);
   await acceptNecessaryCookies(page);
   await page.getByRole("tab", { name: "Dashboard", exact: true }).click({ timeout: 5000, force: true }).catch(() => {});
   await page.waitForTimeout(1000);
@@ -186,8 +202,25 @@ export async function readFlatexOverviewSummary(page) {
 }
 
 export async function readFlatexBrokerPositions(page) {
+  await openFlatexOverview(page);
   await acceptNecessaryCookies(page);
-  await page.getByRole("tab", { name: "Alle", exact: true }).click({ timeout: 10000, force: true });
+  const clickedAll = await page.evaluate(() => {
+    const items = [...document.querySelectorAll(".BlockSelectionItem")].filter(
+      (element) => element instanceof HTMLElement && !!element.offsetParent,
+    );
+    const item =
+      items.find((element) => /\bAlle\b/.test(element.textContent?.replace(/\s+/g, " ").trim() ?? "")) ??
+      items[1];
+    if (item instanceof HTMLElement) {
+      item.click();
+      return true;
+    }
+    return false;
+  });
+  if (!clickedAll) {
+    const allTab = page.getByRole("tab", { name: "Alle", exact: true });
+    await allTab.click({ timeout: 10000, force: true });
+  }
   await page.waitForTimeout(2500);
 
   const tableRows = await page.evaluate(() =>

@@ -3,11 +3,11 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.quote-sync</string>
+    <string>com.niklas.finanztool.bitget-ledger</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_PATH__</string>
-      <string>src/run-quote-sync-local.mjs</string>
+      <string>src/sync-bitget-ledger-local.mjs</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -17,16 +17,14 @@
       <string>__PATH__</string>
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
-      <key>FINANZTOOL_TIME_ZONE</key>
-      <string>Europe/Vienna</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>3600</integer>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-quote-sync.out.log</string>
+    <string>/tmp/finanztool-bitget-ledger.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-quote-sync.err.log</string>
+    <string>/tmp/finanztool-bitget-ledger.err.log</string>
   </dict>
 </plist>

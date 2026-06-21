@@ -17,14 +17,15 @@ API-Zugangsdaten liegen lokal im macOS-Schluesselbund.
 
 | Quelle | Methode | Firestore-Ziel | Automatisierung |
 | --- | --- | --- | --- |
-| Bitget | API | `sourcePositions`, `sourceSummaries/bitget` | alle 15 Minuten |
+| Bitget | API | `sourcePositions`, `sourceSummaries/bitget` | historisch: alle 15 Minuten; aktuell seit 2026-06-20: alle 5 Minuten |
 | Capital.com | API, GET-only Nutzung | `sourcePositions`, `sourceSummaries/capitalcom` | stuendlich |
 | Flatex | Browser-CSV-Export | `sourcePositions`, `sourceSummaries/flatex` | 5x taeglich |
 | Ginmon | Dokumente + API | `sourceDocuments`, `sourceDocumentFacts`, `sourcePositions`, `sourceSummaries/ginmon` | Dokumente taeglich 02:00, API stuendlich |
 | Trade Republic | Apple-Mail-PDF-Agent | `sourcePositions`, `sourceSummaries/traderepublic` | stuendlich |
 | Intergold | Webseite + Belege | `sourcePositions`, `sourceSummaries/intergold` | taeglich |
 | VBV | Meine-VBV-Saldo | `sourceSummaries/vbv` | quartalsweise |
-| Wertpapierkurse | Boerse Frankfurt | `quotesCurrent`, `instruments`, aktualisierte Positionen | stuendlich |
+| Wertpapierkurse | Boerse Frankfurt | `quotesCurrent`, `instruments`, aktualisierte Positionen | alle 5 Minuten |
+| Wertpapier-Historie | Boerse Frankfurt + Positionen | `priceHistory` | taeglich 22:00 |
 
 EODHD ist nicht relevant. Kurse kommen aktuell aus Boerse Frankfurt.
 

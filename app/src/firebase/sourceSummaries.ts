@@ -22,6 +22,23 @@ export interface SourceSummaryDocument {
   costValue?: number;
   performanceValue?: number;
   performancePct?: number;
+  brokerPositionValue?: number;
+  brokerPositionSummaryDifference?: number | null;
+  externalQuoteDepotValue?: number | null;
+  externalQuoteDifference?: number | null;
+  latestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  oldestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  quoteUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  quoteFreshness?: string | null;
+  exchangeAccountValue?: number;
+  positionsValue?: number;
+  includedPositionsValue?: number;
+  positionSummaryDifference?: number | null;
+  unpricedPositionCount?: number;
+  unpricedPositions?: Array<Record<string, unknown>>;
+  excludedPositionCount?: number;
+  excludedPositions?: Array<Record<string, unknown>>;
+  usdtToEur?: number | null;
   valuationDate?: string;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number };
   positionCount?: number;
@@ -87,6 +104,8 @@ export async function loadAgentStatuses(db: Firestore) {
 const numericPositionFields = [
   "currentValue",
   "currentValueUsdt",
+  "externalQuoteValue",
+  "externalQuoteDifference",
   "costValue",
   "costValueQuote",
   "performanceValue",
@@ -94,6 +113,7 @@ const numericPositionFields = [
   "quantity",
   "quotePrice",
   "quotePriceEur",
+  "quoteAgeMinutes",
   "dayChangeValue",
   "dayChangePct",
   "dayChange",

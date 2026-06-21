@@ -258,6 +258,39 @@ Aktuell erkannte Dokumentarten:
 
 Wichtig:
 
+## Live-Broker-Snapshot 2026-06-21
+
+Am 2026-06-21 wurde der laufende Flatex-Agent erweitert:
+
+- `automation/src/download-flatex-local.mjs` exportiert weiterhin
+  `Depotumsaetze` und `Kontoumsaetze`
+- danach liest der Agent ueber `automation/src/flatex-browser.mjs` direkt den
+  aktuellen Bereich `Mein flatex Depot`
+- der Broker-Snapshot wird in Firestore geschrieben:
+  - `rawDocuments/flatex_broker_snapshot_latest`
+  - `imports/flatex_broker_snapshot_latest`
+  - `sourcePositions`
+  - `sourceSummaries/flatex`
+
+Entscheidung:
+
+- Flatex-Brokerwerte sind ab jetzt die primaere Bewertungsquelle fuer Flatex.
+- Boerse-Frankfurt-Kurse bleiben Vergleichs- und Historienquelle.
+- Der Kurs-Sync darf Flatex-Brokerwerte nicht mehr still ueberschreiben.
+
+Verifizierter Stand nach Sync und Kursvergleich:
+
+- Broker-Depotwert: `22.435,45 EUR`
+- Broker-Cash: `-5.843,79 EUR`
+- Broker-Gesamtvermoegen: `16.591,66 EUR`
+- Boerse-Frankfurt-Vergleichswert: `22.578,42 EUR`
+- Differenz externe Kursbewertung zu Brokerwert: `142,97 EUR`
+- Health: `OK`, 0 Fehler, 0 Warnungen
+
+Damit ist die fruehere groessere Abweichung erklaert: Die App hatte Flatex
+primaer ueber externe Boerse-Frankfurt-Kurse bewertet, nicht ueber den aktuellen
+Flatex-Brokerwert. Das ist jetzt getrennt.
+
 Neue Flatex-Dokumente, die kuenftig nicht in diese Klassifizierung passen,
 werden durch `automation/src/check-health-local.mjs` in
 `systemHealth/current` als Warnung `Flatex-Dokument nicht klassifiziert`

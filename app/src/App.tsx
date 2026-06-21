@@ -234,12 +234,20 @@ function formatUpdatedAt(
   }).format(date);
 }
 
+function getPositionDisplayUpdatedAt(position: PortfolioPosition) {
+  return position.quoteAsOf ?? position.valuationDate ?? position.updatedAt;
+}
+
 function getTrackedTotal(sources: SourceOverview[]) {
   return sources.reduce((sum, source) => sum + (getSourceDisplayValue(source) ?? 0), 0);
 }
 
 function getSourceDisplayValue(source: SourceOverview) {
   return source.netValue ?? source.currentValue;
+}
+
+function sourceUsesAuthoritativeSummary(sourceId: string) {
+  return sourceId === "bitget";
 }
 
 function getAccountLabel(account: SourceSummaryAccount) {
@@ -388,7 +396,7 @@ function PositionsTable({
                   {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
                 </td>
                 <td>{formatOptionalText(position.category)}</td>
-                <td>{formatUpdatedAt(position.updatedAt)}</td>
+                <td>{formatUpdatedAt(getPositionDisplayUpdatedAt(position))}</td>
               </tr>
             );
           }) : (
@@ -568,6 +576,7 @@ function App() {
         const summary = sourceSummaries[source.summaryId ?? source.id];
         const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
         const positionStats = positionStatsBySource[source.id];
+        const useAuthoritativeSummary = sourceUsesAuthoritativeSummary(source.id);
         const positionDerivedValue =
           positionStats && positionStats.valuedCount > 0
             ? Math.round(positionStats.value * 100) / 100
@@ -583,10 +592,12 @@ function App() {
         if (!summary) {
           return {
             ...source,
-            currentValue: positionDepotValue ?? positionDerivedValue ?? source.currentValue,
-            depotValue: positionDepotValue ?? source.depotValue,
+            currentValue: useAuthoritativeSummary
+              ? source.currentValue
+              : positionDepotValue ?? positionDerivedValue ?? source.currentValue,
+            depotValue: useAuthoritativeSummary ? source.depotValue : positionDepotValue ?? source.depotValue,
             cashValue: positionCashValue ?? source.cashValue,
-            netValue: positionDerivedValue ?? source.netValue,
+            netValue: useAuthoritativeSummary ? source.netValue : positionDerivedValue ?? source.netValue,
             agentStatus: agentStatus?.status,
             agentMessage: agentStatus?.message,
             updatedAt: agentStatus?.lastSuccessAt ?? source.updatedAt,
@@ -595,18 +606,33 @@ function App() {
         }
         return {
           ...source,
-          currentValue: positionDepotValue ?? positionDerivedValue ?? summary.currentValue ?? source.currentValue,
-          depotValue: positionDepotValue ?? summary.depotValue ?? source.depotValue,
+          currentValue: useAuthoritativeSummary
+            ? summary.currentValue ?? summary.netValue ?? source.currentValue
+            : positionDepotValue ?? positionDerivedValue ?? summary.currentValue ?? source.currentValue,
+          depotValue: useAuthoritativeSummary
+            ? summary.currentValue ?? summary.netValue ?? summary.depotValue ?? source.depotValue
+            : positionDepotValue ?? summary.depotValue ?? source.depotValue,
           saleValue: summary.saleValue ?? source.saleValue,
           cashValue: positionCashValue ?? summary.cashValue ?? source.cashValue,
-          netValue: positionDerivedValue ?? summary.netValue ?? source.netValue,
+          netValue: useAuthoritativeSummary
+            ? summary.netValue ?? summary.currentValue ?? source.netValue
+            : positionDerivedValue ?? summary.netValue ?? source.netValue,
           availableCash: summary.availableCash ?? source.availableCash,
           availableWithCredit: summary.availableWithCredit ?? source.availableWithCredit,
           creditLineEstimate: summary.creditLineEstimate ?? source.creditLineEstimate,
           valuationDate: summary.valuationDate ?? source.valuationDate,
+          latestQuoteAsOf: summary.latestQuoteAsOf ?? null,
+          oldestQuoteAsOf: summary.oldestQuoteAsOf ?? null,
+          quoteUpdatedAt: summary.quoteUpdatedAt ?? null,
+          quoteFreshness: summary.quoteFreshness ?? null,
           agentStatus: agentStatus?.status,
           agentMessage: agentStatus?.message,
-          updatedAt: agentStatus?.lastSuccessAt ?? summary.updatedAt ?? source.updatedAt,
+          updatedAt:
+            summary.latestQuoteAsOf ??
+            summary.valuationDate ??
+            agentStatus?.lastSuccessAt ??
+            summary.updatedAt ??
+            source.updatedAt,
           positionCount:
             positionStats?.count ||
             summary.positionCount ||
@@ -728,14 +754,14 @@ function App() {
             <RefreshCcw aria-hidden="true" />
             <span>
               {quoteRequestStatus === "requesting"
-                ? "Kurse werden angefordert"
+                ? "Aktualisierung wird angefordert"
                 : quoteRequestStatus === "requested"
-                  ? "Kurs-Sync angefordert"
+                  ? "Aktualisierung angefordert"
                   : quoteRequestStatus === "running"
-                    ? "Kurse werden aktualisiert"
+                    ? "Alles wird aktualisiert"
                   : quoteRequestStatus === "error"
                     ? "Sync fehlgeschlagen"
-                    : "Kurse aktualisieren"}
+                    : "Alles aktualisieren"}
             </span>
           </button>
         ) : null}
@@ -892,8 +918,8 @@ function App() {
                         <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
                       </div>
                       <div>
-                        <dt>{source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
-                        <dd>{formatUpdatedAt(source.updatedAt)}</dd>
+                        <dt>{source.latestQuoteAsOf ? "Kursstand" : source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
+                        <dd>{formatUpdatedAt(source.latestQuoteAsOf ?? source.updatedAt)}</dd>
                       </div>
                       <div>
                         <dt>G/V</dt>

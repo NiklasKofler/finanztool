@@ -6,7 +6,7 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-const importId = `api_bitget_${runId.slice(0, 8)}`;
+const importId = "api_bitget_latest";
 
 const accessToken = await getFirebaseCliAccessToken();
 const firestore = new FirestoreRest({ projectId, accessToken });
@@ -73,6 +73,7 @@ async function writeFailureStatus(error) {
     requestPath: error?.requestPath ?? null,
     updatedAt: now,
     failedImportId: importId,
+    failedRunId: runId,
   });
 
   await firestore.setDocument("imports", importId, {
@@ -132,7 +133,15 @@ async function main() {
     positionCount: snapshot.positions.length,
     componentsUsdt: snapshot.accountComponents,
     totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
-    additionalValue: snapshot.additionalValue,
+    usdtToEur: snapshot.usdtToEur,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
     status: snapshot.positions.length ? "VERIFIED" : "UNVOLLSTAENDIG",
     valuationMethod: "bitget_api_v1",
     updatedAt: now,
@@ -148,8 +157,40 @@ async function main() {
     usdtToEur: snapshot.usdtToEur,
     componentsUsdt: snapshot.accountComponents,
     totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
-    additionalValue: snapshot.additionalValue,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
     runId,
+    updatedAt: now,
+  });
+
+  await firestore.setDocument("rawDocuments", importId, {
+    source: "bitget",
+    importId,
+    fileType: "api",
+    parserVersion: "bitget_api_v1",
+    accountInfo: snapshot.accountInfo,
+    accountBalances: snapshot.accountBalances,
+    accountComponents: snapshot.accountComponents,
+    totalAccountValueUsdt: snapshot.totalAccountValueUsdt,
+    exchangeAccountValue: snapshot.exchangeAccountValue,
+    positionsValue: snapshot.positionsValue,
+    includedPositionsValue: snapshot.includedPositionsValue,
+    positionSummaryDifference: snapshot.positionSummaryDifference,
+    unpricedPositionCount: snapshot.unpricedPositionCount,
+    unpricedPositions: snapshot.unpricedPositions,
+    excludedPositionCount: snapshot.excludedPositionCount,
+    excludedPositions: snapshot.excludedPositions,
+    earnAssets: snapshot.earnAssets,
+    rawPositions: snapshot.rawPositions,
+    positions: snapshot.positions,
+    usdtToEur: snapshot.usdtToEur,
+    valuationDate: snapshot.valuationDate,
     updatedAt: now,
   });
 

@@ -20,4 +20,4 @@ launchctl bootout "gui/$UID/com.niklas.finanztool.bitget-import" 2>/dev/null || 
 launchctl bootstrap "gui/$UID" "$plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.bitget-import"
 
-echo "[ok] Bitget-Import laeuft alle 15 Minuten."
+echo "[ok] Bitget-Import laeuft alle 5 Minuten."

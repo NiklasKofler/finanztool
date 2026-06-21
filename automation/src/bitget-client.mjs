@@ -2,16 +2,14 @@ import crypto from "node:crypto";
 import { readLocalSecret } from "./local-secret.mjs";
 
 const BITGET_BASE_URL = "https://api.bitget.com";
-const COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
-const COINGECKO_IDS_BY_COIN = {
-  MELANIA: "melania-meme",
-};
 
 const BITGET_KEYCHAIN_SERVICES = {
   apiKey: "finanztool-bitget-api-key",
   apiSecret: "finanztool-bitget-api-secret",
   passphrase: "finanztool-bitget-api-passphrase",
 };
+const BITGET_EXCLUDED_CURRENT_COINS = new Set(["TRUMP", "MELANIA"]);
+const BITGET_DISPLAY_DUST_EUR_THRESHOLD = 0.005;
 
 export class BitgetApiError extends Error {
   constructor({ status, code, message, requestPath }) {
@@ -44,43 +42,84 @@ function parseNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function fetchUsdEurRate() {
-  try {
-    const response = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR");
-    if (!response.ok) return null;
-    const json = await response.json();
-    return parseNumber(json?.rates?.EUR);
-  } catch {
-    return null;
-  }
+function tickerPrice(tickerBySymbol, symbol) {
+  return parseNumber(tickerBySymbol.get(symbol)?.lastPr);
 }
 
-async function fetchFallbackCryptoPrices(coins) {
-  const requested = [...new Set(coins)]
-    .map((coin) => [coin, COINGECKO_IDS_BY_COIN[coin]])
-    .filter(([, id]) => id);
-  if (!requested.length) return {};
-
-  try {
-    const url = new URL(COINGECKO_PRICE_URL);
-    url.searchParams.set("ids", requested.map(([, id]) => id).join(","));
-    url.searchParams.set("vs_currencies", "usd,eur");
-    const response = await fetch(url);
-    if (!response.ok) return {};
-    const json = await response.json();
-    return Object.fromEntries(
-      requested.map(([coin, id]) => [
-        coin,
-        {
-          usd: parseNumber(json?.[id]?.usd),
-          eur: parseNumber(json?.[id]?.eur),
-          source: "coingecko",
-        },
-      ]),
-    );
-  } catch {
-    return {};
+function resolveBitgetEurPrice({ coin, tickerBySymbol, usdtToEur }) {
+  if (coin === "EUR") {
+    return {
+      currentPriceEur: 1,
+      currentPriceUsdt: null,
+      quoteText: "1 EUR",
+      priceSource: "bitget",
+      quoteStatus: "OK",
+      valuationMethod: "bitget_cash_eur_v1",
+    };
   }
+
+  const directEur = tickerPrice(tickerBySymbol, `${coin}EUR`);
+  if (directEur !== null) {
+    return {
+      currentPriceEur: directEur,
+      currentPriceUsdt: null,
+      quoteText: `${directEur} EUR`,
+      priceSource: "bitget",
+      quoteStatus: "OK",
+      valuationMethod: "bitget_direct_eur_ticker_v1",
+    };
+  }
+
+  if (coin === "USDT" && usdtToEur !== null) {
+    return {
+      currentPriceEur: usdtToEur,
+      currentPriceUsdt: 1,
+      quoteText: `${usdtToEur} EUR`,
+      priceSource: "bitget",
+      quoteStatus: "OK",
+      valuationMethod: "bitget_usdt_eur_ticker_v1",
+    };
+  }
+
+  const usdtPrice = tickerPrice(tickerBySymbol, `${coin}USDT`);
+  if (usdtPrice !== null && usdtToEur !== null) {
+    return {
+      currentPriceEur: usdtPrice * usdtToEur,
+      currentPriceUsdt: usdtPrice,
+      quoteText: `${usdtPrice} USDT`,
+      priceSource: "bitget",
+      quoteStatus: "OK",
+      valuationMethod: "bitget_usdt_ticker_v1",
+    };
+  }
+
+  return {
+    currentPriceEur: null,
+    currentPriceUsdt: usdtPrice,
+    quoteText: usdtPrice !== null ? `${usdtPrice} USDT` : null,
+    priceSource: null,
+    quoteStatus: "NO_BITGET_PRICE",
+    valuationMethod: "bitget_unpriced_asset_v1",
+  };
+}
+
+function excludedCurrentPositionReason(position) {
+  const coin = String(position.name ?? "").toUpperCase();
+  if (BITGET_EXCLUDED_CURRENT_COINS.has(coin)) {
+    return "excluded_manual_clean_cut_2026_06_20";
+  }
+
+  const currentValue = parseNumber(position.currentValue);
+  if (
+    currentValue !== null &&
+    Math.abs(currentValue) < BITGET_DISPLAY_DUST_EUR_THRESHOLD &&
+    coin !== "EUR" &&
+    coin !== "USDT"
+  ) {
+    return "excluded_rounds_to_zero_eur";
+  }
+
+  return null;
 }
 
 export class BitgetClient {
@@ -161,6 +200,22 @@ export class BitgetClient {
     return this.request("GET", "/api/v2/spot/trade/fills", { params });
   }
 
+  getTaxSpotRecords(params = {}) {
+    return this.request("GET", "/api/v2/tax/spot-record", { params });
+  }
+
+  getTaxFutureRecords(params = {}) {
+    return this.request("GET", "/api/v2/tax/future-record", { params });
+  }
+
+  getSavingsAssets(params = {}) {
+    return this.request("GET", "/api/v2/earn/savings/assets", { params });
+  }
+
+  getSavingsRecords(params = {}) {
+    return this.request("GET", "/api/v2/earn/savings/records", { params });
+  }
+
   getSpotTickers(params = {}) {
     return this.request("GET", "/api/v2/spot/market/tickers", { params, auth: false });
   }
@@ -208,11 +263,10 @@ export async function createBitgetClientFromLocalSecrets() {
 
 export async function fetchBitgetPortfolioSnapshot(client) {
   if (!client) throw new Error("fetchBitgetPortfolioSnapshot benoetigt einen BitgetClient.");
-  const [accountInfo, assets, tickers, usdEurRate] = await Promise.all([
+  const [accountInfo, assets, tickers] = await Promise.all([
     client.getAccountInfo(),
     client.getSpotAssets({ assetType: "hold_only" }),
     client.getSpotTickers(),
-    fetchUsdEurRate(),
   ]);
 
   let accountBalances = null;
@@ -230,10 +284,7 @@ export async function fetchBitgetPortfolioSnapshot(client) {
   }
 
   const tickerBySymbol = new Map((tickers ?? []).map((ticker) => [ticker.symbol, ticker]));
-  const usdtToEur = usdEurRate ?? parseNumber(process.env.BITGET_USDT_EUR_RATE) ?? null;
-  const fallbackPrices = await fetchFallbackCryptoPrices(
-    (assets ?? []).map((asset) => String(asset.coin ?? "").toUpperCase()),
-  );
+  const usdtToEur = tickerPrice(tickerBySymbol, "USDTEUR");
 
   const spotPositions = (assets ?? [])
     .map((asset) => {
@@ -244,20 +295,11 @@ export async function fetchBitgetPortfolioSnapshot(client) {
       const quantity = available + frozen + locked;
       if (!coin || quantity <= 0) return null;
 
-      const ticker = coin === "USDT" ? null : tickerBySymbol.get(`${coin}USDT`);
-      const bitgetPriceUsdt = coin === "USDT" ? 1 : parseNumber(ticker?.lastPr);
-      const fallbackPrice = fallbackPrices[coin];
-      const priceUsdt = bitgetPriceUsdt ?? fallbackPrice?.usd ?? null;
-      const currentValueUsdt = priceUsdt !== null ? quantity * priceUsdt : null;
+      const price = resolveBitgetEurPrice({ coin, tickerBySymbol, usdtToEur });
       const currentValue =
-        coin === "EUR"
-          ? quantity
-          : fallbackPrice?.eur !== null && fallbackPrice?.eur !== undefined
-            ? quantity * fallbackPrice.eur
-            : currentValueUsdt !== null && usdtToEur !== null
-              ? currentValueUsdt * usdtToEur
-              : null;
-      const priceSource = bitgetPriceUsdt !== null ? "bitget" : fallbackPrice?.source ?? null;
+        price.currentPriceEur !== null ? quantity * price.currentPriceEur : null;
+      const currentValueUsdt =
+        price.currentPriceUsdt !== null ? quantity * price.currentPriceUsdt : null;
 
       return {
         id: `bitget_spot_${coin}`,
@@ -267,19 +309,21 @@ export async function fetchBitgetPortfolioSnapshot(client) {
         accountType: "spot",
         quantity,
         quantityText: String(quantity),
-        quoteText: coin === "EUR" ? "1 EUR" : priceUsdt !== null ? `${priceUsdt} USDT` : null,
+        quoteText: price.quoteText,
+        quoteStatus: price.quoteStatus,
         currentValue,
         currentValueUsdt,
-        priceSource,
-        accountValueIncluded: bitgetPriceUsdt !== null,
+        quotePrice: price.currentPriceUsdt,
+        quotePriceEur: price.currentPriceEur,
+        quoteCurrency: price.currentPriceUsdt !== null ? "USDT" : "EUR",
+        priceSource: price.priceSource,
+        exchangeAccountValueIncluded: price.quoteStatus === "OK",
+        accountValueIncluded: currentValue !== null,
         costValue: null,
         performanceValue: null,
         performancePct: null,
         valuationDate: new Date().toISOString(),
-        valuationMethod:
-          priceSource === "coingecko"
-            ? "bitget_spot_assets_coingecko_price_v1"
-            : "bitget_spot_assets_v1",
+        valuationMethod: price.valuationMethod,
         raw: asset,
       };
     })
@@ -291,11 +335,11 @@ export async function fetchBitgetPortfolioSnapshot(client) {
       const quantity = parseNumber(asset.amount) ?? 0;
       if (!coin || quantity <= 0) return null;
 
-      const ticker = coin === "USDT" ? null : tickerBySymbol.get(`${coin}USDT`);
-      const priceUsdt = coin === "USDT" ? 1 : parseNumber(ticker?.lastPr);
-      const currentValueUsdt = priceUsdt !== null ? quantity * priceUsdt : null;
+      const price = resolveBitgetEurPrice({ coin, tickerBySymbol, usdtToEur });
       const currentValue =
-        currentValueUsdt !== null && usdtToEur !== null ? currentValueUsdt * usdtToEur : null;
+        price.currentPriceEur !== null ? quantity * price.currentPriceEur : null;
+      const currentValueUsdt =
+        price.currentPriceUsdt !== null ? quantity * price.currentPriceUsdt : null;
 
       return {
         id: `bitget_earn_${coin}`,
@@ -305,20 +349,41 @@ export async function fetchBitgetPortfolioSnapshot(client) {
         accountType: "earn",
         quantity,
         quantityText: String(quantity),
-        quoteText: priceUsdt !== null ? `${priceUsdt} USDT` : null,
+        quoteText: price.quoteText,
+        quoteStatus: price.quoteStatus,
         currentValue,
         currentValueUsdt,
+        quotePrice: price.currentPriceUsdt,
+        quotePriceEur: price.currentPriceEur,
+        quoteCurrency: price.currentPriceUsdt !== null ? "USDT" : "EUR",
+        priceSource: price.priceSource,
+        exchangeAccountValueIncluded: price.quoteStatus === "OK",
+        accountValueIncluded: currentValue !== null,
         costValue: null,
         performanceValue: null,
         performancePct: null,
         valuationDate: new Date().toISOString(),
-        valuationMethod: "bitget_earn_assets_v1",
+        valuationMethod: `bitget_earn_${price.valuationMethod}`,
         raw: asset,
       };
     })
     .filter(Boolean);
 
-  const positions = [...spotPositions, ...earnPositions];
+  const rawPositions = [...spotPositions, ...earnPositions];
+  const excludedPositions = [];
+  const positions = [];
+  for (const position of rawPositions) {
+    const excludedReason = excludedCurrentPositionReason(position);
+    if (excludedReason) {
+      excludedPositions.push({
+        ...position,
+        excludedFromCurrentPortfolio: true,
+        excludedReason,
+      });
+      continue;
+    }
+    positions.push(position);
+  }
   const accountComponents = Object.fromEntries(
     (accountBalances ?? []).map((account) => [
       account.accountType,
@@ -333,19 +398,40 @@ export async function fetchBitgetPortfolioSnapshot(client) {
     .filter((position) => position.accountValueIncluded !== false)
     .reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
   const positionsValue = positions.reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
-  const additionalValue = spotPositions
-    .filter((position) => !position.accountValueIncluded)
-    .reduce((sum, position) => sum + (position.currentValue ?? 0), 0);
-  const currentValue =
-    includedPositionsValue > 0 ? includedPositionsValue : positionsValue;
+  const unpricedPositions = positions.filter((position) => position.quoteStatus === "NO_BITGET_PRICE");
+  const exchangeAccountValue =
+    totalAccountValueUsdt && usdtToEur !== null ? totalAccountValueUsdt * usdtToEur : null;
+  const currentValue = exchangeAccountValue ?? includedPositionsValue;
 
   return {
     accountInfo,
     accountBalances,
     accountComponents,
     totalAccountValueUsdt,
-    additionalValue,
+    exchangeAccountValue,
+    positionsValue,
+    includedPositionsValue,
+    positionSummaryDifference:
+      exchangeAccountValue !== null ? includedPositionsValue - exchangeAccountValue : null,
+    unpricedPositionCount: unpricedPositions.length,
+    unpricedPositions: unpricedPositions.map((position) => ({
+      id: position.id,
+      name: position.name,
+      accountType: position.accountType,
+      quantity: position.quantity,
+    })),
+    excludedPositionCount: excludedPositions.length,
+    excludedPositions: excludedPositions.map((position) => ({
+      id: position.id,
+      name: position.name,
+      accountType: position.accountType,
+      quantity: position.quantity,
+      currentValue: position.currentValue,
+      quoteStatus: position.quoteStatus,
+      excludedReason: position.excludedReason,
+    })),
     earnAssets,
+    rawPositions,
     positions,
     currentValue,
     usdtToEur,

@@ -56,13 +56,30 @@ verwendet werden.
 
 ## Importlogik
 
-- Aktuelle Bestaende und Kurse kommen weiterhin alle 15 Minuten aus der Bitget
+- Aktuelle Bestaende und Kurse kommen alle 5 Minuten aus der Bitget
   Read-only API.
+- Der produktive Lauf findet auf dem Mac Studio statt.
+- Seit 2026-06-20 wird je erfolgreichem API-Lauf der aktuelle Importstand
+  ueberschrieben:
+  - `imports/api_bitget_latest`
+  - `rawDocuments/api_bitget_latest`
+- Der 5-Minuten-Lauf dient damit dem aktuellen Stand, nicht einer endlosen
+  Intraday-Historie.
+- Bitget nutzt fuer Bitget ausschliesslich Bitget-Kurse. Assets ohne Bitget-
+  Kurs bleiben sichtbar, werden aber nicht bewertet und erzeugen eine Warnung.
+- Sauberer Schnitt vom 2026-06-20:
+  - TRUMP und MELANIA werden nicht mehr als aktuelle Portfolio-Positionen
+    angezeigt
+  - Spot-BTC-Dust, der auf `0,00 EUR` rundet, wird ebenfalls ausgeblendet
+  - die Rohbestaende bleiben unter `rawDocuments/api_bitget_latest.rawPositions`
+    und `excludedPositions` pruefbar
 - Historische Exporte dienen nur zur einmaligen Rekonstruktion und Kontrolle.
 - Die verifizierten Werte liegen persistent in `sourceCostBasis` und werden bei
   jedem API-Snapshot zugemischt.
 - TRUMP und MELANIA bleiben mit `VERIFIED_QUOTE_ONLY` markiert, bis ihr
-  tatsaechlicher EUR-Einstand bekannt ist.
+  tatsaechlicher EUR-Einstand bekannt ist. Wenn die aktuelle Menge kleiner als
+  die historische Basis-Menge ist, wird der Einstand fuer die aktuelle
+  Restposition proportional heruntergerechnet.
 - Earn-BTC ist mit `USER_CONFIRMED` und `3.000 EUR` Kostenbasis markiert.
 - Spot-BTC ist mit `VERIFIED_ZERO_COST` markiert, weil dieser Bestand laut
   Export aus Earn-Zinsen stammt.

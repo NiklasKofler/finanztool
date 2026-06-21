@@ -76,23 +76,35 @@ Der Agent darf keine Orders ausfuehren. Er liest und exportiert nur Daten.
 
 ## Firebase Datenmodell
 
-Vorschlag fuer die wichtigsten Collections:
+Der verbindliche Datenvertrag liegt in
+`docs/firestore_data_contract.md`. Kurzfassung: Jede Quelle darf andere
+Importwege haben, muss ihre Daten aber in dieselben fachlichen Collections
+normalisieren. Quellenspezifische Collections sind nur Hilfs- oder
+Uebergangsstrukturen und duerfen die kanonische Auswertung nicht ersetzen.
+
+Wichtigste Collections:
 
 - `users`
 - `sources`
-- `accounts`
-- `documents`
-- `importRuns`
-- `importItems`
+- `sourceAccounts`
+- `sourceDocuments`
+- `sourceDocumentFacts`
+- `imports`
+- `rawDocuments`
 - `transactions`
-- `positions`
-- `holdings`
+- `ledgerEntries`
+- `costEvents`
+- `incomeEvents`
+- `sourcePositions`
+- `sourceSummaries`
 - `snapshots`
-- `prices`
+- `quotesCurrent`
+- `priceHistory`
 - `instruments`
-- `valuations`
-- `reconciliations`
-- `alerts`
+- `instrumentMappings`
+- `agentStatus`
+- `systemHealth`
+- `automationCommands`
 
 ### `sources`
 
@@ -105,7 +117,7 @@ Ein Eintrag je Anbieter:
 - `bitget`
 - spaeter `equate_plus`, `sparkasse_george`, `revolut`, `trading212`, `capital_com`
 
-### `documents`
+### `sourceDocuments`
 
 Ein Eintrag je Originaldatei.
 
@@ -124,10 +136,11 @@ Wichtige Felder:
 - `status`
 - `parserVersion`
 
-Dokumente werden nie als Datenquelle ueberschrieben. Wenn eine Datei mit gleichem
-Hash erneut auftaucht, wird sie als Duplikat markiert.
+Dokumente werden nie als Datenquelle ueberschrieben. Wenn eine Datei mit
+gleichem Hash erneut auftaucht, wird sie als Duplikat markiert. Fachlich
+relevante Inhalte aus Dokumenten werden in `sourceDocumentFacts` abgelegt.
 
-### `importRuns`
+### `imports`
 
 Ein Eintrag je Importvorgang.
 
@@ -171,6 +184,33 @@ Wichtige Felder:
 Die wichtigste Regel: Transaktionen muessen idempotent sein. Ein erneuter Import
 darf keine Doppelbuchungen erzeugen.
 
+### `ledgerEntries`, `costEvents`, `incomeEvents`
+
+Diese Collections halten alles, was spaeter fuer Kosten-, Steuer-, Zins- und
+Performanceanalysen wichtig ist:
+
+- `ledgerEntries`: Cash-/Wallet-/Kontobewegungen
+- `costEvents`: Gebuehren, Steuern, Spreads und sonstige Kosten
+- `incomeEvents`: Dividenden, Zinsen, Earn-Ertraege, Cashback
+
+Die aktuelle Portfolioansicht darf diese Historie nicht ersetzen.
+
+### `sourcePositions` und `sourceSummaries`
+
+`sourcePositions` enthaelt nur den aktuellen sichtbaren Bestand je Quelle.
+Geschlossene Positionen verschwinden aus dieser aktuellen Ansicht, bleiben aber
+ueber Bewegungen, Dokumentfakten und Historie nachvollziehbar.
+
+`sourceSummaries` enthaelt je Quelle den aktuellen Gesamtstand:
+
+- Depotwert
+- Cash
+- Einstand
+- Gewinn/Verlust
+- Performance
+- letzte Aktualisierung
+- Datenqualitaet/Warnhinweise
+
 ### `snapshots`
 
 Zeitpunktbezogene Ist-Staende.
@@ -189,7 +229,8 @@ Reconciliation und Kurs-/Bewertungsvergleich.
 
 ### `prices`
 
-Kurse und Marktpreise.
+Kurse und Marktpreise werden aktuell ueber `quotesCurrent` und `priceHistory`
+gespeichert.
 
 Wichtige Felder:
 
@@ -203,6 +244,12 @@ Wichtige Felder:
 
 Broker-Kurse und externe Marktpreise werden getrennt gespeichert. Die App kann
 dann anzeigen, ob sie Brokerwerte oder Marktwerte verwendet.
+
+### `sourceAccounts`
+
+Ein Eintrag je erkanntem Unterkonto, Depot, Portfolio, Wallet oder Kreditkarte.
+Neue Unterkonten werden automatisch erkannt. Verschwundene Unterkonten werden
+als inaktiv/geschlossen markiert, nicht still geloescht.
 
 ## Storage Struktur
 

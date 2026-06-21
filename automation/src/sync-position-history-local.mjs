@@ -4,9 +4,10 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const writeEnabled = process.argv.includes("--write");
+const historyTimeZone = process.env.FINANZTOOL_TIME_ZONE ?? "Europe/Vienna";
 
 function historyDateId(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: historyTimeZone }).format(date);
 }
 
 function safeId(value) {

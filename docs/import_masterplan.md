@@ -26,7 +26,7 @@ Wichtig:
 | Broker | Trade Republic | aktiv | sehr hoch | taeglich bei Transaktionen plus periodischer Snapshot | Mail-Agent fuer taegliche Abrechnungs-PDFs | manueller Mobile-Export plus Agent | Mailweg bestaetigt, Umsetzung offen |
 | Robo-Advisor | Ginmon | aktiv | hoch | taeglich bis woechentlich je nach Dokumentenlage | Agent | Browser-/Dokumentabruf | teilweise produktiv |
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
-| Krypto | Bitget | aktiv | hoch | alle 15 Minuten | API | CSV/Datei nur Notfall | produktiv auf MacBook |
+| Krypto | Bitget | aktiv | hoch | alle 5 Minuten | API | CSV/Datei nur Notfall | produktiv auf Mac Studio |
 | Mitarbeiteraktien | EquatePlus | passiv/regelmaessig | mittel | bei neuer Benachrichtigung, mindestens monatlich | geplanter Mail-Agent | manueller PDF-Import | erste Benachrichtigung abwarten |
 | Bank | Sparkasse George | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter | Export oder manueller Eintrag | Anbieter pruefen |
 | Kreditkarte | Amazon Visa | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
@@ -48,7 +48,10 @@ Wichtig:
   - Watcher importiert automatisch
 - Zusatz:
   - laufender Bestand wird rechnerisch aus Depot- und Kontoumsaetzen gebildet
-  - vorhandener Depot-Snapshot dient nur einmalig als Kontrollwert
+  - aktueller Depot-Snapshot aus der Flatex-Oberflaeche ist primaere
+    Bewertungsquelle fuer Flatex
+  - Boerse-Frankfurt-Kurse dienen als Vergleichs-/Historienwerte und duerfen
+    die Flatex-Brokerwerte nicht still ueberschreiben
   - Postbox bleibt optionales Belegarchiv
 
 ### 2. Trade Republic
@@ -102,7 +105,20 @@ Wichtig:
   - neuer API-Key `Finanztool-Codex` ist ausschliesslich Read-only
   - Spot- und Earn-Bestand werden erfasst
   - kontenuebergreifender Bitget-Wert wird fuer die Summary verwendet
-  - automatische Aktualisierung laeuft auf dem MacBook alle 15 Minuten
+  - automatische Aktualisierung laeuft auf dem Mac Studio alle 5 Minuten
+  - der 5-Minuten-Lauf ueberschreibt `imports/api_bitget_latest` und
+    `rawDocuments/api_bitget_latest`; er erzeugt keine endlose 5-Minuten-
+    Historie
+  - zusaetzlicher Bitget-Ledger-Agent laeuft stuendlich und schreibt Bills,
+    Fills, Fees, Earn-Zinsen und Tax-Facts historisch/idempotent nach Firestore
+  - Bitget wird fuer Bitget-only bewertet: keine CoinGecko- oder
+    Frankfurter-Boerse-Fallbacks fuer Krypto
+  - aktueller sauberer Schnitt:
+    - `sourcePositions` enthaelt nur die aktuelle Portfolioansicht
+    - TRUMP, MELANIA und auf `0,00 EUR` rundende Dust-Positionen sind aus der
+      Portfolioansicht ausgeschlossen
+    - diese Rohbestaende bleiben im Rohsnapshot unter `rawPositions` und
+      `excludedPositions` nachvollziehbar
   - historische Exporte von 13.06.2024 bis 13.06.2026 sind gesichert
   - TRUMP- und MELANIA-Einstand sind in USDT verifiziert
   - EUR-Einstand und BTC-Einstand werden einmalig mit Bank-/Kreditkartendaten
@@ -260,3 +276,12 @@ Wenn eine neue Quelle diskutiert wird, dokumentieren wir immer sofort:
 3. Ziel-Aktualitaet
 4. Importmethode: `API`, `Agent` oder `manuell`
 5. Was als "fertig" fuer diese Quelle gilt
+
+Zusatzregel Datenhaltung:
+
+- Vor jeder neuen Quelle oder groesseren Agent-Aenderung
+  `docs/firestore_data_contract.md` pruefen.
+- Keine Quelle soll dauerhaft ein Sondermodell bekommen.
+- Aktuelle Werte muessen in `sourcePositions`/`sourceSummaries` landen.
+- Bewegungen, Kosten, Zinsen, Steuern und Dokumentfakten muessen historisch in
+  den kanonischen Collections gespeichert werden.

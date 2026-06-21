@@ -193,7 +193,9 @@ export async function mapIsinToBoerseFrankfurt(isin) {
 export async function fetchBoerseFrankfurtQuote(providerSymbol, mapping = {}) {
   const parsed = parseProviderSymbol(providerSymbol);
   const isin = parsed.isin ?? String(mapping.isin ?? "").toUpperCase();
+  const mappingPreferredMics = Array.isArray(mapping.preferredMics) ? mapping.preferredMics : [];
   const candidateMics = [
+    ...mappingPreferredMics,
     parsed.mic,
     mapping.mic,
     mapping.exchange,

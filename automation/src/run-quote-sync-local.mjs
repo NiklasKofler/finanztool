@@ -7,6 +7,9 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
+const writeHistoryEnabled =
+  process.argv.includes("--write-history") ||
+  ["1", "true", "yes"].includes(String(process.env.QUOTE_WRITE_HISTORY ?? "").toLowerCase());
 
 function runScript(script, args = []) {
   const result = spawnSync(process.execPath, [path.join(__dirname, script), ...args], {
@@ -26,19 +29,21 @@ const startedAt = new Date();
 await firestore.setDocument("agentStatus", "quotes", {
   source: "quotes",
   status: "RUNNING",
-  message: "Kurs-Sync laeuft",
+  message: writeHistoryEnabled ? "Kurs-Sync mit Tageshistorie laeuft" : "Kurs-Sync laeuft",
   startedAt,
   updatedAt: startedAt,
 });
 
 try {
-  runScript("sync-quotes-local.mjs", ["--write"]);
-  runScript("sync-position-history-local.mjs", ["--write"]);
+  runScript("sync-quotes-local.mjs", writeHistoryEnabled ? ["--write", "--write-history"] : ["--write"]);
+  if (writeHistoryEnabled) runScript("sync-position-history-local.mjs", ["--write"]);
   const finishedAt = new Date();
   await firestore.setDocument("agentStatus", "quotes", {
     source: "quotes",
     status: "OK",
-    message: "Kurse und Positionshistorie aktualisiert",
+    message: writeHistoryEnabled
+      ? "Kurse und Tageshistorie aktualisiert"
+      : "Aktuelle Kurse aktualisiert",
     lastSuccessAt: finishedAt,
     updatedAt: finishedAt,
   });
