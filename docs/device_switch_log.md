@@ -43,6 +43,31 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-22 18:09 CEST - ftu Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-22 18:09 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `dd9fa3a`; Handoff-Commit wird in diesem
+`ftu`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftu` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M docs/firestore_data_contract.md
+  -  M docs/working_memory.md
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
+
 ### 2026-06-22 17:48 CEST - ftu Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-22 17:48 CEST

@@ -603,32 +603,40 @@
 
 .source-card__agent-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .source-card__agent-row {
   display: grid;
-  gap: 3px;
-  border: 1px solid #e2e9e6;
-  border-radius: 8px;
-  padding: 8px;
-  background: #fbfcfc;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  border-top: 1px solid #edf1ef;
+  padding: 8px 0;
+}
+
+.source-card__agent-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.source-card__agent-row:last-child {
+  padding-bottom: 0;
 }
 
 .source-card__agent-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  display: contents;
 }
 
 .source-card__agent-head strong {
+  min-width: 0;
   color: #26302e;
   font-size: 0.78rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .source-card__agent-head .status-badge {
+  justify-self: end;
   min-height: 22px;
   padding: 0 8px;
   font-size: 0.62rem;
@@ -643,13 +651,19 @@
 }
 
 .source-card__agent-meta {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 5px 10px;
   font-weight: 800;
 }
 
+.source-card__agent-task {
+  grid-column: 1 / -1;
+}
+
 .source-card__agent-message {
+  grid-column: 1 / -1;
   color: #8a2c12;
   font-weight: 800;
 }
@@ -1357,17 +1371,21 @@
   }
 
   .source-card__agent-list {
-    gap: 6px;
+    gap: 0;
   }
 
   .source-card__agent-row {
-    gap: 2px;
-    padding: 7px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 7px;
+    border: 0;
+    border-top: 1px solid #edf1ef;
+    border-radius: 0;
+    padding: 6px 0;
+    background: transparent;
   }
 
   .source-card__agent-head {
-    align-items: flex-start;
-    gap: 6px;
+    display: contents;
   }
 
   .source-card__agent-head strong {
@@ -1384,6 +1402,15 @@
   .source-card__agent-meta,
   .source-card__agent-message {
     font-size: 0.65rem;
+    line-height: 1.2;
+  }
+
+  .source-card__agent-task {
+    display: none;
+  }
+
+  .source-card__agent-meta {
+    gap: 3px 8px;
   }
 
   .performance-value {
@@ -1614,5 +1641,39 @@
 
   .source-card dd {
     font-size: 0.72rem;
+  }
+
+  .source-card__agent-panel {
+    margin-top: 7px;
+    padding-top: 7px;
+  }
+
+  .source-card__agent-panel-title {
+    margin-bottom: 3px;
+    font-size: 0.56rem;
+  }
+
+  .source-card__agent-row {
+    gap: 2px 5px;
+    padding: 5px 0;
+  }
+
+  .source-card__agent-head strong {
+    font-size: 0.66rem;
+  }
+
+  .source-card__agent-head .status-badge {
+    min-height: 18px;
+    padding: 0 6px;
+    font-size: 0.52rem;
+  }
+
+  .source-card__agent-meta,
+  .source-card__agent-message {
+    font-size: 0.6rem;
+  }
+
+  .source-card__agent-meta {
+    gap: 2px 7px;
   }
 }

@@ -133,6 +133,10 @@ GUI-Regel:
   - wann der letzte technische Lauf war
   - ob das Ergebnis `OK`, `WARNUNG`, `FEHLER` oder `RUNNING` war
   - bei abweichendem Zeitpunkt: wann der letzte erfolgreiche Lauf war
+- Agenten werden in Depotkarten nicht als Kacheln dargestellt. Auf
+  iPhone-15-Breite und kleiner sind sie kompakte Zeilen ohne Boxhintergrund
+  und ohne umlaufenden Rahmen; Aufgabenbeschreibungen duerfen dort
+  ausgeblendet werden, damit Name, Status und Zeitstempel lesbar bleiben.
 - Positionen muessen fuer Analyse sichtbar machen, ob ihr aktueller Wert aus
   Broker/API, Dokument oder externem Kursprovider stammt.
 - `updatedAt` allein darf in der GUI nicht als fachliche Wahrheit angezeigt

@@ -139,11 +139,11 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-22 17:48 CEST
+- Stand: 2026-06-22 18:09 CEST
 - Aktion: `ftu` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `a0cdf06`
-- Handoff-Commit: `0c4e0c2`
-- Firebase Deploy: 2026-06-22 17:48 CEST erfolgreich
+- Ausgangscommit: `dd9fa3a`
+- Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -1232,11 +1232,16 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - Bitget hatte dafuer eine Sonderlogik in `SourceOverview`, obwohl die
     kanonische Quelle der Wahrheit `agentStatus` ist.
 - Korrigierte Regel:
-  - Jede Depotkarte zeigt Agenten in einer eigenen Agentenbox.
+  - Jede Depotkarte zeigt Agenten in einem eigenen Agentenbereich.
   - Pro Agent werden Name, fachliche Aufgabe, letzter technischer Lauf,
     Status-Badge und bei abweichendem Zeitpunkt der letzte Erfolg angezeigt.
   - Der Kurs-/Datenstand bleibt ein eigener Datenpunkt und wird nicht mehr mit
     Agentenlaufzeiten vermischt.
+  - Responsive-Regel: Agenten duerfen in Depotkarten nicht als eigenstaendige
+    Kacheln wirken. Auf iPhone-15-Breite und kleiner muessen sie als kompakte
+    Zeilen ohne Boxhintergrund/umlaufenden Rahmen erscheinen: Name links,
+    Status rechts, darunter nur Lauf/Erfolg. Lange Aufgabenbeschreibungen
+    werden auf Mobile ausgeblendet.
 - Aktuelle Agent-Metadaten in der GUI:
   - `bitget`: Bestände, Wallets und aktuelle Bewertung aus der Bitget API
   - `bitget_ledger`: Transaktionen, Gebühren, Zinsen/Earn und Bewegungen
