@@ -10,7 +10,7 @@ npm run install:capitalcom-agent
 npm run install:flatex-agent
 npm run install:ginmon-agent
 npm run install:intergold-agent
-npm run install:traderepublic-mail-agent
+npm run install:traderepublic-manual-export-agent
 npm run install:vbv-agent
 npm run install:quote-agent
 npm run install:command-runner

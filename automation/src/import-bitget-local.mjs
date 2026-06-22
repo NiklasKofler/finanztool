@@ -7,6 +7,7 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
 const importId = "api_bitget_latest";
+const dataProvider = "bitget_api";
 
 const accessToken = await getFirebaseCliAccessToken();
 const firestore = new FirestoreRest({ projectId, accessToken });
@@ -24,6 +25,11 @@ function parseMaybeNumber(value) {
 
 function roundCurrency(value) {
   return typeof value === "number" ? Math.round(value * 100) / 100 : value;
+}
+
+function preserveNumericOrNull(value) {
+  const parsed = parseMaybeNumber(value);
+  return parsed === null ? null : parsed;
 }
 
 function enrichQuoteCostBasis(position, usdtToEur) {
@@ -72,6 +78,8 @@ async function writeFailureStatus(error) {
     errorStatus: error?.status ?? null,
     requestPath: error?.requestPath ?? null,
     updatedAt: now,
+    lastAgentRunAt: now,
+    lastFailureAt: now,
     failedImportId: importId,
     failedRunId: runId,
   });
@@ -87,6 +95,7 @@ async function writeFailureStatus(error) {
     requestPath: error?.requestPath ?? null,
     runId,
     updatedAt: now,
+    lastFailureAt: now,
   });
 }
 
@@ -104,15 +113,28 @@ async function main() {
   const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
     (position) => position.source === "bitget",
   );
+  const existingPositionsById = new Map(existingPositions.map((position) => [position.id, position]));
   const currentIds = new Set(snapshot.positions.map((position) => position.id));
   for (const position of existingPositions) {
     if (!currentIds.has(position.id)) await firestore.deleteDocument("sourcePositions", position.id);
   }
 
   for (const position of snapshot.positions) {
+    const existing = existingPositionsById.get(position.id) ?? {};
     await firestore.setDocument("sourcePositions", position.id, {
       ...position,
+      previousCloseValue: preserveNumericOrNull(existing.previousCloseValue),
+      dayChangeValue: preserveNumericOrNull(existing.dayChangeValue),
+      dayChangePct: preserveNumericOrNull(existing.dayChangePct),
+      dailyChangeValue: preserveNumericOrNull(existing.dailyChangeValue),
+      dailyChangePct: preserveNumericOrNull(existing.dailyChangePct),
+      dayChange: preserveNumericOrNull(existing.dayChange),
+      dayChangePercent: preserveNumericOrNull(existing.dayChangePercent),
       importId,
+      sourceDataUpdatedAt: position.valuationDate ?? snapshot.valuationDate,
+      sourceDataProvider: dataProvider,
+      quoteDataUpdatedAt: position.valuationDate ?? snapshot.valuationDate,
+      quoteDataProvider: dataProvider,
       updatedAt: now,
     });
   }
@@ -144,6 +166,12 @@ async function main() {
     excludedPositions: snapshot.excludedPositions,
     status: snapshot.positions.length ? "VERIFIED" : "UNVOLLSTAENDIG",
     valuationMethod: "bitget_api_v1",
+    sourceDataUpdatedAt: snapshot.valuationDate,
+    sourceDataProvider: dataProvider,
+    quoteDataUpdatedAt: snapshot.valuationDate,
+    quoteDataProvider: dataProvider,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
     updatedAt: now,
   });
 
@@ -165,6 +193,10 @@ async function main() {
     unpricedPositions: snapshot.unpricedPositions,
     excludedPositionCount: snapshot.excludedPositionCount,
     excludedPositions: snapshot.excludedPositions,
+    sourceDataUpdatedAt: snapshot.valuationDate,
+    sourceDataProvider: dataProvider,
+    quoteDataUpdatedAt: snapshot.valuationDate,
+    quoteDataProvider: dataProvider,
     runId,
     updatedAt: now,
   });
@@ -191,6 +223,10 @@ async function main() {
     positions: snapshot.positions,
     usdtToEur: snapshot.usdtToEur,
     valuationDate: snapshot.valuationDate,
+    sourceDataUpdatedAt: snapshot.valuationDate,
+    sourceDataProvider: dataProvider,
+    quoteDataUpdatedAt: snapshot.valuationDate,
+    quoteDataProvider: dataProvider,
     updatedAt: now,
   });
 
@@ -199,7 +235,13 @@ async function main() {
     status: "OK",
     message: `${snapshot.positions.length} Positionen aktualisiert`,
     lastSuccessAt: now,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
     valuationDate: snapshot.valuationDate,
+    sourceDataUpdatedAt: snapshot.valuationDate,
+    sourceDataProvider: dataProvider,
+    quoteDataUpdatedAt: snapshot.valuationDate,
+    quoteDataProvider: dataProvider,
     importId,
   });
 

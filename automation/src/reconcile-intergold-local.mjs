@@ -39,6 +39,8 @@ const sourceDirectories = [
   path.join(driveRoot, "Intergold", "Einlagerungsbestaetigungen"),
 ];
 const snapshotDirectory = path.join(driveRoot, "01_Originale", "Intergold", "PreisSnapshots");
+const documentDataProvider = "intergold_confirmation_pdf";
+const quoteDataProvider = "intergold_website";
 
 function sum(values) {
   return values.reduce((total, value) => total + (typeof value === "number" ? value : 0), 0);
@@ -63,6 +65,17 @@ function priceHistoryId(price) {
       price.buyEur,
     ].join("_"),
   );
+}
+
+function priceChangeKey(price) {
+  return [
+    price?.metal,
+    price?.priceDate,
+    price?.unit,
+    price?.saleEur,
+    price?.buyEur,
+    price?.status,
+  ].join("|");
 }
 
 async function listPdfFiles(directory) {
@@ -112,6 +125,7 @@ function buildHoldings(confirmations, prices) {
           costValue: 0,
           sourceDocuments: new Set(),
           invoiceNumbers: new Set(),
+          invoiceDates: new Set(),
         };
       if (existing.unit !== position.unit) {
         existing.unitMismatch = true;
@@ -123,6 +137,7 @@ function buildHoldings(confirmations, prices) {
       existing.costValue += position.costValue ?? 0;
       if (position.sourceDocument) existing.sourceDocuments.add(position.sourceDocument);
       if (position.invoiceNumber) existing.invoiceNumbers.add(position.invoiceNumber);
+      if (position.invoiceDate) existing.invoiceDates.add(position.invoiceDate);
       holdingsByMetal.set(key, existing);
     }
   }
@@ -156,6 +171,8 @@ function buildHoldings(confirmations, prices) {
         currentValue != null && costValue ? (currentValue - costValue) / costValue : null,
       sourceDocuments: [...holding.sourceDocuments].sort(),
       invoiceNumbers: [...holding.invoiceNumbers].sort(),
+      invoiceDates: [...holding.invoiceDates].sort(),
+      latestDocumentDate: [...holding.invoiceDates].filter(Boolean).sort().at(-1) ?? null,
       status:
         holding.unitMismatch || currentValue == null || saleValue == null ? "UNVOLLSTAENDIG" : "VERIFIED",
     };
@@ -180,6 +197,12 @@ function holdingToPosition(holding) {
         : null,
     valuationDate: holding.priceDate,
     valuationMethod: "intergold_buy_price_v1",
+    sourceDataUpdatedAt: holding.latestDocumentDate,
+    sourceDataProvider: documentDataProvider,
+    documentDataUpdatedAt: holding.latestDocumentDate,
+    documentDataProvider,
+    quoteDataUpdatedAt: holding.priceDate,
+    quoteDataProvider,
     sourceUrl: INTERGOLD_PRICE_URL,
     accountValueIncluded: true,
   };
@@ -217,12 +240,15 @@ const lineCostValue = roundCurrency(sum(holdings.map((holding) => holding.lineCo
 const allocatedFee = roundCurrency(sum(holdings.map((holding) => holding.allocatedFee)));
 const missingPrices = holdings.filter((holding) => holding.status !== "VERIFIED").map((holding) => holding.metal);
 const latestPriceDate = prices.map((price) => price.priceDate).filter(Boolean).sort().at(-1) ?? null;
+const latestDocumentDate =
+  confirmations.map((confirmation) => confirmation.invoiceDate).filter(Boolean).sort().at(-1) ?? null;
 
 const summary = {
   mode: writeEnabled ? "write" : "dry-run",
   priceCount: prices.length,
   okPriceCount: prices.filter((price) => price.status === "OK").length,
   priceDate: latestPriceDate,
+  latestDocumentDate,
   pdfCount: files.length,
   confirmationCount: confirmations.length,
   holdingCount: holdings.length,
@@ -248,6 +274,36 @@ const firestore = new FirestoreRest({
   accessToken: await getFirebaseCliAccessToken(),
 });
 const now = new Date();
+const [existingSummaries, existingCurrentPrices, existingPriceHistory] = await Promise.all([
+  firestore.listDocuments("sourceSummaries"),
+  firestore.listDocuments("intergoldPrices"),
+  firestore.listDocuments("intergoldPriceHistory"),
+]);
+const existingSummary = existingSummaries.find((document) => document.id === "intergold");
+const { id: _summaryId, ...existingSummaryData } = existingSummary ?? {};
+const existingPriceByMetal = new Map(
+  existingCurrentPrices.map((price) => [String(price.metal ?? price.id ?? "").toLowerCase(), price]),
+);
+const existingPriceHistoryIds = new Set(existingPriceHistory.map((price) => price.id));
+const priceChanged = prices.some((price) => {
+  const existingPrice = existingPriceByMetal.get(String(price.metal ?? "").toLowerCase());
+  return !existingPrice || priceChangeKey(existingPrice) !== priceChangeKey(price);
+});
+const currentPriceHistoryIds = new Set(prices.map(priceHistoryId));
+const latestCurrentPriceHistoryCreatedAt =
+  existingPriceHistory
+    .filter((price) => currentPriceHistoryIds.has(price.id))
+    .map((price) => price.createdAt ?? price.fetchedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? null;
+const quoteDataChangedAt =
+  priceChanged
+    ? now
+    : existingSummaryData.quoteDataChangedAt ??
+      existingSummaryData.priceChangedAt ??
+      latestCurrentPriceHistoryCreatedAt ??
+      null;
 
 const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
   (position) => position.source === "intergold",
@@ -261,6 +317,8 @@ for (const position of positions) {
   const { id, ...data } = position;
   await firestore.setDocument("sourcePositions", id, {
     ...data,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
     updatedAt: now,
   });
 }
@@ -274,26 +332,28 @@ for (const holding of holdings) {
 
 for (const price of prices) {
   const currentId = compactIntergoldId(price.metal);
+  const historyId = priceHistoryId(price);
   await firestore.setDocument("intergoldPrices", currentId, {
     ...price,
     sourceUrl: INTERGOLD_PRICE_URL,
     lastFetchedAt: fetchedAt,
+    quoteDataUpdatedAt: price.priceDate,
+    quoteDataProvider,
+    quoteDataChangedAt,
     updatedAt: now,
   });
-  await firestore.setDocument("intergoldPriceHistory", priceHistoryId(price), {
-    ...price,
-    sourceUrl: INTERGOLD_PRICE_URL,
-    fetchedAt,
-    importRunId: stableId("intergold", fetchedAt.toISOString()),
-    rawSnapshotPath: snapshotPath,
-    createdAt: now,
-  });
+  if (!existingPriceHistoryIds.has(historyId)) {
+    await firestore.setDocument("intergoldPriceHistory", historyId, {
+      ...price,
+      sourceUrl: INTERGOLD_PRICE_URL,
+      fetchedAt,
+      importRunId: stableId("intergold", fetchedAt.toISOString()),
+      rawSnapshotPath: snapshotPath,
+      createdAt: now,
+    });
+  }
 }
 
-const existingSummary = (await firestore.listDocuments("sourceSummaries")).find(
-  (document) => document.id === "intergold",
-);
-const { id: _summaryId, ...existingSummaryData } = existingSummary ?? {};
 await firestore.setDocument("sourceSummaries", "intergold", {
   ...existingSummaryData,
   source: "intergold",
@@ -310,6 +370,16 @@ await firestore.setDocument("sourceSummaries", "intergold", {
   priceDate: latestPriceDate,
   priceSourceUrl: INTERGOLD_PRICE_URL,
   priceSnapshotPath: snapshotPath,
+  sourceDataUpdatedAt: latestDocumentDate,
+  sourceDataProvider: documentDataProvider,
+  documentDataUpdatedAt: latestDocumentDate,
+  documentDataProvider,
+  quoteDataUpdatedAt: latestPriceDate,
+  quoteDataProvider,
+  quoteDataChangedAt,
+  lastAgentRunAt: now,
+  lastAgentSuccessAt: now,
+  priceChanged,
   sourceDocumentCount: confirmations.length,
   positionCount: positions.length,
   missingPrices,
@@ -322,6 +392,16 @@ await firestore.setDocument("agentStatus", "intergold", {
   status: missingPrices.length ? "PARTIAL" : "OK",
   message: `${positions.length} Intergold-Positionen, ${prices.length} Preise, ${missingPrices.length} fehlende Preise`,
   lastSuccessAt: now,
+  lastAgentRunAt: now,
+  lastAgentSuccessAt: now,
+  sourceDataUpdatedAt: latestDocumentDate,
+  sourceDataProvider: documentDataProvider,
+  documentDataUpdatedAt: latestDocumentDate,
+  documentDataProvider,
+  quoteDataUpdatedAt: latestPriceDate,
+  quoteDataProvider,
+  quoteDataChangedAt,
+  priceChanged,
   positionCount: positions.length,
   currentValue,
 });

@@ -23,7 +23,7 @@ API-Zugangsdaten liegen lokal im macOS-Schluesselbund.
 | Ginmon | Dokumente + API | `sourceDocuments`, `sourceDocumentFacts`, `sourcePositions`, `sourceSummaries/ginmon` | Dokumente taeglich 02:00, API stuendlich |
 | Trade Republic | Apple-Mail-PDF-Agent | `sourcePositions`, `sourceSummaries/traderepublic` | stuendlich |
 | Intergold | Webseite + Belege | `sourcePositions`, `sourceSummaries/intergold` | taeglich |
-| VBV | Meine-VBV-Saldo | `sourceSummaries/vbv` | quartalsweise |
+| VBV | Meine-VBV-Stichtag + Kontoinfo-PDF | `sourceSummaries/vbv`, `sourceDocuments`, `sourceDocumentFacts` | taeglich 06:45 headless, Import nur bei neuem Stichtag |
 | Wertpapierkurse | Boerse Frankfurt | `quotesCurrent`, `instruments`, aktualisierte Positionen | alle 5 Minuten |
 | Wertpapier-Historie | Boerse Frankfurt + Positionen | `priceHistory` | taeglich 22:00 |
 

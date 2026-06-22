@@ -15,6 +15,7 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const importId = "api_bitget_ledger_latest";
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+const dataProvider = "bitget_ledger_api";
 const ledgerWindowDays = Number.parseInt(process.env.BITGET_LEDGER_WINDOW_DAYS ?? "90", 10);
 const taxWindowDays = Math.min(30, ledgerWindowDays);
 const maxPages = Number.parseInt(process.env.BITGET_LEDGER_MAX_PAGES ?? "20", 10);
@@ -24,6 +25,17 @@ const staleLockMs = 50 * 60 * 1000;
 
 const accessToken = await getFirebaseCliAccessToken();
 const firestore = new FirestoreRest({ projectId, accessToken });
+const fetchWarnings = [];
+
+function formatError(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function recordFetchWarning(scope, error) {
+  const warning = { scope, message: formatError(error), at: new Date().toISOString() };
+  fetchWarnings.push(warning);
+  console.warn(`[warn] Bitget ${scope} skipped: ${warning.message}`);
+}
 
 function millisDaysAgo(days) {
   return Date.now() - days * 24 * 60 * 60 * 1000;
@@ -136,7 +148,7 @@ async function fetchSavingsRecords(client, startTime, endTime) {
           }),
         { idField: "orderId", limit: 100 },
       ).catch((error) => {
-        console.warn(`[warn] Bitget savings records skipped (${periodType}/${orderType}): ${error.message}`);
+        recordFetchWarning(`savings records ${periodType}/${orderType}`, error);
         return [];
       });
       rows.push(...records);
@@ -159,7 +171,7 @@ async function fetchSavingsAssets(client, startTime, endTime) {
         }),
       { idField: "orderId", limit: 100 },
     ).catch((error) => {
-      console.warn(`[warn] Bitget savings assets skipped (${periodType}): ${error.message}`);
+      recordFetchWarning(`savings assets ${periodType}`, error);
       return [];
     });
     assets.push(...rows);
@@ -178,7 +190,7 @@ async function fetchTaxSpotRecords(client, startTime, endTime) {
       }),
     { idField: "id", limit: 500, pageDelayMs: 1_100 },
   ).catch((error) => {
-    console.warn(`[warn] Bitget tax spot records skipped: ${error.message}`);
+    recordFetchWarning("tax spot records", error);
     return [];
   });
 }
@@ -194,7 +206,7 @@ async function fetchTaxFutureRecords(client, startTime, endTime) {
       }),
     { idField: "id", limit: 500, pageDelayMs: 1_100 },
   ).catch((error) => {
-    console.warn(`[warn] Bitget tax future records skipped: ${error.message}`);
+    recordFetchWarning("tax future records", error);
     return [];
   });
 }
@@ -208,6 +220,8 @@ async function writeFailureStatus(error) {
     importId,
     failedRunId: runId,
     updatedAt: now,
+    lastAgentRunAt: now,
+    lastFailureAt: now,
   });
   await firestore.setDocument("imports", importId, {
     source: "bitget",
@@ -216,6 +230,7 @@ async function writeFailureStatus(error) {
     message: error instanceof Error ? error.message : String(error),
     runId,
     updatedAt: now,
+    lastFailureAt: now,
   });
 }
 
@@ -267,6 +282,9 @@ async function main() {
       factType: "tax_future_record",
     })),
   ]);
+  const importStatus = fetchWarnings.length ? "IMPORTED_WITH_WARNINGS" : "IMPORTED";
+  const agentStatus = fetchWarnings.length ? "WARNUNG" : "OK";
+  const warningSuffix = fetchWarnings.length ? `, ${fetchWarnings.length} Warnung(en)` : "";
 
   console.log(
     `[info] Bitget Ledger fetched: ${ledgerEntries.length} bills, ` +
@@ -293,13 +311,16 @@ async function main() {
     savingsAssets,
     taxSpotRecords,
     taxFutureRecords,
+    warnings: fetchWarnings,
+    sourceDataUpdatedAt: now,
+    sourceDataProvider: dataProvider,
     updatedAt: now,
   });
 
   await firestore.setDocument("imports", importId, {
     source: "bitget",
     parser: "bitget_ledger_api_v1",
-    status: "IMPORTED",
+    status: importStatus,
     runId,
     windowDays: ledgerWindowDays,
     taxWindowDays,
@@ -313,16 +334,24 @@ async function main() {
     incomeEventCount: incomeEvents.length,
     taxSpotRecordCount: taxSpotRecords.length,
     taxFutureRecordCount: taxFutureRecords.length,
+    warnings: fetchWarnings,
+    sourceDataUpdatedAt: now,
+    sourceDataProvider: dataProvider,
     updatedAt: now,
   });
 
   await firestore.setDocument("agentStatus", "bitget_ledger", {
     source: "bitget",
-    status: "OK",
+    status: agentStatus,
     message:
       `${ledgerEntries.length} Ledger, ${transactions.length} Trades, ` +
-      `${costEvents.length} Kosten, ${incomeEvents.length} Zinsen synchronisiert`,
+      `${costEvents.length} Kosten, ${incomeEvents.length} Zinsen synchronisiert${warningSuffix}`,
     lastSuccessAt: now,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
+    sourceDataUpdatedAt: now,
+    sourceDataProvider: dataProvider,
+    warnings: fetchWarnings,
     importId,
   });
 

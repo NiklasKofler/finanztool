@@ -148,7 +148,7 @@ Das installiert aktuell:
 - Ginmon Sync-Agent alle 6 Stunden
 - Intergold Sync-Agent taeglich um 08:20
 - Trade-Republic-Mail-Agent stuendlich
-- VBV Sync-Agent quartalsweise am 5.1., 5.4., 5.7., 5.10. um 09:15
+- VBV Sync-Agent taeglich um 06:45 headless; gleicher Stichtag wird nicht neu importiert
 - Boerse-Frankfurt-Kursagent alle 5 Minuten fuer aktuelle Kurse
 - Boerse-Frankfurt-Historienagent taeglich um 22:00 fuer `priceHistory`
 - Command-Runner fuer den App-Button `Alles aktualisieren`
@@ -248,8 +248,21 @@ Firestore-Kontrolle in der App:
 ### VBV
 
 - Keine Einzelpositionen
-- Nur Karte/Summary `sourceSummaries/vbv`
-- Quartalswert aus Meine VBV
+- Portal-Stichtag aus Meine VBV
+- Genauere Datenquelle ist die PDF-Kontoinformation:
+  `Severance Payment Fund` -> `Account information`
+- Agent laedt den authentifizierten
+  `/webportal/kontoinformation?date=...&hash=...`-PDF-Link und parst die PDF
+- Firestore:
+  - `sourceSummaries/vbv`
+  - `sourceDocuments/vbv_account_information_<stichtag>`
+  - `sourceDocumentFacts` mit einer Summary und Vertrags-Snapshots
+- G/V fuer VBV:
+  `Veranlagungsergebnis netto + explizite Kosten`
+- Einstand fuer VBV:
+  `Startwert + Beitraege`
+- Dublettenlogik: stabile Dokument-ID je Stichtag plus `semanticHash`;
+  physische PDF-Hashes allein sind nicht ausreichend
 
 ### Kurse
 

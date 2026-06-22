@@ -1,156 +1,216 @@
-# Bitget Daten-Audit - 2026-06-20
+# Bitget Daten-Audit
+
+Stand: 2026-06-22 00:30 CEST, Mac Studio
 
 ## Kurzfazit
 
-Der Bitget-5-Minuten-Agent funktioniert fuer den aktuellen Bestand und die
-Portfolio-Karte automatisch. Zusaetzlich wurde ein separater
-Bitget-Ledger-Agent umgesetzt, der historische Bewegungen, Trades, Kosten und
-Zinsen idempotent nach Firestore schreibt.
+Bitget ist fuer den aktuellen Bestand jetzt sauber automatisiert:
 
-## Produktiver Agent
+- Der Portfolio-Agent laeuft alle 5 Minuten.
+- Der Ledger-Agent laeuft stuendlich.
+- Aktuelle Positionen und Kurse kommen ausschliesslich aus der Bitget API.
+- Kosten, Trades, Fees, Earn-Zinsen und Tax-Facts werden historisch und
+  idempotent in Firestore gespeichert.
+- Nicht mehr relevante Meme-/Dust-Reste sind nicht mehr sichtbare
+  Portfolio-Positionen, bleiben aber im Rohsnapshot nachvollziehbar.
 
-Installierter LaunchAgent:
+Nicht vollautomatisch abgeschlossen ist die historische Einstandsermittlung:
+
+- Der BTC-Einstand von `3.000 EUR` ist aktuell ein bestaetigter manueller
+  Kostenbasis-Eintrag in `sourceCostBasis`.
+- Die laufenden API-Daten enthalten Fees und Zinsen, aber nicht automatisch die
+  vollstaendige Herkunft jeder historischen Einzahlung oder externen
+  Finanzierung.
+
+## Wie Bitget aktuell aktualisiert wird
+
+### Portfolio-Agent
+
+LaunchAgent:
 
 - `com.niklas.finanztool.bitget-import`
-- startet alle 5 Minuten
-- startet `automation/src/import-bitget-local.mjs`
+- Script: `automation/src/import-bitget-local.mjs`
+- Intervall: alle 5 Minuten
+- API-Key liegt lokal im macOS-Schluesselbund
 
-Installierter Ledger-LaunchAgent:
+Genutzte Bitget-Endpunkte:
+
+- `/api/v2/spot/account/info`
+- `/api/v2/spot/account/assets`
+- `/api/v2/account/all-account-balance`
+- `/api/v2/earn/account/assets`
+- `/api/v2/spot/market/tickers`
+
+Gespeichert wird:
+
+- `sourcePositions`: sichtbare aktuelle Portfolio-Positionen
+- `sourceSummaries/bitget`: aktuelle Bitget-Karte
+- `imports/api_bitget_latest`: letzter Importstatus
+- `rawDocuments/api_bitget_latest`: letzter API-Rohsnapshot
+- `agentStatus/bitget`: letzter Agentstatus
+
+Der 5-Minuten-Lauf ueberschreibt absichtlich den aktuellen Snapshot. Er erzeugt
+keine endlose 5-Minuten-Historie.
+
+### Ledger-Agent
+
+LaunchAgent:
 
 - `com.niklas.finanztool.bitget-ledger`
-- startet stuendlich
-- startet `automation/src/sync-bitget-ledger-local.mjs`
-- nutzt Lock-Datei `/tmp/finanztool-bitget-ledger.lock`, damit sich manuelle
-  und automatische Laeufe nicht ueberschneiden
+- Script: `automation/src/sync-bitget-ledger-local.mjs`
+- Intervall: stuendlich
+- Lock-Datei: `/tmp/finanztool-bitget-ledger.lock`
 
-## Aktuell automatisch gespeichert
+Genutzte Bitget-Endpunkte:
 
-Alle 5 Minuten:
+- `/api/v2/spot/account/bills`
+- `/api/v2/spot/trade/fills`
+- `/api/v2/earn/savings/records`
+- `/api/v2/earn/savings/assets`
+- `/api/v2/tax/spot-record`
+- `/api/v2/tax/future-record`
 
-- `agentStatus/bitget`
-- `sourceSummaries/bitget`
-- aktuelle saubere Portfolio-Positionen in `sourcePositions`
-- aktueller API-Rohsnapshot in `rawDocuments/api_bitget_latest`
-- aktueller Importstatus in `imports/api_bitget_latest`
+Gespeichert wird:
 
-Stuendlich:
+- `ledgerEntries`: Account-Bills, Bewegungen, Interest-Buchungen
+- `transactions`: Spot-Fills/Trades
+- `costEvents`: Trading-Fees
+- `incomeEvents`: Earn-/Savings-Zinsen
+- `sourceDocumentFacts`: Bitget Tax Spot/Future Records
+- `rawDocuments/api_bitget_ledger_latest`: letzter Ledger-Rohsnapshot
+- `imports/api_bitget_ledger_latest`: letzter Ledger-Importstatus
+- `agentStatus/bitget_ledger`: letzter Ledger-Agentstatus
 
-- Bitget Account Bills nach `ledgerEntries`
-- Bitget Spot Fills nach `transactions`
-- Bitget Fill-Gebuehren nach `costEvents`
-- Bitget Earn/Savings-Zinsen nach `incomeEvents`
-- Bitget Tax Spot/Future Records nach `sourceDocumentFacts`
-- letzter Ledger-Rohsnapshot nach `rawDocuments/api_bitget_ledger_latest`
-- letzter Ledger-Importstatus nach `imports/api_bitget_ledger_latest`
-- Ledger-Agentstatus nach `agentStatus/bitget_ledger`
+Teilweise API-Ausfaelle werden nicht mehr still als OK behandelt. Wenn ein
+optionaler Teilabruf, z. B. Tax Records, wegen Rate-Limit oder Netzwerkfehler
+scheitert, schreibt der Ledger-Agent `WARNUNG` plus `warnings`.
 
-Aktuelle Bitget-Portfolioansicht:
+## Aktuelle Portfolio-Logik
+
+Sichtbare `sourcePositions`:
 
 - `bitget_earn_BTC`
 - `bitget_spot_EUR`
 - `bitget_spot_USDT`
 
-Bewusst ausgeschlossen, aber im Rohsnapshot nachvollziehbar:
+Bewusst aus der sichtbaren Portfolioansicht ausgeschlossen:
 
-- `bitget_spot_BTC` wegen Dust/0,00-EUR-Rundung
-- `bitget_spot_TRUMP` wegen sauberem Schnitt
-- `bitget_spot_MELANIA` wegen sauberem Schnitt
+- `bitget_spot_BTC`: Dust unter `1 EUR`
+- `bitget_spot_TRUMP`: sauberer Schnitt 2026-06-20
+- `bitget_spot_MELANIA`: sauberer Schnitt 2026-06-20
 
-## Firestore-Stand der Pruefung
+Diese ausgeschlossenen Rohbestaende bleiben in
+`rawDocuments/api_bitget_latest.rawPositions` und in
+`sourceSummaries/bitget.excludedPositions` nachvollziehbar.
 
-- `sourcePositions`: 3 Bitget-Positionen
-- `ledgerEntries`: 2166 Bitget-Eintraege historisch vorhanden;
-  letzter Lauf importierte 2165 im 90-Tage-Fenster
-- `transactions`: 2 Bitget-Eintraege
-- `costEvents`: 2 Bitget-Eintraege
-- `incomeEvents`: 90 Bitget-Zinsereignisse
-- `sourceDocumentFacts`: 726 Bitget-Tax-Facts historisch vorhanden;
-  letzter Lauf importierte 725 im 30-Tage-Tax-Fenster
-- `sourceCostBasis`: 4 historische/manuelle Kostenbasis-Eintraege
-- `systemHealth/current`: OK
+## Berechnung der Bitget-Karte
 
-## Was jetzt automatisch historisch gespeichert wird
+Die Karte nutzt den Bitget-Kontowert als Wahrheit:
 
-- Spot-Bills als Bewegungsledger
-- Spot-Fills als Trades
-- Trading-Gebuehren als Kostenereignisse
-- Earn-Zinsen als Income-Events
-- Earn-Records und Tax-Records im Rohsnapshot und Tax-Facts
+- `sourceSummaries/bitget.currentValue`
+- `sourceSummaries/bitget.netValue`
+- `sourceSummaries/bitget.exchangeAccountValue`
 
-## Noch offen / bewusst getrennt
+Grundlage:
 
-- Historische Daten aelter als das API-Fenster muessen weiter aus den
-  exportierten Bitget-Dateien rekonstruiert werden.
-- Der Ledger-Agent nutzt aktuell ein 90-Tage-Rolling-Fenster fuer Bills,
+1. Bitget `all-account-balance` liefert den kontenuebergreifenden Wert in USDT.
+2. Bitget `USDTEUR` aus den Spot-Tickern rechnet den Wert in EUR um.
+3. Dieser Wert ist fuer die Karte massgeblich.
+
+Zusaetzlich wird gespeichert:
+
+- `positionsValue`: Summe sichtbarer Positionen aus Bitget-Tickern
+- `includedPositionsValue`: Summe sichtbarer bewertbarer Positionen
+- `positionSummaryDifference`: Differenz zwischen Positionssumme und Bitget-
+  Kontowert
+- `componentsUsdt`: Spot/Earn/Futures/Margin/Funding/Bots aus Bitget
+- `unpricedPositionCount`: Assets ohne Bitget-Kurs
+- `excludedPositionCount`: bewusst ausgeblendete Rohbestaende
+
+Die Differenz zwischen Bitget-Kontowert und sichtbarer Positionssumme kann
+klein sein, weil Bitget fuer den Kontowert eine eigene Kontobewertung liefert,
+waehrend die Positionsanzeige mit aktuellen Spot-Tickern bewertet wird. Diese
+Differenz wird gespeichert und vom Health-Check kontrolliert.
+
+## Transparenzfelder
+
+Bitget schreibt jetzt getrennt:
+
+- `sourceDataUpdatedAt`: Zeitpunkt des Bitget-API-Snapshots
+- `sourceDataProvider`: `bitget_api`
+- `quoteDataUpdatedAt`: Zeitpunkt der Bitget-Kursbewertung
+- `quoteDataProvider`: `bitget_api`
+- `lastAgentRunAt`: technischer Agentlauf
+- `lastAgentSuccessAt`: letzter erfolgreicher Agentlauf
+
+Damit ist in der GUI erkennbar, ob der Stand direkt von Bitget kommt und wann
+der Agent zuletzt erfolgreich war.
+
+## Kosten, Zinsen und Datenvollstaendigkeit
+
+Vorhanden in Firestore:
+
+- `ledgerEntries`: Bitget Account Bills
+- `transactions`: Bitget Spot-Fills
+- `costEvents`: Bitget Trading-Fees
+- `incomeEvents`: Bitget Earn-Zinsen
+- `sourceDocumentFacts`: Bitget Tax-Facts
+
+Verifizierter Firestore-Stand nach dem Lauf:
+
+- `sourcePositions`: 3 sichtbare Bitget-Positionen
+- `ledgerEntries`: 2190 Bitget-Eintraege historisch vorhanden
+- `transactions`: 2 Bitget-Trades
+- `costEvents`: 2 Bitget-Fee-Ereignisse
+- `incomeEvents`: 91 Bitget-Zinsereignisse
+- `sourceDocumentFacts`: 750 Bitget-Tax-Facts
+- `agentStatus/bitget`: `OK`
+- `agentStatus/bitget_ledger`: `OK`
+- `systemHealth/current`: `OK`
+
+Wichtig:
+
+- Die laufenden Kosten und Zinsen sind als Ereignisse vorhanden.
+- Der BTC-Einstand von `3.000 EUR` ist weiterhin ein manueller,
+  nutzerbestaetigter Kostenbasiswert in `sourceCostBasis`.
+- Aeltere Historie ausserhalb der aktuellen API-Fenster muss bei Bedarf aus
+  Exportdateien oder Bank-/Kreditkartenbuchungen rekonstruiert werden.
+- Der Ledger-Agent nutzt standardmaessig ein 90-Tage-Fenster fuer Bills,
   Fills und Earn-Records.
-- Tax-Records werden wegen Bitget-Limit mit 30-Tage-Fenster abgefragt.
-- Historische Ledger-/Fact-Dokumente werden nicht geloescht, wenn sie aus dem
-  Rolling-Fenster herausfallen. Deshalb kann die Collection-Gesamtzahl groesser
-  sein als der Zaehler des letzten Laufs.
-- Der aktuelle 5-Minuten-Snapshot bleibt bewusst getrennt vom historischen
-  Ledger.
+- Tax-Records werden wegen API-Limit standardmaessig mit 30-Tage-Fenster
+  abgefragt.
+- Historische normalisierte Dokumente werden nicht geloescht, wenn sie aus dem
+  Rolling-Fenster herausfallen.
 
-## Technisch verfuegbare Bitget-Daten
+## Verifizierte Checks
 
-Mit dem vorhandenen API-Key am 2026-06-20 erfolgreich getestet:
+Ausgefuehrt am Mac Studio:
 
-- Spot Account Bills, 90 Tage, z. B. `BATCH_INTEREST_USER_IN`
-- Spot Trade Fills, 90 Tage, z. B. BTC-Kauf und TRUMP-Verkauf mit Fee-Details
-- Tax Spot Records, 30 Tage pro Anfrage
-- Tax Futures Records, 30 Tage pro Anfrage, aktuell 0 Eintraege
-- Earn Savings Assets, inklusive `lastProfit`, `totalProfit`, APY-Stufen
-- Earn Savings Records, 90 Tage, inklusive `pay_interest`
+```bash
+npm --prefix automation run check:bitget
+npm --prefix automation run import:bitget:local
+npm --prefix automation run sync:bitget-ledger
+npm --prefix automation run sync:health
+npm --prefix app run build
+```
 
-## Bewertung
+Ergebnis:
 
-Neue oder geschlossene aktuelle Positionen:
+- Bitget Public API erreichbar.
+- Bitget Read-only API funktioniert.
+- Sichtbare Positionen nach Dust-/Clean-Cut-Filter: 3.
+- Portfolio-Import erfolgreich.
+- Ledger-Sync erfolgreich.
+- Health: `OK`.
+- App-Build erfolgreich.
 
-- Ja, fuer die Portfolioansicht funktioniert das automatisch.
-- `sourcePositions` wird bei jedem Lauf gegen den aktuellen Bitget-Bestand
-  abgeglichen.
-- Positionen, die nicht mehr aktuell sind, werden geloescht.
-- Neue relevante Positionen erscheinen automatisch, sofern sie nicht als Dust
-  oder sauberer-Schnitt-Ausnahme ausgeschlossen werden.
+## Naechster sinnvoller Bitget-Ausbau
 
-Kosten und Zinsen:
-
-- Nein, fachlich noch nicht vollstaendig.
-- Aktuell kommt der BTC-Einstand aus `sourceCostBasis`, nicht automatisch aus
-  Bitget-Transaktionen.
-- Earn-Zinsen sind ueber API abrufbar, aber noch nicht als Ertraege gespeichert.
-- Trading-Gebuehren sind ueber Fills/Bills abrufbar, aber noch nicht als
-  `costEvents` gespeichert.
-
-## Umgesetzte Erweiterung
-
-1. Separater Bitget-Ledger-Agent wurde gebaut und stuendlich installiert.
-2. Endpunkte:
-   - `/api/v2/spot/account/bills`
-   - `/api/v2/spot/trade/fills`
-   - `/api/v2/earn/savings/records`
-   - `/api/v2/earn/savings/assets`
-   - optional `/api/v2/tax/spot-record` als Kontroll-/Steuerdatenquelle
-3. In Firestore geschrieben:
-   - `ledgerEntries` fuer Bills, Transfers, Earn-Zinsen, Subscriptions,
-     Redemptions
-   - `transactions` fuer echte Trades/Fills
-   - `costEvents` fuer Fees und sonstige Kosten
-   - `incomeEvents` fuer Earn-Zinsen
-   - `sourceDocumentFacts` fuer Tax-Facts
-4. Idempotenz:
-   - Dokument-IDs aus Bitget-IDs bilden, z. B. `bitget_bill_<billId>`,
-     `bitget_fill_<tradeId>`, `bitget_earn_<orderId>`
-   - keine doppelten Eintraege bei Wiederholung
-5. History:
-   - aktueller Snapshot bleibt `api_bitget_latest`
-   - Bewegungen werden historisch gespeichert
-   - Preise/Position-History separat nur nach definierter Logik speichern
-
-## Was keinen Sinn macht
-
-- Den 5-Minuten-Snapshot als Transaktionshistorie speichern.
-- Jede 5-Minuten-Bewertung komplett historisch aufzubewahren.
-- Ausgeschlossene Dust-/Meme-Reste wieder als aktuelle Portfolio-Positionen zu
-  behandeln.
-- Bitget-Krypto ueber externe Kursquellen zu bewerten, solange Bitget als
-  Wahrheit fuer Bitget definiert ist.
+1. BTC-Einstand langfristig aus echten Geldfluesse/Trades/Transfers
+   rekonstruieren, soweit die Daten verfuegbar sind.
+2. Historische Bitget-Exportdateien nutzen, falls API-Fenster nicht weit genug
+   zurueckreichen.
+3. Preis-/Positionshistorie separat nach der globalen 22:00-Logik speichern,
+   nicht jeden 5-Minuten-Snapshot.
+4. Falls weitere Coins sichtbar werden, automatisch anzeigen, sofern sie kein
+   Dust und nicht bewusst ausgeschlossen sind.

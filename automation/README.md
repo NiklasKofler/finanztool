@@ -208,11 +208,15 @@ aktuellen Chrome-Tab uebernommen werden:
 npm run sync:vbv -- --from-current-chrome
 ```
 
-Quartalsweisen Agent auf dem aktuellen Mac installieren:
+Taeglichen headless Agent auf dem aktuellen Mac installieren:
 
 ```bash
 npm run install:vbv-agent
 ```
+
+Der VBV-Agent prueft taeglich den Portal-Stichtag. Die PDF-Kontoinformation
+wird nur neu heruntergeladen/geparst, wenn der Stichtag neu ist oder fuer diesen
+Stichtag noch keine Kontoinformation in Firestore liegt.
 
 ## Flatex Browser-Export
 

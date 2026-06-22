@@ -24,6 +24,11 @@ export interface SourceSummaryDocument {
   performancePct?: number;
   brokerPositionValue?: number;
   brokerPositionSummaryDifference?: number | null;
+  brokerSnapshotValue?: number | null;
+  brokerageValue?: number | null;
+  privateMarketsValue?: number | null;
+  brokerCashValue?: number | null;
+  brokerSnapshotDate?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   externalQuoteDepotValue?: number | null;
   externalQuoteDifference?: number | null;
   latestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -40,12 +45,23 @@ export interface SourceSummaryDocument {
   excludedPositions?: Array<Record<string, unknown>>;
   usdtToEur?: number | null;
   valuationDate?: string;
+  sourceDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  sourceDataProvider?: string | null;
+  documentDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  documentDataProvider?: string | null;
+  quoteDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  quoteDataProvider?: string | null;
+  quoteDataChangedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentRunAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastDataChangeAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number };
   positionCount?: number;
   status?: string;
   storageStatus?: string;
   valuationMethod?: string;
   accounts?: SourceSummaryAccount[];
+  accountInformation?: SourceSummaryVbvAccountInformation | null;
 }
 
 export interface SourceSummaryAccount {
@@ -63,12 +79,57 @@ export interface SourceSummaryAccount {
   positionCount?: number | null;
 }
 
+export interface SourceSummaryVbvContract {
+  employer?: string | null;
+  openingDate?: string | null;
+  openingBalance?: number | null;
+  contributionYear?: number | null;
+  contributions?: number | null;
+  administrationCosts?: number | null;
+  socialInsuranceCosts?: number | null;
+  totalCosts?: number | null;
+  investmentResultNet?: number | null;
+  costValue?: number | null;
+  performanceValue?: number | null;
+  performancePct?: number | null;
+  movementValue?: number | null;
+  closingDate?: string | null;
+  closingBalance?: number | null;
+}
+
+export interface SourceSummaryVbvAccountInformation {
+  documentType?: string | null;
+  parseStatus?: string | null;
+  statementDate?: string | null;
+  valuationDate?: string | null;
+  customerNumber?: string | null;
+  totalValue?: number | null;
+  guaranteedCapital?: number | null;
+  guaranteeSurplus?: number | null;
+  openingBalanceTotal?: number | null;
+  contributionsTotal?: number | null;
+  administrationCostsTotal?: number | null;
+  socialInsuranceCostsTotal?: number | null;
+  totalCosts?: number | null;
+  investmentResultNetTotal?: number | null;
+  costValue?: number | null;
+  performanceValue?: number | null;
+  performancePct?: number | null;
+  movementValue?: number | null;
+  parsedContractsValue?: number | null;
+  valueDifference?: number | null;
+  contractCount?: number | null;
+  contracts?: SourceSummaryVbvContract[];
+}
+
 export interface AgentStatusDocument {
   id: string;
   source?: string;
   status?: "OK" | "WARNUNG" | "FEHLER" | "RUNNING" | string;
   message?: string | null;
   lastSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentRunAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   valuationDate?: string | null;
   importId?: string | null;
@@ -114,6 +175,8 @@ const numericPositionFields = [
   "quotePrice",
   "quotePriceEur",
   "quoteAgeMinutes",
+  "brokerQuotePrice",
+  "brokerCurrentValue",
   "dayChangeValue",
   "dayChangePct",
   "dayChange",

@@ -17,7 +17,7 @@ const saveMailEnabled = !process.argv.includes("--no-mail");
 const unlockEnabled = !process.argv.includes("--no-unlock");
 const firestoreEnabled = !process.argv.includes("--no-firestore");
 const quoteSyncEnabled = writeEnabled && !process.argv.includes("--no-quotes");
-const mailAccountFilter = process.env.TR_MAIL_ACCOUNT ?? "Niklas.kofler@gmail.com";
+const mailAccountFilter = process.env.TR_MAIL_ACCOUNT ?? "";
 const passwordService = "finanztool-traderepublic-pdf-password";
 const passwordAccount = process.env.USER ?? "niklaskofler";
 const driveRoot =
@@ -314,16 +314,35 @@ function roundQuantity(value) {
 
 function parseSettlementText(text, filePath) {
   const normalized = text.replace(/\u00a0/g, " ").replace(/\s+/g, " ");
-  const positionMatch =
-    normalized.match(
-      /POSITION\s+ANZAHL\s+DURCHSCHNITTSKURS\s+BETRAG\s+(.+?)\s+ISIN:\s*([A-Z]{2}[A-Z0-9]{10})\s+([\d,.]+)\s+Stk\.\s+([\d,.]+)\s+EUR\s+([\d,.]+)\s+EUR/i,
-    ) ??
-    normalized.match(/(.+?)\s+ISIN:\s*([A-Z]{2}[A-Z0-9]{10})\s+([\d,.]+)\s+Stk\.\s+([\d,.]+)\s+EUR\s+([\d,.]+)\s+EUR/i);
-  const name = positionMatch?.[1]?.replace(/^.*?BETRAG\s+/i, "").trim() ?? null;
-  const isin = positionMatch?.[2] ?? normalized.match(/ISIN:\s*([A-Z]{2}[A-Z0-9]{10})/)?.[1] ?? null;
-  const quantity = parseSettlementNumber(positionMatch?.[3]);
-  const averagePrice = parseSettlementNumber(positionMatch?.[4]);
-  const amount = parseSettlementNumber(positionMatch?.[5]);
+  const positionAfterIsinMatch = normalized.match(
+    /POSITION\s+ANZAHL\s+DURCHSCHNITTSKURS\s+BETRAG\s+(.+?)\s+ISIN:\s*([A-Z]{2}[A-Z0-9]{10})\s+([\d,.]+)\s+Stk\.\s+([\d,.]+)\s+EUR\s+([\d,.]+)\s+EUR/i,
+  );
+  const positionBeforeIsinMatch = normalized.match(
+    /POSITION\s+ANZAHL\s+DURCHSCHNITTSKURS\s+BETRAG\s+(.+?)\s+([\d,.]+)\s+Stk\.\s+([\d,.]+)\s+EUR\s+([\d,.]+)\s+EUR\s+ISIN:\s*([A-Z]{2}[A-Z0-9]{10})/i,
+  );
+  const fallbackPositionMatch = normalized.match(
+    /(.+?)\s+ISIN:\s*([A-Z]{2}[A-Z0-9]{10})\s+([\d,.]+)\s+Stk\.\s+([\d,.]+)\s+EUR\s+([\d,.]+)\s+EUR/i,
+  );
+  const name =
+    positionBeforeIsinMatch?.[1]?.trim() ??
+    positionAfterIsinMatch?.[1]?.replace(/^.*?BETRAG\s+/i, "").trim() ??
+    fallbackPositionMatch?.[1]?.replace(/^.*?BETRAG\s+/i, "").trim() ??
+    null;
+  const isin =
+    positionBeforeIsinMatch?.[5] ??
+    positionAfterIsinMatch?.[2] ??
+    fallbackPositionMatch?.[2] ??
+    normalized.match(/ISIN:\s*([A-Z]{2}[A-Z0-9]{10})/)?.[1] ??
+    null;
+  const quantity = parseSettlementNumber(
+    positionBeforeIsinMatch?.[2] ?? positionAfterIsinMatch?.[3] ?? fallbackPositionMatch?.[3],
+  );
+  const averagePrice = parseSettlementNumber(
+    positionBeforeIsinMatch?.[3] ?? positionAfterIsinMatch?.[4] ?? fallbackPositionMatch?.[4],
+  );
+  const amount = parseSettlementNumber(
+    positionBeforeIsinMatch?.[4] ?? positionAfterIsinMatch?.[5] ?? fallbackPositionMatch?.[5],
+  );
   const date =
     isoDateFromGerman(normalized.match(/(?:DATUM|Datum|Ausführungstag|Handelstag)\s*[: ]\s*(\d{2}\.\d{2}\.\d{4})/)?.[1]) ??
     isoDateFromGerman(path.basename(filePath));

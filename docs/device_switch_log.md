@@ -41,6 +41,58 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-22 17:48 CEST - ftu Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-22 17:48 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `a0cdf06`; Handoff-Commit wird in diesem
+`ftu`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftu` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/domain/types.ts
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/README.md
+  -  M automation/launchd/com.niklas.finanztool.vbv-sync.plist.template
+  -  M automation/package.json
+  -  M automation/src/bitget-client.mjs
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/import-bitget-local.mjs
+  -  M automation/src/install-all-agents.sh
+  -  M automation/src/install-vbv-launch-agent.sh
+  -  M automation/src/reconcile-intergold-local.mjs
+  -  M automation/src/run-full-refresh-local.mjs
+  -  M automation/src/sync-bitget-ledger-local.mjs
+  -  M automation/src/sync-quotes-local.mjs
+  -  M automation/src/sync-vbv-local.mjs
+  -  M automation/src/trade-republic-mail-agent.mjs
+  -  M automation/src/vbv-browser.mjs
+  -  M docs/bitget_data_audit_2026-06-20.md
+  -  M docs/export_import_runbook_mac_studio.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/import_masterplan.md
+  -  M docs/mac_studio_handoff_2026-06-13.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  - ?? automation/launchd/com.niklas.finanztool.traderepublic-manual-exports.plist.template
+  - ?? automation/src/install-traderepublic-manual-export-agent.sh
+  - ?? automation/src/trade-republic-manual-export-agent.mjs
+  - ?? automation/src/vbv-account-information-parser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftu` Upload
+
 ### 2026-06-21 20:54 CEST - ftu Handoff MacBook Pro zu Mac Studio von Niklas
 
 Datum/Zeit: 2026-06-21 20:54 CEST

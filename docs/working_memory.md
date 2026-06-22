@@ -139,12 +139,12 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-21 20:54 CEST
-- Aktion: `ftu` vom MacBook Pro Richtung Mac Studio von Niklas
-- Ausgangscommit: `375a247`
-- Handoff-Commit: `89e00e5`
-- Firebase Deploy: 2026-06-21 21:05 CEST erfolgreich
-- Naechster Schritt auf Mac Studio von Niklas: `ftd` ausfuehren
+- Stand: 2026-06-22 17:48 CEST
+- Aktion: `ftu` vom Mac Studio von Niklas Richtung MacBook Pro
+- Ausgangscommit: `a0cdf06`
+- Handoff-Commit: wird in diesem `ftu`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt
+- Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
   - Mac Studio bleibt produktiver Agent-Knoten
@@ -207,17 +207,22 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ### Trade Republic
 
-- Mail-Agent fuer passwortgeschuetzte `Securities Settlement` PDFs ist gebaut
+- Mail-Agent fuer passwortgeschuetzte `Securities Settlement` PDFs ist gebaut,
+  ruht aber seit 2026-06-22 als fachlicher Kanal
 - PDF-Passwort liegt lokal im macOS-Schluesselbund
-- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail
-- Agent laedt, entsperrt, archiviert und verarbeitet neue PDFs idempotent
+- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail;
+  diese `Duplicates`-Mails werden aktuell nicht mehr automatisch auf den
+  Trade-Republic-Bestand angewendet
+- Aktiver Kanal ist seit 2026-06-22 der Manual-Export-Agent fuer selbst
+  gemailte No-Subject-Exporte
 - Wichtige Baseline-Entscheidung 2026-06-13:
   - Die am 2026-06-13 frisch exportierten Dateien sind ab jetzt der neue
     Trade-Republic-Status-Quo
   - alte Mail-Duplikate und fruehere Trade-Republic-Imports sind fachlich
     obsolet und wurden in Firestore entsprechend ersetzt/markiert
-  - ab dem Baseline-Datum veraendert der Mail-Agent den Stand nur noch mit
-    neuen E-Mail-Abrechnungen nach `2026-06-13`
+  - ab 2026-06-22 veraendert Trade Republic den Stand primaer ueber die drei
+    selbst gemailten Exporte `Net Worth.pdf`, `Transaction export.csv` und
+    `Account statement.pdf`
 - Neue Baseline-Dateien:
   - `Transaction export.csv`: komplette Transaktions-/Positionsbasis
   - `Account statement.pdf`: Cashkonto-Abgleich, Periodenende `2026-06-12`
@@ -326,6 +331,34 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Bestandsbewertung aus Belegen ist gebaut
 - Preisimport und Belegimport bleiben getrennt
 - Kurzfassung liegt in [intergold_preisimport_kurzfassung.md](/Users/niklaskofler/Documents/finanztool/docs/intergold_preisimport_kurzfassung.md)
+- Daten-Audit liegt in [intergold_data_audit_2026-06-22.md](/Users/niklaskofler/Documents/finanztool/docs/intergold_data_audit_2026-06-22.md)
+- LaunchAgent: `com.niklas.finanztool.intergold-sync`, taeglich 08:20
+- Verifizierter Stand 2026-06-22 00:35 CEST:
+  - `sourcePositions`: 13 Metallpositionen
+  - aktueller Lauf: 19 gueltige Preisbloecke aus der Intergold-Webseite
+  - `sourceSummaries/intergold.currentValue`: `30.540,92 EUR`
+  - `sourceSummaries/intergold.saleValue`: `35.559,33 EUR`
+  - `sourceSummaries/intergold.costValue`: `23.040,51 EUR`
+  - `sourceSummaries/intergold.performanceValue`: `+7.500,41 EUR`
+  - `sourceSummaries/intergold.performancePct`: `+32,55 %`
+  - Dokumentstand: `2026-03-23`
+  - Preisstand Website: `2026-06-16`
+  - letzte bekannte Preisaenderung: `2026-06-21T19:07:05.114Z`
+  - Agent zuletzt: `2026-06-21T22:34:03.750Z`
+  - `priceChanged=false` beim letzten Lauf
+- Intergold schreibt jetzt Transparenzfelder:
+  - `sourceDataUpdatedAt`, `sourceDataProvider=intergold_confirmation_pdf`
+  - `documentDataUpdatedAt`, `documentDataProvider=intergold_confirmation_pdf`
+  - `quoteDataUpdatedAt`, `quoteDataProvider=intergold_website`
+  - `quoteDataChangedAt`
+  - `lastAgentRunAt`, `lastAgentSuccessAt`
+- Preis-History ist idempotent nach
+  `Metall + Preisstand + Einheit + Verkaufspreis + Ankaufspreis`
+- Offen:
+  - Verkaufsbestaetigungen/Rechnungen als eigener Bestandsreduktions- und
+    Transaktionsstrom
+  - Intergold-PDFs noch nicht im gleichen `sourceDocuments`/`sourceDocumentFacts`
+    Detailgrad wie VBV
 
 ### EquatePlus
 
@@ -339,8 +372,11 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 - VBV Vorsorgekasse ist als eigene Quelle gebaut
 - Keine Einzelpositionen
-- Nur Summary/Karte `sourceSummaries/vbv`
-- Quartalsweise Aktualisierung reicht aus
+- Summary/Karte `sourceSummaries/vbv`
+- Dokumentbasierte Kontoinformation in `sourceDocuments` und
+  `sourceDocumentFacts`
+- Taeglicher headless Agentlauf um 06:45; gleicher Stichtag wird nicht neu
+  importiert
 
 ### Bitget
 
@@ -354,8 +390,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   Frankfurter Boerse fuer Krypto
 - Sauberer Schnitt vom 2026-06-20:
   - TRUMP und MELANIA sind keine aktuellen Portfolio-Positionen mehr
-  - Spot-BTC-Dust `0,0000000381 BTC` wird ausgeblendet, weil er in der GUI auf
-    `0,00 EUR` rundet
+  - Spot-BTC-Dust unter `1 EUR` wird ausgeblendet, weil solche Reste in der
+    GUI als sinnlose Null-/Centposition erscheinen
   - Ausgeschlossene Bitget-Bestaende bleiben im Rohsnapshot
     `rawDocuments/api_bitget_latest.rawPositions` und in
     `excludedPositions` nachvollziehbar
@@ -377,9 +413,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - `excludedPositionCount` und `excludedPositions`: Rohbestaende, die bewusst
     nicht in die aktuelle Portfolioansicht geschrieben werden
 - `agentStatus/bitget` dokumentiert den letzten erfolgreichen Lauf
-- Der aktuelle Mac-Studio-Test vom 2026-06-20 war erfolgreich:
+- `sourceSummaries/bitget` und die Bitget-Positionen schreiben getrennt:
+  `sourceDataUpdatedAt`, `sourceDataProvider=bitget_api`,
+  `quoteDataUpdatedAt`, `quoteDataProvider=bitget_api`,
+  `lastAgentRunAt` und `lastAgentSuccessAt`
+- Der aktuelle Mac-Studio-Test vom 2026-06-22 war erfolgreich:
   `npm run check:bitget`, `npm run import:bitget:local`,
-  `npm run sync:health`
+  `npm run sync:bitget-ledger`, `npm run sync:health`
 - Firestore ueberschreibt ab 2026-06-20 bei jedem Lauf denselben aktuellen
   Importstand:
   - `imports/api_bitget_latest`
@@ -406,10 +446,10 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   oder Kreditkartenbuchungen bewusst leer
 - Health-Fehler zu alten Bitget-Importen werden ab 2026-06-20 ignoriert, wenn
   danach ein erfolgreicher `agentStatus/bitget.lastSuccessAt` vorhanden ist
-- Verifizierter Stand 2026-06-20:
+- Verifizierter Stand 2026-06-22 00:30 CEST:
   - `agentStatus/bitget`: `OK`
   - `sourcePositions`: 3 Bitget-Positionen (`BTC Earn`, `EUR`, `USDT`)
-  - `sourceSummaries/bitget.currentValue`: ca. `3.838 EUR`
+  - `sourceSummaries/bitget.currentValue`: ca. `3.823 EUR`
   - `sourceSummaries/bitget.costValue`: `3.000 EUR`
   - `sourceSummaries/bitget.excludedPositionCount`: `3`
     (`bitget_spot_BTC`, `bitget_spot_TRUMP`, `bitget_spot_MELANIA`)
@@ -429,11 +469,13 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
     - `ledgerEntries`: 2166 historisch vorhanden, letzter Lauf 2165
     - `transactions`: 2
     - `costEvents`: 2
-    - `incomeEvents`: 90
-    - `sourceDocumentFacts`: 726 historisch vorhanden, letzter Lauf 725
+    - `incomeEvents`: 91 historisch vorhanden, letzter Lauf 90
+    - `sourceDocumentFacts`: 750 historisch vorhanden, letzter Lauf 725
     - `agentStatus/bitget_ledger`: `OK`
   - Ledger-/Fact-Dokumente werden historisch behalten und nicht geloescht,
     wenn sie aus dem Rolling-Fenster herausfallen
+  - Teilabrufe mit Rate-Limit/Netzwerkfehler werden im Ledger-Agent jetzt als
+    `WARNUNG` mit `warnings` gespeichert, nicht mehr still als OK
 
 ### Capital.com
 
@@ -1052,3 +1094,253 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   `priceHistory` geschrieben;
   verifiziert mit 393x852 Viewport ohne horizontalen Ueberlauf; Firebase
   Deploy fuer Hosting, Firestore Rules/Indexes und Storage Rules erfolgreich
+
+## Trade Republic Mail-Agent Debug 2026-06-21
+
+- Apple Mail zeigt eine Trade-Republic-Mail vom 17.06.2026 mit drei
+  `Securities Settlement`-PDF-Anhaengen.
+- Der Agent hatte bisher trotzdem `savedAttachmentCount: 0`, weil Apple Mail
+  das Gmail-Postfach auf dem Mac Studio `Google` nennt, der Agent aber per
+  Default nach `Niklas.kofler@gmail.com` als Account-Name gefiltert hat.
+- Fix: `trade-republic-mail-agent.mjs` durchsucht ohne `TR_MAIL_ACCOUNT`
+  jetzt alle Apple-Mail-Accounts. Optional kann `TR_MAIL_ACCOUNT` weiterhin
+  gesetzt werden.
+- Zusaetzlicher Fix: `sync-quotes-local.mjs` berechnet
+  `sourceSummaries.costValue`, `performanceValue` und `performancePct` wieder
+  aus den aktuellen Positionen und laesst `externalQuoteDifference` leer,
+  wenn nicht alle Wertpapierpositionen eine externe Kursbewertung haben.
+- UI-Regel bestaetigt: `Depotwert` in der Depotkarte zeigt den Gesamtwert der
+  Quelle inklusive Cash; `Cash` bleibt als separate Kennzahl daneben sichtbar.
+  Der interne `depotValue` bleibt fuer reine Wertpapierwerte und Abgleiche
+  erhalten.
+- Hintergrund: Trade Republic hatte nach der Baseline vom 13.06.2026
+  Jun-16-Kaeufe in der Mail vom 17.06.2026, die durch den Account-Filter nicht
+  angewendet wurden. Dadurch blieben Mengen/Einstand fuer Stoxx Europe Defense,
+  Core S&P 500 und NASDAQ100 gegenueber dem Net-Worth-PDF vom 21.06.2026 zu
+  niedrig.
+- Verifizierter Firestore-Stand nach Write-Lauf:
+  - `agentStatus/traderepublic_mail`: `OK`, 11 PDFs verarbeitet, 3 neue auf
+    Positionen angewendet, 0 unparsebar
+  - Mengen jetzt deckungsgleich mit `Net Worth.pdf` vom 21.06.2026:
+    Stoxx `105,815346`, Core S&P 500 `0,309876`, NASDAQ100 `0,274471`,
+    Netflix `0,094`, Private Equity `11,178226`
+  - `sourceSummaries/traderepublic`: Netto `2.581,03 EUR`, Cash `149,49 EUR`,
+    Einstand `2.306,41 EUR`, G/V `125,13 EUR`
+  - Health nach Sync: `OK`, 0 Warnungen
+
+## Depotkarten-Wertelogik 2026-06-21
+
+- `Depotwert` in allen Depotkarten ist ab jetzt der Brutto-Depotwert der Quelle:
+  positiver Cash wird mitgezaehlt. Bei Flatex wird ein negativer Cash-Wert als
+  genutzter Kredit behandelt und wieder auf den Netto-Wert addiert, damit die
+  Karte den vollen Wertpapier-Depotwert zeigt.
+- `cashValue` bleibt als eigene Kennzahl `Cash` sichtbar und wird dadurch
+  nicht doppelt gezaehlt, sondern nur transparent separat ausgewiesen.
+- Flatex-Sonderregel in der Karte:
+  - negativer Cash-Wert wird als `Kredit in Anspruch` positiv angezeigt
+  - `Verfuegbares Guthaben` wird nicht mehr angezeigt
+  - `Verfuegbar inkl. Kredit` bleibt sichtbar
+  - verifizierter Stand: Depotwert-Karte `22.435,45 EUR`, Cash
+    `-5.843,79 EUR`, Kredit in Anspruch `5.843,79 EUR`,
+    Verfuegbar inkl. Kredit `373,81 EUR`
+
+## Transparenz-Audit Regel und Reihenfolge 2026-06-21
+
+- Neue verbindliche Regel im Datenvertrag:
+  Primaerdatenstand, Dokumentstand, Kurs-/Preisstand und Agent-Laufzeit duerfen
+  nicht mehr unter einem unklaren `Aktualisiert` vermischt werden.
+- Fuer jede bestehende und neue Quelle muessen, soweit relevant, sichtbar sein:
+  - Broker-/API-/Datenstand fuer Bestand, Cash, Kredit, Einstand und
+    Unterkonten
+  - Dokumentstand fuer exportierte/importierte/geparste Dokumente
+  - Kurs-/Preisstand inklusive Provider
+  - Agent zuletzt
+  - letzte fachliche Daten- oder Preisaenderung, wenn Agentlaeufe haeufiger
+    sind als echte Datenveraenderungen
+- Eigener Arbeitsplan liegt in
+  `docs/transparency_audit_plan_2026-06-21.md`.
+- Reihenfolge der Aufarbeitung:
+  1. VBV
+  2. Capital.com
+  3. Bitget
+  4. Intergold
+  5. Ginmon
+  6. Trade Republic
+  7. Flatex
+- Vor jedem Depot muss Codex zuerst kurz erklaeren:
+  - wie die Quelle aktuell aktualisiert wird
+  - welche Daten aus Broker/API/Dokument kommen
+  - welche Daten aus Kurs-/Webquellen kommen
+  - wie Summary und Positionen berechnet werden
+  - welche Schwachstellen aktuell bekannt sind
+- Erst danach wird fuer diese Quelle umgesetzt.
+- VBV wurde als erster Transparenz-Audit-Schritt erledigt:
+  - Datenquelle: `meinevbv.at` Portal, keine externe Kursquelle
+  - Berechnung: `sourceSummaries/vbv.currentValue` und `netValue` sind direkt
+    der gelesene VBV-Saldo
+  - `sourceDataUpdatedAt`: `2026-05-31`
+  - Urspruenglich `sourceDataProvider`: `vbv_portal`
+  - `lastAgentSuccessAt`: `2026-06-21T19:07:33.761Z`
+  - GUI zeigt fuer VBV `VBV-Stand` und separat `Agent zuletzt`
+  - Build und Health nach Umsetzung: OK
+
+- VBV wurde danach auf die genauere PDF-Kontoinformation umgestellt:
+  - Portal-Stichtag bleibt der Ausloeser; das PDF wird nur heruntergeladen und
+    geparst, wenn der Stichtag neu ist oder kein PDF zu diesem Stichtag in
+    Firestore liegt.
+  - PDF-Quelle im Portal: `Severance Payment Fund` -> `Account information`.
+  - Manuell importierte Baseline:
+    `/Users/niklaskofler/Library/Mobile Documents/com~apple~CloudDocs/Downloads/Kontoinformation-VBVVK31052026.pdf`
+  - Canonical Copy:
+    `~/Library/CloudStorage/GoogleDrive-niklas.kofler@gmail.com/My Drive/Depot/01_Originale/VBV/AccountInformation/2026-05-31_VBV_AccountInformation_0fb1fd7634.pdf`
+  - Firestore:
+    - `sourceSummaries/vbv.sourceDataProvider`: `vbv_account_information_pdf`
+    - `sourceSummaries/vbv.documentDataUpdatedAt`: `2026-05-31`
+    - `sourceSummaries/vbv.accountInformation`: Summary + 2 Vertragsdetails
+    - `sourceSummaries/vbv.costValue`: `1.777,42 EUR`
+    - `sourceSummaries/vbv.performanceValue`: `+38,44 EUR`
+    - `sourceSummaries/vbv.performancePct`: `+2,16 %`
+    - `sourceDocuments/vbv_account_information_2026_05_31`
+    - `sourceDocumentFacts`: 3 VBV-Fakten
+  - Geparste Werte:
+    - Gesamtwert: `1.815,86 EUR`
+    - Garantiekapital: `1.736,01 EUR`
+    - Beitraege: `400,40 EUR`
+    - Veranlagungsergebnis netto: `+47,26 EUR`
+    - explizite Kosten: `-8,82 EUR`
+    - G/V fachlich: `+38,44 EUR`
+    - Novartis Pharmaceutical Manufacturing GmbH: `1.707,28 EUR`
+    - SANDOZ GmbH: `108,58 EUR`
+  - GUI: VBV-Karte hat jetzt einen ausklappbaren `Kontoinformation`-Bereich.
+  - Export-Fix: Der sichtbare `Account information`-Link im Portal ist nur
+    Navigation; der echte PDF-Link ist
+    `/webportal/kontoinformation?date=...&hash=...`. Der VBV-Agent liest diesen
+    Link aus und laedt die PDF direkt mit der eingeloggten Session.
+  - Dubletten-Fix: Physische PDF-Hashes koennen bei gleichem Inhalt abweichen.
+    Fuer VBV zaehlt deshalb `semanticHash` aus den geparsten Fachzahlen und die
+    stabile Dokument-ID je Stichtag.
+  - Verifikation: Parser OK, echter headless Export mit
+    `VBV_HEADLESS=1 node automation/src/sync-vbv-local.mjs --write --force-account-info`
+    OK, `npm --prefix app run build` OK,
+    `npm --prefix automation run sync:health` OK.
+
+## GUI-Agententransparenz Fix 2026-06-22
+
+- Problem nach der letzten GUI-Aenderung:
+  - Agent-Name, Zeitstempel und Status wurden in der Depotkarte teilweise ohne
+    Abstand zusammengezogen, z. B. `Bitget Import-Agent22.06.2026 01:03 (OK)`.
+  - Bitget hatte dafuer eine Sonderlogik in `SourceOverview`, obwohl die
+    kanonische Quelle der Wahrheit `agentStatus` ist.
+- Korrigierte Regel:
+  - Jede Depotkarte zeigt Agenten in einer eigenen Agentenbox.
+  - Pro Agent werden Name, fachliche Aufgabe, letzter technischer Lauf,
+    Status-Badge und bei abweichendem Zeitpunkt der letzte Erfolg angezeigt.
+  - Der Kurs-/Datenstand bleibt ein eigener Datenpunkt und wird nicht mehr mit
+    Agentenlaufzeiten vermischt.
+- Aktuelle Agent-Metadaten in der GUI:
+  - `bitget`: Bestände, Wallets und aktuelle Bewertung aus der Bitget API
+  - `bitget_ledger`: Transaktionen, Gebühren, Zinsen/Earn und Bewegungen
+  - `flatex`: aktuelle Depot- und Kontodaten aus dem Flatex Export
+  - `flatex_documents`: CSV-/Postfachdokumente, Bewegungen, Kosten, Fakten
+  - `ginmon`: aktuelle API-Werte, Kurse, Barwerte und Konten
+  - `ginmon_documents`: Ginmon-Dokumente, Kosten und Dokumentfakten
+  - `intergold`: Websitepreise, Belege und Metallbewertung
+  - `traderepublic_manual_exports`: selbst gemailte Trade-Republic-Exporte ohne
+    Betreff, Net Worth, Transaction Export und Account Statement
+  - `capitalcom`: Kontostand, Cash und offene Positionen aus der API
+  - `vbv`: Portalstichtag, Kontoinformation-PDF und Vertragswerte
+- Umgesetzte Dateien:
+  - `app/src/App.tsx`
+  - `app/src/App.css`
+  - `app/src/domain/types.ts`
+  - `docs/firestore_data_contract.md`
+- Diese Regel gilt ab jetzt fuer jedes neue Depot und jeden neuen Agenten.
+
+## Trade-Republic-Architekturentscheidung 2026-06-22
+
+- Arbeitsstand:
+  - VBV, Capital.com, Bitget, Intergold und Ginmon gelten fuer den aktuellen
+    Transparenz-Audit als abgeschlossen.
+  - Noch offen: Trade Republic und danach Flatex.
+- Trade Republic startet jetzt mit Fokus auf Wahrheit/Aktualitaet:
+  - Automatische `Duplicates customer ...` Mails ruhen vorerst als fachlicher
+    Kanal.
+  - Diese Mails reichen nicht als Wahrheit fuer Cash, Private Equity,
+    offizielle Trade-Republic-Snapshotwerte, Dividenden, Zinsen, Steuern,
+    Corporate Actions und komplette Ledger-Historie.
+- Gepruefte Architektur:
+  - Baseline: `Transaction export.csv`, `Account statement.pdf`,
+    `Tax Report 2025.pdf`
+  - Mail-Agent: `automation/src/trade-republic-mail-agent.mjs`
+  - Baseline-Reconcile:
+    `automation/src/reconcile-traderepublic-baseline-local.mjs`
+  - Quote-Sync: `automation/src/sync-quotes-local.mjs`
+  - Health: `automation/src/check-health-local.mjs`
+- Manuelle Stichprobe vom 2026-06-22:
+  - `Transaction export 2.csv`: 196 Datenzeilen, 5 Positionen
+  - `Account statement 2.pdf`: Cash `149,49 EUR`, Zeitraum bis `2026-06-20`
+  - `Net Worth.pdf`: Gesamt `2.570,22 EUR`, Brokerage `1.238,91 EUR`,
+    Private Markets `1.181,82 EUR`, Cash `149,49 EUR`
+- Empfohlenes Zielmodell:
+  - `traderepublic_manual_exports` als aktiver Trade-Republic-Importkanal
+    fuer selbst gemailte No-Subject-Exporte
+  - Boerse-Frankfurt-Kurse fuer oeffentlich handelbare Wertpapiere
+  - Net-Worth-Parser als offizieller Trade-Republic-Kontroll-Snapshot
+  - Account-Statement-Parser fuer Cash-Reconciliation
+  - Transaction-Export-Abgleich periodisch fuer volle Ledger-/Kosten-/Zins-/
+    Steuer-/Corporate-Action-Historie
+- Umsetzung 2026-06-22:
+  - neuer Agent:
+    `automation/src/trade-republic-manual-export-agent.mjs`
+  - npm-Scripte:
+    `reconcile:traderepublic-manual-exports`,
+    `sync:traderepublic-manual-exports`,
+    `install:traderepublic-manual-export-agent`
+  - LaunchAgent:
+    `com.niklas.finanztool.traderepublic-manual-exports`
+  - Taktung: alle 15 Minuten und sofort ueber App-Full-Refresh.
+  - Mail-Lookback: No-Subject-Mails der letzten 14 Tage.
+  - Duplikatlogik: CSV-Zeilen ueber `traderepublic_tx_<transaction_id>`.
+  - Aktive Kursquelle wird in der GUI bei Positionen sichtbar
+    (`Frankfurt`, `Broker`, `Ginmon API`, `Bitget`, `Intergold`).
+  - Dry-Run gegen `Transaction export 2.csv`, `Account statement 2.pdf` und
+    `Net Worth.pdf`: alle drei Dokumente erkannt, Net Worth mit 5 Positionen.
+  - Zu breit gespeicherte alte Manual-Export-Staging-Dateien wurden nach
+    `02_Archiviert/TradeRepublic/ManualExports/Ignored` verschoben.
+  - Produktivlauf 2026-06-22:
+    `agentStatus/traderepublic_manual_exports=OK`, 3 Dokumente geprueft,
+    `latestTransactionDate=2026-06-16`, keine unbekannten Dokumente.
+  - LaunchAgent `com.niklas.finanztool.traderepublic-manual-exports` ist der
+    aktive Trade-Republic-Agent auf dem Mac Studio.
+  - LaunchAgent `com.niklas.finanztool.traderepublic-mail` soll vorerst nicht
+    geladen sein.
+- Neue verbindliche Betriebsregel 2026-06-22:
+  - Bis Trade Republic automatische vollstaendige Exporte anbietet, sendet der
+    Nutzer moeglichst taeglich App-Exporte ohne Betreff an die eigene
+    Mailadresse.
+  - Pflichtpaket: `Net Worth.pdf`, `Transaction export.csv` und
+    `Account statement.pdf`.
+  - `Tax Report ...pdf` bleibt jaehrlich.
+  - Die Uhrzeit ist variabel; wenn der Nutzer den Export vergisst, bleibt der
+    letzte bekannte Stand gueltig und die GUI muss das Datum klar anzeigen.
+  - Der Manual-Export-Agent muss ueberlappende CSVs idempotent behandeln:
+    gleiche Transaktions-IDs duerfen Einstand, Kosten, Steuern, Zinsen,
+    Dividenden und Ledger nicht doppelt veraendern.
+  - Abweichung vom 2026-06-22 ist dokumentiert:
+    Handy-App `2.623,72 EUR` Total mit Private Markets `1.381,82 EUR`,
+    Net-Worth-PDF fast zeitgleich `2.570,22 EUR` Gesamt mit Private Markets
+    `1.181,82 EUR`. Deshalb muessen Quelle, Stand und Abweichung in der App
+    sichtbar sein.
+  - Warnungsfix 2026-06-22:
+    - Ursache: Der 15-Minuten-Agent speicherte bekannte Mail-Anhaenge erneut
+      an denselben Pfad und konnte das Net-Worth-PDF genau waehrend dieses
+      erneuten Speicherns kurz als `UNVOLLSTAENDIG` sehen.
+    - Fix: Apple-Mail-Anhaenge werden nicht mehr ueberschrieben, wenn die
+      Ziel-Datei bereits existiert.
+    - Zusaetzlich gilt: Wenn ein Dokument bereits einmal vollstaendig als
+      `PARSED` angewendet wurde, darf ein spaeterer transient schlechter
+      Wiederholungsscan keine Health-Warnung erzeugen.
+    - Verifikation: echter Maillauf `sync:traderepublic-manual-exports -- --no-quotes`
+      verarbeitet 3/3 Dokumente, `systemHealth/current=OK`.
+- Detailplan:
+  - `docs/traderepublic_import_strategie.md`

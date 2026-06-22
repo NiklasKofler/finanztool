@@ -25,6 +25,16 @@ export interface SourceOverview {
   availableWithCredit?: number;
   creditLineEstimate?: number;
   valuationDate?: string;
+  sourceDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  sourceDataProvider?: string | null;
+  documentDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  documentDataProvider?: string | null;
+  quoteDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  quoteDataProvider?: string | null;
+  quoteDataChangedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentRunAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastAgentSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastDataChangeAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   latestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   oldestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   quoteUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -51,6 +61,8 @@ export interface PortfolioPosition {
   quotePrice?: number | null;
   quotePriceEur?: number | null;
   quoteCurrency?: string | null;
+  quoteProvider?: string | null;
+  quoteProviderSymbol?: string | null;
   currentValue?: number | null;
   currentValueUsdt?: number | null;
   externalQuoteValue?: number | null;
@@ -66,6 +78,10 @@ export interface PortfolioPosition {
   quoteVenue?: string | null;
   quoteAgeMinutes?: number | null;
   quoteFreshness?: string | null;
+  brokerQuotePrice?: number | null;
+  brokerQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  brokerCurrentValue?: number | null;
+  brokerQuoteProvider?: string | null;
   priceSource?: string | null;
   exchangeAccountValueIncluded?: boolean | null;
   accountValueIncluded?: boolean | null;

@@ -31,6 +31,7 @@ import {
   type AgentStatusDocument,
   type SourceSummaryAccount,
   type SourceSummaryDocument,
+  type SourceSummaryVbvAccountInformation,
 } from "./firebase/sourceSummaries";
 import { sourceOverviews } from "./domain/seedData";
 import type { PortfolioPosition, SourceOverview, SystemHealth } from "./domain/types";
@@ -61,8 +62,14 @@ const sourceSortOrder = [
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
 
-const agentStatusIds: Record<string, string> = {
-  traderepublic: "traderepublic_mail",
+const agentStatusIds: Record<string, string | string[]> = {
+  flatex: ["flatex", "flatex_documents"],
+  traderepublic: ["traderepublic_manual_exports"],
+  ginmon: ["ginmon", "ginmon_documents"],
+  intergold: "intergold",
+  bitget: ["bitget", "bitget_ledger"],
+  capitalcom: "capitalcom",
+  vbv: "vbv",
 };
 
 const agentStatusMeta: Record<
@@ -73,6 +80,53 @@ const agentStatusMeta: Record<
   WARNUNG: { label: "Warnung", tone: "warn" },
   FEHLER: { label: "Fehler", tone: "warn" },
   RUNNING: { label: "Läuft", tone: "info" },
+};
+
+const agentDisplayMeta: Record<string, { label: string; responsibility: string }> = {
+  bitget: {
+    label: "Bitget Import-Agent",
+    responsibility: "Bestände, Wallets und aktuelle Bewertung aus der Bitget API",
+  },
+  bitget_ledger: {
+    label: "Bitget Ledger-Agent",
+    responsibility: "Transaktionen, Gebühren, Zinsen/Earn und Bewegungen aus dem Ledger",
+  },
+  capitalcom: {
+    label: "Capital.com Agent",
+    responsibility: "Kontostand, Cash und offene Positionen aus der Capital.com API",
+  },
+  flatex: {
+    label: "Flatex Broker-Agent",
+    responsibility: "Aktuelle Depot- und Kontodaten aus dem Flatex Export",
+  },
+  flatex_documents: {
+    label: "Flatex Dokumenten-Agent",
+    responsibility: "CSV- und Postfachdokumente, Bewegungen, Kosten und Dokumentfakten",
+  },
+  ginmon: {
+    label: "Ginmon API-Agent",
+    responsibility: "Aktuelle Depotwerte, Kurse, Barwerte und Konten aus der Ginmon API",
+  },
+  ginmon_documents: {
+    label: "Ginmon Dokumenten-Agent",
+    responsibility: "Ginmon-Dokumente, Bestandsnachweise, Kosten und Dokumentfakten",
+  },
+  intergold: {
+    label: "Intergold Agent",
+    responsibility: "Intergold-Webpreise, Bestand aus Belegen und Metallbewertung",
+  },
+  traderepublic_mail: {
+    label: "Trade Republic Mail-Agent",
+    responsibility: "Pausiert: automatische Duplicates-Mails werden aktuell nicht als fachlicher Kanal genutzt",
+  },
+  traderepublic_manual_exports: {
+    label: "Trade Republic Export-Agent",
+    responsibility: "Selbst gesendete Exporte ohne Betreff: Net Worth, Transaction Export und Account Statement",
+  },
+  vbv: {
+    label: "VBV Agent",
+    responsibility: "VBV-Portalstichtag, Kontoinformation-PDF und Vertragswerte",
+  },
 };
 
 function formatCurrency(value?: number) {
@@ -152,6 +206,34 @@ function formatOptionalText(value?: string | null) {
   return value?.trim() ? value : "—";
 }
 
+function getQuoteProviderLabel(position: PortfolioPosition) {
+  const provider = [
+    position.quoteProvider,
+    position.priceSource,
+    position.valuationMethod,
+    position.brokerQuoteProvider,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (provider.includes("boerse-frankfurt") || provider.includes("frankfurt")) return "Frankfurt";
+  if (provider.includes("traderepublic")) return "Broker";
+  if (provider.includes("ginmon")) return "Ginmon API";
+  if (provider.includes("bitget")) return "Bitget";
+  if (provider.includes("intergold")) return "Intergold";
+  if (position.quoteVenue?.trim()) return position.quoteVenue.trim();
+  return null;
+}
+
+function formatQuoteText(position: PortfolioPosition) {
+  const quoteText = formatOptionalText(position.quoteText);
+  const provider = getQuoteProviderLabel(position);
+  if (!provider) return quoteText;
+  if (quoteText === "—") return provider;
+  return `${quoteText} · ${provider}`;
+}
+
 function formatQuantity(position: PortfolioPosition) {
   const formatter = new Intl.NumberFormat("de-AT", {
     minimumFractionDigits: 0,
@@ -212,10 +294,22 @@ function getPerformanceTone(value?: number | null) {
   return "neutral";
 }
 
-function formatUpdatedAt(
+function parseUpdatedTimestampParts(
   value?: string | Date | { toDate: () => Date } | { seconds: number } | null,
 ) {
-  if (!value) return "Noch offen";
+  if (!value) return { date: "Noch offen", time: "" };
+
+  if (typeof value === "string") {
+    const dateOnlyMatch = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      return {
+        date: `${day}.${month}.${year}`,
+        time: "",
+      };
+    }
+  }
+
   const date =
     value instanceof Date
       ? value
@@ -224,14 +318,50 @@ function formatUpdatedAt(
         : typeof value === "object" && "seconds" in value
           ? new Date(value.seconds * 1000)
           : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("de-AT", {
+  if (Number.isNaN(date.getTime())) return { date: String(value), time: "" };
+
+  const dateText = new Intl.DateTimeFormat("de-AT", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  }).format(date);
+
+  const timeText = new Intl.DateTimeFormat("de-AT", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+
+  return { date: dateText, time: timeText };
+}
+
+function formatUpdatedAt(
+  value?: string | Date | { toDate: () => Date } | { seconds: number } | null,
+) {
+  const parts = parseUpdatedTimestampParts(value);
+  if (!parts.date && !parts.time) {
+    return "";
+  }
+
+  return `${parts.date}${parts.time ? `\u00A0${parts.time}` : ""}`;
+}
+
+function getSourcePrimaryTimestamp(source: SourceOverview) {
+  if (source.quoteDataUpdatedAt || source.latestQuoteAsOf) {
+    return {
+      label: "Kursstand",
+      value: source.quoteDataUpdatedAt ?? source.latestQuoteAsOf,
+    };
+  }
+  if (source.sourceDataUpdatedAt || source.valuationDate) {
+    return {
+      label: source.id === "vbv" ? "VBV-Stand" : "Datenstand",
+      value: source.sourceDataUpdatedAt ?? source.valuationDate,
+    };
+  }
+  return {
+    label: source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert",
+    value: source.updatedAt,
+  };
 }
 
 function getPositionDisplayUpdatedAt(position: PortfolioPosition) {
@@ -243,11 +373,25 @@ function getTrackedTotal(sources: SourceOverview[]) {
 }
 
 function getSourceDisplayValue(source: SourceOverview) {
-  return source.netValue ?? source.currentValue;
+  if (typeof source.netValue === "number") return source.netValue;
+  if (typeof source.depotValue === "number" && typeof source.cashValue === "number") {
+    return Math.round((source.depotValue + source.cashValue) * 100) / 100;
+  }
+  return source.currentValue;
+}
+
+function getUsedCreditValue(source: SourceOverview) {
+  if (source.id !== "flatex" || typeof source.cashValue !== "number" || source.cashValue >= 0) return null;
+  return Math.abs(source.cashValue);
 }
 
 function getSourceDepotDisplayValue(source: SourceOverview) {
-  return source.depotValue ?? source.currentValue ?? source.netValue;
+  const usedCreditValue = getUsedCreditValue(source);
+  const displayValue = getSourceDisplayValue(source);
+  if (typeof displayValue === "number" && typeof usedCreditValue === "number") {
+    return Math.round((displayValue + usedCreditValue) * 100) / 100;
+  }
+  return displayValue ?? source.depotValue;
 }
 
 function sourceUsesAuthoritativeSummary(sourceId: string) {
@@ -321,20 +465,75 @@ function SourceIcon({ source }: { source: SourceOverview }) {
   }
 }
 
-function getAgentStatusId(sourceId: string) {
-  return agentStatusIds[sourceId] ?? sourceId;
+function getSourceAgentStatusIds(sourceId: string) {
+  const mapped = agentStatusIds[sourceId];
+  if (!mapped) return [sourceId];
+  return Array.isArray(mapped) ? mapped : [mapped];
+}
+
+function getSourceAgentStatuses(
+  sourceId: string,
+  agentStatuses: Record<string, AgentStatusDocument>,
+) {
+  return getSourceAgentStatusIds(sourceId)
+    .map((id) => agentStatuses[id])
+    .filter(Boolean) as AgentStatusDocument[];
 }
 
 function getSourceAgentStatus(
   sourceId: string,
   agentStatuses: Record<string, AgentStatusDocument>,
 ) {
-  return agentStatuses[getAgentStatusId(sourceId)];
+  const statuses = getSourceAgentStatuses(sourceId, agentStatuses);
+  if (!statuses.length) return undefined;
+  const rank: Record<string, number> = {
+    FEHLER: 3,
+    WARNUNG: 2,
+    RUNNING: 1,
+    OK: 0,
+  };
+
+  return [...statuses].sort((first, second) => {
+    const rankFirst = typeof first.status === "string" ? (rank[first.status] ?? -1) : -1;
+    const rankSecond = typeof second.status === "string" ? (rank[second.status] ?? -1) : -1;
+    return rankSecond - rankFirst;
+  })[0];
 }
 
-function AgentStatusBadge({ status }: { status?: string | null }) {
+function getSourceAgentRunViews(
+  sourceId: string,
+  agentStatuses: Record<string, AgentStatusDocument>,
+) {
+  return getSourceAgentStatusIds(sourceId).map((id) => {
+    const meta = agentDisplayMeta[id] ?? {
+      label: id,
+      responsibility: "Agentstatus dieser Quelle",
+    };
+    return {
+      id,
+      ...meta,
+      status: agentStatuses[id],
+    };
+  });
+}
+
+function getAgentRunTimestamp(status?: AgentStatusDocument) {
+  return status?.lastAgentRunAt ?? status?.updatedAt ?? status?.lastSuccessAt ?? status?.lastAgentSuccessAt ?? null;
+}
+
+function getAgentSuccessTimestamp(status?: AgentStatusDocument) {
+  return status?.lastAgentSuccessAt ?? status?.lastSuccessAt ?? null;
+}
+
+function AgentStatusBadge({
+  status,
+  emptyLabel = "Ohne Agent",
+}: {
+  status?: string | null;
+  emptyLabel?: string;
+}) {
   const meta = status ? (agentStatusMeta[status] ?? { label: status, tone: "neutral" as const }) : null;
-  if (!meta) return <span className="status-badge status-badge--neutral">Ohne Agent</span>;
+  if (!meta) return <span className="status-badge status-badge--neutral">{emptyLabel}</span>;
 
   return <span className={`status-badge status-badge--${meta.tone}`}>{meta.label}</span>;
 }
@@ -395,12 +594,14 @@ function PositionsTable({
                 </td>
                 <td className="numeric">{formatSignedPercent(dayChange.percentage)}</td>
                 <td>{formatQuantity(position)}</td>
-                <td>{formatOptionalText(position.quoteText)}</td>
+                <td>{formatQuoteText(position)}</td>
                 <td className="numeric">
                   {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
                 </td>
                 <td>{formatOptionalText(position.category)}</td>
-                <td>{formatUpdatedAt(getPositionDisplayUpdatedAt(position))}</td>
+                <td className="positions-table__updated-at">
+                  {formatUpdatedAt(getPositionDisplayUpdatedAt(position))}
+                </td>
               </tr>
             );
           }) : (
@@ -413,6 +614,112 @@ function PositionsTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function VbvAccountInformationDetails({
+  accountInformation,
+  privacyMode,
+}: {
+  accountInformation: SourceSummaryVbvAccountInformation;
+  privacyMode: boolean;
+}) {
+  const contracts = accountInformation.contracts ?? [];
+  const summaryTone = getPerformanceTone(accountInformation.performanceValue);
+  return (
+    <details className="source-accounts-details vbv-account-details">
+      <summary>
+        <span>Kontoinformation</span>
+        <strong>{numberFormatter.format(contracts.length)}</strong>
+      </summary>
+      <div className="vbv-account-summary">
+        <div>
+          <span>Gesamt</span>
+          <strong>{privacyMode ? maskMoney(accountInformation.totalValue ?? undefined) : formatCurrency(accountInformation.totalValue ?? undefined)}</strong>
+        </div>
+        <div>
+          <span>Einstand</span>
+          <strong>{privacyMode ? maskMoney(accountInformation.costValue ?? undefined) : formatCurrency(accountInformation.costValue ?? undefined)}</strong>
+        </div>
+        <div>
+          <span>G/V</span>
+          <strong className={`performance-value performance-value--${summaryTone}`}>
+            {privacyMode ? maskSignedMoney(accountInformation.performanceValue) : formatSignedMoney(accountInformation.performanceValue)}
+            <small>{formatSignedPercent(accountInformation.performancePct)}</small>
+          </strong>
+        </div>
+        <div>
+          <span>Garantiekapital</span>
+          <strong>{privacyMode ? maskMoney(accountInformation.guaranteedCapital ?? undefined) : formatCurrency(accountInformation.guaranteedCapital ?? undefined)}</strong>
+        </div>
+        <div>
+          <span>Beiträge</span>
+          <strong>{privacyMode ? maskMoney(accountInformation.contributionsTotal ?? undefined) : formatCurrency(accountInformation.contributionsTotal ?? undefined)}</strong>
+        </div>
+        <div>
+          <span>Ergebnis netto</span>
+          <strong className="performance-value performance-value--positive">
+            {privacyMode ? maskSignedMoney(accountInformation.investmentResultNetTotal) : formatSignedMoney(accountInformation.investmentResultNetTotal)}
+          </strong>
+        </div>
+        <div>
+          <span>Kosten</span>
+          <strong className="performance-value performance-value--negative">
+            {privacyMode ? maskSignedMoney(accountInformation.totalCosts) : formatSignedMoney(accountInformation.totalCosts)}
+          </strong>
+        </div>
+        <div>
+          <span>Dokument</span>
+          <strong>{formatUpdatedAt(accountInformation.statementDate)}</strong>
+        </div>
+      </div>
+      <div className="vbv-contract-list">
+        {contracts.map((contract, index) => {
+          const performanceTone = getPerformanceTone(contract.performanceValue);
+          return (
+            <article className="vbv-contract-card" key={`${contract.employer ?? "vertrag"}-${index}`}>
+              <div className="vbv-contract-card__header">
+                <strong>{contract.employer ?? `Vertrag ${index + 1}`}</strong>
+                <span>{privacyMode ? maskMoney(contract.closingBalance ?? undefined) : formatCurrency(contract.closingBalance ?? undefined)}</span>
+              </div>
+              <dl>
+                <div>
+                  <dt>Startwert</dt>
+                  <dd>{privacyMode ? maskMoney(contract.openingBalance ?? undefined) : formatCurrency(contract.openingBalance ?? undefined)}</dd>
+                </div>
+                <div>
+                  <dt>Beiträge {contract.contributionYear ?? ""}</dt>
+                  <dd>{privacyMode ? maskMoney(contract.contributions ?? undefined) : formatCurrency(contract.contributions ?? undefined)}</dd>
+                </div>
+                <div>
+                  <dt>Einstand</dt>
+                  <dd>{privacyMode ? maskMoney(contract.costValue ?? undefined) : formatCurrency(contract.costValue ?? undefined)}</dd>
+                </div>
+                <div>
+                  <dt>Ergebnis netto</dt>
+                  <dd className="performance-value performance-value--positive">
+                    {privacyMode ? maskSignedMoney(contract.investmentResultNet) : formatSignedMoney(contract.investmentResultNet)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Kosten</dt>
+                  <dd className="performance-value performance-value--negative">
+                    {privacyMode ? maskSignedMoney(contract.totalCosts) : formatSignedMoney(contract.totalCosts)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>G/V</dt>
+                  <dd className={`performance-value performance-value--${performanceTone}`}>
+                    {privacyMode ? maskSignedMoney(contract.performanceValue) : formatSignedMoney(contract.performanceValue)}
+                    <small>{formatSignedPercent(contract.performancePct)}</small>
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -602,6 +909,7 @@ function App() {
             depotValue: useAuthoritativeSummary ? source.depotValue : positionDepotValue ?? source.depotValue,
             cashValue: positionCashValue ?? source.cashValue,
             netValue: useAuthoritativeSummary ? source.netValue : positionDerivedValue ?? source.netValue,
+            lastAgentSuccessAt: agentStatus?.lastAgentSuccessAt ?? agentStatus?.lastSuccessAt ?? source.lastAgentSuccessAt,
             agentStatus: agentStatus?.status,
             agentMessage: agentStatus?.message,
             updatedAt: agentStatus?.lastSuccessAt ?? source.updatedAt,
@@ -625,6 +933,17 @@ function App() {
           availableWithCredit: summary.availableWithCredit ?? source.availableWithCredit,
           creditLineEstimate: summary.creditLineEstimate ?? source.creditLineEstimate,
           valuationDate: summary.valuationDate ?? source.valuationDate,
+          sourceDataUpdatedAt: summary.sourceDataUpdatedAt ?? source.sourceDataUpdatedAt,
+          sourceDataProvider: summary.sourceDataProvider ?? source.sourceDataProvider,
+          documentDataUpdatedAt: summary.documentDataUpdatedAt ?? source.documentDataUpdatedAt,
+          documentDataProvider: summary.documentDataProvider ?? source.documentDataProvider,
+          quoteDataUpdatedAt: summary.quoteDataUpdatedAt ?? source.quoteDataUpdatedAt,
+          quoteDataProvider: summary.quoteDataProvider ?? source.quoteDataProvider,
+          quoteDataChangedAt: summary.quoteDataChangedAt ?? source.quoteDataChangedAt,
+          lastAgentRunAt: summary.lastAgentRunAt ?? agentStatus?.lastAgentRunAt ?? source.lastAgentRunAt,
+          lastAgentSuccessAt:
+            summary.lastAgentSuccessAt ?? agentStatus?.lastAgentSuccessAt ?? agentStatus?.lastSuccessAt ?? source.lastAgentSuccessAt,
+          lastDataChangeAt: summary.lastDataChangeAt ?? source.lastDataChangeAt,
           latestQuoteAsOf: summary.latestQuoteAsOf ?? null,
           oldestQuoteAsOf: summary.oldestQuoteAsOf ?? null,
           quoteUpdatedAt: summary.quoteUpdatedAt ?? null,
@@ -875,6 +1194,10 @@ function App() {
               const sourceSummary = sourceSummaries[source.summaryId ?? source.id];
               const performanceTone = getPerformanceTone(sourceSummary?.performanceValue);
               const sourcePositionsForCard = displayedPositionsBySource[source.id] ?? [];
+              const usedCreditValue = getUsedCreditValue(source);
+              const sourcePrimaryTimestamp = getSourcePrimaryTimestamp(source);
+              const vbvAccountInformation =
+                source.id === "vbv" ? sourceSummary?.accountInformation ?? null : null;
               const sourceDayChangeBase = sourcePositionsForCard.reduce(
                 (totals, position) => {
                   if (position.accountValueIncluded === false) return totals;
@@ -894,6 +1217,7 @@ function App() {
                 sourcePreviousValue && sourceDayChange ? sourceDayChange / sourcePreviousValue : null;
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
+              const sourceAgentRuns = getSourceAgentRunViews(source.id, agentStatuses);
 
               return (
                 <article className="source-card" key={source.id}>
@@ -922,8 +1246,12 @@ function App() {
                         <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
                       </div>
                       <div>
-                        <dt>{source.latestQuoteAsOf ? "Kursstand" : source.agentStatus && source.agentStatus !== "OK" ? "Letzter Erfolg" : "Aktualisiert"}</dt>
-                        <dd>{formatUpdatedAt(source.latestQuoteAsOf ?? source.updatedAt)}</dd>
+                        <dt>{sourcePrimaryTimestamp.label}</dt>
+                        <dd>
+                          <span className="source-card__timestamp-inline">
+                            {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                          </span>
+                        </dd>
                       </div>
                       <div>
                         <dt>G/V</dt>
@@ -949,7 +1277,7 @@ function App() {
                     {typeof source.saleValue === "number" ||
                     typeof source.availableWithCredit === "number" ||
                     typeof source.creditLineEstimate === "number" ||
-                    typeof source.availableCash === "number" ? (
+                    typeof usedCreditValue === "number" ? (
                       <dl className="source-card__metrics source-card__metrics--secondary">
                         {typeof source.saleValue === "number" ? (
                           <div>
@@ -969,13 +1297,56 @@ function App() {
                             <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
                           </div>
                         ) : null}
-                        {typeof source.availableCash === "number" ? (
+                        {typeof usedCreditValue === "number" ? (
                           <div>
-                            <dt>Verfügbares Guthaben</dt>
-                            <dd>{privacyMode ? maskMoney(source.availableCash) : formatCurrency(source.availableCash)}</dd>
+                            <dt>Kredit in Anspruch</dt>
+                            <dd>{privacyMode ? maskMoney(usedCreditValue) : formatCurrency(usedCreditValue)}</dd>
                           </div>
                         ) : null}
                       </dl>
+                    ) : null}
+
+                    {sourceAgentRuns.length ? (
+                      <div className="source-card__agent-panel">
+                        <div className="source-card__agent-panel-title">Agenten</div>
+                        <div className="source-card__agent-list">
+                          {sourceAgentRuns.map((entry) => {
+                            const runTimestamp = getAgentRunTimestamp(entry.status);
+                            const successTimestamp = getAgentSuccessTimestamp(entry.status);
+                            const runText = formatUpdatedAt(runTimestamp);
+                            const successText = formatUpdatedAt(successTimestamp);
+                            const showSuccess = successText !== "Noch offen" && successText !== runText;
+                            return (
+                              <div className="source-card__agent-row" key={entry.id}>
+                                <div className="source-card__agent-head">
+                                  <strong>{entry.label}</strong>
+                                  <AgentStatusBadge status={entry.status?.status} emptyLabel="Kein Status" />
+                                </div>
+                                <div className="source-card__agent-task">{entry.responsibility}</div>
+                                <div className="source-card__agent-meta">
+                                  <span>
+                                    Lauf{" "}
+                                    <span className="source-card__timestamp-inline">
+                                      {runText}
+                                    </span>
+                                  </span>
+                                  {showSuccess ? (
+                                    <span>
+                                      Erfolg{" "}
+                                      <span className="source-card__timestamp-inline">
+                                        {successText}
+                                      </span>
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {entry.status?.message && entry.status.status !== "OK" ? (
+                                  <div className="source-card__agent-message">{entry.status.message}</div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     ) : null}
 
                     {ginmonAccounts.length ? (
@@ -1028,6 +1399,11 @@ function App() {
                         })}
                         </div>
                       </details>
+                    ) : vbvAccountInformation ? (
+                      <VbvAccountInformationDetails
+                        accountInformation={vbvAccountInformation}
+                        privacyMode={privacyMode}
+                      />
                     ) : sourcePositionsForCard.length ? (
                       <details className="source-positions-details">
                         <summary>

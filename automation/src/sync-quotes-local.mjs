@@ -38,13 +38,20 @@ function historyDateId(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: historyTimeZone }).format(date);
 }
 
+function isDocumentValuedPosition(position) {
+  if (position.source !== "traderepublic") return false;
+  const text = `${position.accountType ?? ""} ${position.accountId ?? ""} ${position.category ?? ""} ${position.valuationMethod ?? ""}`;
+  return /private markets|private_fund|traderepublic_net_worth/i.test(text);
+}
+
 function uniqueIsinPositions(positions) {
   return positions.filter(
     (position) =>
       quoteSources.has(position.source) &&
       position.isin &&
       typeof position.quantity === "number" &&
-      position.accountValueIncluded !== false,
+      position.accountValueIncluded !== false &&
+      !isDocumentValuedPosition(position)
   );
 }
 
@@ -113,6 +120,7 @@ function sourceQuoteMeta(positions, source) {
     (position) =>
       position.source === source &&
       position.accountValueIncluded !== false &&
+      !isDocumentValuedPosition(position) &&
       (position.isin || position.quoteProvider),
   );
   const asOfDates = quotePositions
@@ -164,17 +172,30 @@ function sourceTotal(positions, source) {
   );
 }
 
-function sourceExternalQuoteTotal(positions, source) {
-  const values = positions
-    .filter((position) => position.source === source && position.accountValueIncluded !== false)
-    .map((position) => parseMaybeNumber(position.externalQuoteValue))
-    .filter((value) => typeof value === "number");
-  if (values.length === 0) return null;
-  return roundCurrency(values.reduce((sum, value) => sum + value, 0));
-}
-
 function isCashPosition(position) {
   return position.category === "Cash" || /cash|konto|kontostand/i.test(`${position.id ?? ""} ${position.name ?? ""}`);
+}
+
+function sourceExternalQuoteSummary(positions, source) {
+  const quotePositions = positions.filter(
+    (position) =>
+      position.source === source &&
+      position.accountValueIncluded !== false &&
+      !isCashPosition(position) &&
+      !isDocumentValuedPosition(position),
+  );
+  const values = quotePositions
+    .map((position) => parseMaybeNumber(position.externalQuoteValue))
+    .filter((value) => typeof value === "number");
+  const externalQuoteTotal =
+    values.length > 0 && values.length === quotePositions.length
+      ? roundCurrency(values.reduce((sum, value) => sum + value, 0))
+      : null;
+  return {
+    externalQuoteTotal,
+    externalQuoteCoverageCount: values.length,
+    externalQuoteExpectedCount: quotePositions.length,
+  };
 }
 
 function previousHistoryForInstrument(priceHistory, instrumentId, currentHistoryDate) {
@@ -528,7 +549,7 @@ async function main() {
       (position) => position.source === source && position.accountValueIncluded !== false,
     );
     const total = sourceTotal(updatedPositions, source);
-    const externalQuoteTotal = sourceExternalQuoteTotal(sourcePositions, source);
+    const externalQuote = sourceExternalQuoteSummary(sourcePositions, source);
     const quoteMeta = sourceQuoteMeta(updatedPositions, source);
     const cashValue = roundCurrency(
       sourcePositions
@@ -536,6 +557,16 @@ async function main() {
         .reduce((sum, position) => sum + (parseMaybeNumber(position.currentValue) ?? 0), 0),
     );
     const securityValue = roundCurrency(total - cashValue);
+    const securityPositions = sourcePositions.filter((position) => !isCashPosition(position));
+    const positionCostValues = securityPositions
+      .map((position) => parseMaybeNumber(position.costValue))
+      .filter((value) => typeof value === "number");
+    const costValue =
+      positionCostValues.length === securityPositions.length
+        ? roundCurrency(positionCostValues.reduce((sum, value) => sum + value, 0))
+        : existingSummary.costValue ?? null;
+    const performanceValue =
+      typeof costValue === "number" ? roundCurrency(securityValue - costValue) : existingSummary.performanceValue ?? null;
     const hasCash = sourcePositions.some(isCashPosition);
     if (writeEnabled) {
       const { id: _id, ...existingData } = existingSummary;
@@ -546,16 +577,25 @@ async function main() {
         depotValue: hasCash ? securityValue : existingData.depotValue ?? null,
         cashValue: hasCash ? cashValue : existingData.cashValue ?? null,
         netValue: total,
-        externalQuoteDepotValue: externalQuoteTotal,
+        costValue,
+        performanceValue,
+        performancePct:
+          costValue && typeof performanceValue === "number" ? performanceValue / costValue : existingData.performancePct ?? null,
+        costCoverageCount: positionCostValues.length,
+        costExpectedCount: securityPositions.length,
+        externalQuoteDepotValue: externalQuote.externalQuoteTotal,
         externalQuoteDifference:
-          typeof externalQuoteTotal === "number" && typeof securityValue === "number"
-            ? roundCurrency(externalQuoteTotal - securityValue)
-            : existingData.externalQuoteDifference ?? null,
+          typeof externalQuote.externalQuoteTotal === "number" && typeof securityValue === "number"
+            ? roundCurrency(externalQuote.externalQuoteTotal - securityValue)
+            : null,
+        externalQuoteCoverageCount: externalQuote.externalQuoteCoverageCount,
+        externalQuoteExpectedCount: externalQuote.externalQuoteExpectedCount,
         latestQuoteAsOf: quoteMeta.latestQuoteAsOf,
         oldestQuoteAsOf: quoteMeta.oldestQuoteAsOf,
         quoteFreshness: quoteMeta.quoteFreshness,
         quoteUpdatedAt: now,
         positionCount: sourcePositions.length,
+        securityPositionCount: securityPositions.length,
         valuationMethod:
           source === "flatex" && existingData.valuationMethod === "flatex_broker_snapshot_v1"
             ? "flatex_broker_snapshot_with_market_quotes_v1"

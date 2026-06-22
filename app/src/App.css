@@ -578,6 +578,82 @@
   line-height: 1.4;
 }
 
+.source-card__timestamp-inline {
+  display: inline;
+  white-space: nowrap;
+}
+
+.positions-table__updated-at {
+  white-space: nowrap;
+}
+
+.source-card__agent-panel {
+  margin-top: 12px;
+  border-top: 1px solid #edf1ef;
+  padding-top: 10px;
+}
+
+.source-card__agent-panel-title {
+  margin-bottom: 7px;
+  color: #7b8582;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.source-card__agent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.source-card__agent-row {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e2e9e6;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfcfc;
+}
+
+.source-card__agent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-card__agent-head strong {
+  color: #26302e;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.source-card__agent-head .status-badge {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 0.62rem;
+}
+
+.source-card__agent-task,
+.source-card__agent-meta,
+.source-card__agent-message {
+  color: #687572;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.source-card__agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  font-weight: 800;
+}
+
+.source-card__agent-message {
+  color: #8a2c12;
+  font-weight: 800;
+}
+
 .inline-percent {
   color: #687572;
   font-size: 0.82em;
@@ -739,6 +815,73 @@
   justify-content: end;
   gap: 5px;
   font-size: 0.84rem;
+}
+
+.vbv-account-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.vbv-account-summary > div,
+.vbv-contract-card dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.vbv-account-summary span,
+.vbv-contract-card dt {
+  color: #687571;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vbv-account-summary strong,
+.vbv-contract-card dd {
+  margin: 0;
+  color: #18211f;
+  font-weight: 800;
+}
+
+.vbv-contract-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vbv-contract-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d9e1df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.vbv-contract-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #18211f;
+  font-weight: 900;
+}
+
+.vbv-contract-card__header span {
+  white-space: nowrap;
+}
+
+.vbv-contract-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
 }
 
 .status-badge {
@@ -1198,6 +1341,51 @@
     line-height: 1.2;
   }
 
+.positions-table__updated-at,
+.source-card__timestamp-inline {
+  white-space: nowrap;
+}
+
+  .source-card__agent-panel {
+    margin-top: 9px;
+    padding-top: 8px;
+  }
+
+  .source-card__agent-panel-title {
+    margin-bottom: 5px;
+    font-size: 0.6rem;
+  }
+
+  .source-card__agent-list {
+    gap: 6px;
+  }
+
+  .source-card__agent-row {
+    gap: 2px;
+    padding: 7px;
+  }
+
+  .source-card__agent-head {
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .source-card__agent-head strong {
+    font-size: 0.7rem;
+  }
+
+  .source-card__agent-head .status-badge {
+    min-height: 20px;
+    padding: 0 7px;
+    font-size: 0.56rem;
+  }
+
+  .source-card__agent-task,
+  .source-card__agent-meta,
+  .source-card__agent-message {
+    font-size: 0.65rem;
+  }
+
   .performance-value {
     gap: 3px;
   }
@@ -1316,6 +1504,25 @@
   .source-account-row__numbers .performance-value {
     justify-content: end;
     font-size: 0.76rem;
+  }
+
+  .vbv-account-summary,
+  .vbv-contract-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .vbv-account-summary {
+    padding: 10px;
+  }
+
+  .vbv-contract-card {
+    padding: 10px;
+  }
+
+  .vbv-contract-card__header {
+    display: grid;
+    gap: 4px;
   }
 
   .schedule-item {

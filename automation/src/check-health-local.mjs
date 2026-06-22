@@ -16,7 +16,7 @@ const documentValuedInstruments = {
 };
 const staleHoursByAgent = {
   flatex: 12,
-  traderepublic_mail: 72,
+  traderepublic_manual_exports: 2,
   ginmon: 48,
   intergold: 72,
   bitget: 6,
@@ -65,7 +65,14 @@ function documentValuationConfig(position) {
 }
 
 function documentValuationDate(position) {
-  return parseDate(position.lastTransactionDate ?? position.valuationDate ?? position.updatedAt);
+  return parseDate(
+    position.valuationDate ??
+      position.brokerQuoteAsOf ??
+      position.quoteAsOf ??
+      position.brokerSnapshotDate ??
+      position.documentDataUpdatedAt ??
+      position.updatedAt,
+  );
 }
 
 function alert(id, severity, title, message, source = null, details = null) {

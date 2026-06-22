@@ -12,7 +12,7 @@ const steps = [
   { id: "bitget", label: "Bitget Snapshot", script: "import-bitget-local.mjs" },
   { id: "bitget_ledger", label: "Bitget Ledger", script: "sync-bitget-ledger-local.mjs" },
   { id: "flatex", label: "Flatex Umsaetze und Broker-Snapshot", script: "download-flatex-local.mjs", args: ["--write"] },
-  { id: "traderepublic_mail", label: "Trade Republic Mail-Agent", script: "trade-republic-mail-agent.mjs", args: ["--write"] },
+  { id: "traderepublic_manual_exports", label: "Trade Republic manuelle Exporte", script: "trade-republic-manual-export-agent.mjs", args: ["--write"] },
   { id: "ginmon", label: "Ginmon API", script: "sync-ginmon-current-api.mjs", args: ["--write"] },
   { id: "ginmon_documents", label: "Ginmon Dokumente", script: "download-ginmon-local.mjs", args: ["--write-documents-only"] },
   { id: "intergold", label: "Intergold Bestand und Preise", script: "reconcile-intergold-local.mjs", args: ["--write"] },

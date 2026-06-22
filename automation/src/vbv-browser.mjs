@@ -29,6 +29,7 @@ export async function launchVbvBrowser({ headless = false } = {}) {
   const context = await chromium.launchPersistentContext(paths.profilePath, {
     executablePath: paths.chromePath,
     headless,
+    acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
   });
   const page = context.pages()[0] ?? (await context.newPage());
@@ -121,4 +122,90 @@ export async function readVbvBalance(page) {
   await page.waitForTimeout(3000);
   const text = await page.locator("body").innerText({ timeout: 10000 });
   return parseVbvBalanceText(text);
+}
+
+async function clickFirstVisible(page, locators, label) {
+  for (const locator of locators) {
+    const target = locator.first();
+    try {
+      await target.click({ timeout: 12000 });
+      return true;
+    } catch {
+      // Try the next locator variant; VBV changes labels/layout occasionally.
+    }
+  }
+  throw new Error(`VBV-Link nicht gefunden: ${label}`);
+}
+
+function sanitizeFilenamePart(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function isoToGermanDate(value) {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+async function findAccountInformationPdfUrl(page, valuationDate) {
+  const dateParam = isoToGermanDate(valuationDate);
+  const urls = await page.evaluate(() =>
+    [...document.querySelectorAll('a[href*="/webportal/kontoinformation"]')]
+      .map((link) => link.href)
+      .filter(Boolean),
+  );
+  if (!urls.length) return null;
+  if (dateParam) {
+    const matchingDate = urls.find((url) => url.includes(`date=${encodeURIComponent(dateParam)}`) || url.includes(`date=${dateParam}`));
+    if (matchingDate) return matchingDate;
+  }
+  return urls[0];
+}
+
+export async function downloadVbvAccountInformation(page, targetDir, { valuationDate } = {}) {
+  await fs.mkdir(targetDir, { recursive: true });
+  await page.goto("https://www.meinevbv.at/#/home", { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+
+  await clickFirstVisible(
+    page,
+    [
+      page.getByText(/SEVERANCE PAYMENT FUND/i),
+      page.getByRole("button", { name: /SEVERANCE PAYMENT FUND/i }),
+      page.getByRole("link", { name: /SEVERANCE PAYMENT FUND/i }),
+    ],
+    "Severance Payment Fund",
+  );
+  await page.waitForTimeout(2000);
+
+  const pdfUrl = await findAccountInformationPdfUrl(page, valuationDate);
+  if (pdfUrl) {
+    const response = await page.context().request.get(pdfUrl);
+    if (!response.ok()) {
+      throw new Error(`VBV-Kontoinformation konnte nicht heruntergeladen werden: HTTP ${response.status()}`);
+    }
+    const body = await response.body();
+    const datePart = sanitizeFilenamePart(valuationDate ?? new Date().toISOString().slice(0, 10));
+    const targetPath = path.join(targetDir, `${datePart}_VBV_AccountInformation.pdf`);
+    await fs.writeFile(targetPath, body);
+    return targetPath;
+  }
+
+  const downloadPromise = page.waitForEvent("download", { timeout: 45000 }).catch(() => null);
+  await page.locator('a[href*="/webportal/kontoinformation"]').first().click({ timeout: 15000 });
+  const download = await downloadPromise;
+  if (!download) {
+    throw new Error("VBV-Kontoinformation wurde angeklickt, aber kein PDF-Download gestartet.");
+  }
+
+  const datePart = sanitizeFilenamePart(valuationDate ?? new Date().toISOString().slice(0, 10));
+  const suggested = sanitizeFilenamePart(download.suggestedFilename()) || "account-information.pdf";
+  const fileName = `${datePart}_VBV_${suggested.endsWith(".pdf") ? suggested : `${suggested}.pdf`}`;
+  const targetPath = path.join(targetDir, fileName);
+  await download.saveAs(targetPath);
+  return targetPath;
 }

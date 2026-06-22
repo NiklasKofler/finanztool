@@ -9,7 +9,10 @@ const BITGET_KEYCHAIN_SERVICES = {
   passphrase: "finanztool-bitget-api-passphrase",
 };
 const BITGET_EXCLUDED_CURRENT_COINS = new Set(["TRUMP", "MELANIA"]);
-const BITGET_DISPLAY_DUST_EUR_THRESHOLD = 0.005;
+const BITGET_DISPLAY_DUST_EUR_THRESHOLD = Number.parseFloat(
+  process.env.BITGET_DISPLAY_DUST_EUR_THRESHOLD ?? "1",
+);
+const BITGET_REQUEST_RETRIES = Number.parseInt(process.env.BITGET_REQUEST_RETRIES ?? "2", 10);
 
 export class BitgetApiError extends Error {
   constructor({ status, code, message, requestPath }) {
@@ -35,6 +38,17 @@ function createSignature({ timestamp, method, requestPath, query, body, secret }
   const queryPart = query ? `?${query}` : "";
   const payload = `${timestamp}${method.toUpperCase()}${requestPath}${queryPart}${body}`;
   return crypto.createHmac("sha256", secret).update(payload).digest("base64");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableBitgetError(error) {
+  if (error instanceof BitgetApiError) {
+    return [408, 429, 500, 502, 503, 504].includes(error.status);
+  }
+  return error?.message === "fetch failed" || error?.name === "TypeError";
 }
 
 function parseNumber(value) {
@@ -159,21 +173,36 @@ export class BitgetClient {
       });
     }
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: bodyText || undefined,
-    });
-    const json = await response.json().catch(() => null);
-    if (!response.ok || json?.code !== "00000") {
-      throw new BitgetApiError({
-        status: response.status,
-        code: json?.code,
-        message: json?.msg ?? json?.message ?? response.statusText,
-        requestPath,
-      });
+    for (let attempt = 0; attempt <= BITGET_REQUEST_RETRIES; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          method,
+          headers,
+          body: bodyText || undefined,
+        });
+        const json = await response.json().catch(() => null);
+        if (!response.ok || json?.code !== "00000") {
+          throw new BitgetApiError({
+            status: response.status,
+            code: json?.code,
+            message: json?.msg ?? json?.message ?? response.statusText,
+            requestPath,
+          });
+        }
+        return json.data;
+      } catch (error) {
+        if (attempt >= BITGET_REQUEST_RETRIES || !isRetryableBitgetError(error)) throw error;
+        const baseDelay = error instanceof BitgetApiError && error.status === 429 ? 1_500 : 500;
+        await sleep(baseDelay * (attempt + 1));
+      }
     }
-    return json.data;
+
+    throw new BitgetApiError({
+      status: 0,
+      code: "retry_exhausted",
+      message: "Bitget request retry loop exhausted",
+      requestPath,
+    });
   }
 
   getAccountInfo() {

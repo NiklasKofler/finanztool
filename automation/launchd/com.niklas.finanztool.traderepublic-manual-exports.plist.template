@@ -3,12 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.vbv-sync</string>
+    <string>com.niklas.finanztool.traderepublic-manual-exports</string>
     <key>ProgramArguments</key>
     <array>
-      <string>__NODE_PATH__</string>
-      <string>src/sync-vbv-local.mjs</string>
-      <string>--write</string>
+      <string>__NPM_PATH__</string>
+      <string>run</string>
+      <string>sync:traderepublic-manual-exports</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -18,21 +18,14 @@
       <string>__PATH__</string>
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
-      <key>VBV_HEADLESS</key>
-      <string>1</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
-    <key>StartCalendarInterval</key>
-    <dict>
-      <key>Hour</key>
-      <integer>6</integer>
-      <key>Minute</key>
-      <integer>45</integer>
-    </dict>
+    <key>StartInterval</key>
+    <integer>900</integer>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-vbv-sync.out.log</string>
+    <string>/tmp/finanztool-traderepublic-manual-exports.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-vbv-sync.err.log</string>
+    <string>/tmp/finanztool-traderepublic-manual-exports.err.log</string>
   </dict>
 </plist>

@@ -82,6 +82,62 @@ Regel: Jede Quelle muss Veraenderungen in Unterkonten und Positionen erkennen:
 neue Positionen erscheinen, geschlossene Positionen verschwinden aus der
 aktuellen Ansicht, bleiben aber historisch nachvollziehbar.
 
+### 3a. Transparenzpflicht fuer Aktualitaet und Wahrheit
+
+Ab 2026-06-21 gilt fuer jede bestehende und jede neue Quelle:
+
+- Broker-/API-/Dokumentstand und Bewertungs-/Kursstand muessen getrennt
+  gespeichert und in der GUI getrennt erkennbar sein.
+- Ein Agent-Lauf ist nicht dasselbe wie eine fachliche Datenveraenderung.
+  `agentStatus.updatedAt` zeigt nur, wann der Agent zuletzt gelaufen ist.
+- Ein Brokerstand zeigt, wann Positionen, Cash, Kredit, Einstand,
+  Unterkonten und Bewegungen zuletzt aus der primaeren Quelle kamen.
+- Ein Dokumentstand zeigt, wann Dokumente zuletzt exportiert/importiert und
+  fachlich geparst wurden.
+- Ein Kursstand zeigt, wann Preise/Bewertungen zuletzt geholt wurden und
+  von welchem Provider sie stammen.
+- Wenn ein Kurs von einer externen Webseite oder Boerse kommt, darf er nicht
+  als Broker-Aktualisierung erscheinen.
+- Wenn der Agent erfolgreich laeuft, aber die Website/API keine neuen Preise
+  oder Daten liefert, muss das erkennbar bleiben: letzter Agentlauf und letzte
+  fachliche Aenderung sind unterschiedliche Zeitpunkte.
+
+Pflichtfelder bzw. kanonische Bedeutung:
+
+- `sourceDataUpdatedAt`: letzter fachlicher Stand der Primaerquelle
+  fuer Bestand/Cash/Kredit/Einstand.
+- `sourceDataProvider`: z. B. `flatex_broker`, `traderepublic_mail`,
+  `ginmon_api`, `bitget_api`, `vbv_portal`,
+  `vbv_account_information_pdf`.
+- `documentDataUpdatedAt`: letzter fachlich importierter Dokumentstand.
+- `documentDataProvider`: z. B. `ginmon_documents`,
+  `traderepublic_statement_pdf`, `flatex_postbox`,
+  `vbv_account_information_pdf`.
+- `quoteDataUpdatedAt`: letzter fachlicher Kurs-/Preisstand.
+- `quoteDataProvider`: z. B. `boerse-frankfurt`, `bitget`,
+  `ginmon_api`, `intergold_website`.
+- `quoteDataChangedAt`: Zeitpunkt der letzten erkannten Preisveraenderung,
+  wenn Agentlaeufe haeufiger als Preisveraenderungen sind.
+- `lastAgentRunAt`: letzter technischer Lauf des jeweiligen Agents.
+- `lastAgentSuccessAt`: letzter technisch erfolgreicher Lauf.
+- `lastDataChangeAt`: letzter Lauf, der den fachlichen Stand veraendert hat.
+
+GUI-Regel:
+
+- Depotkarten muessen mindestens zeigen, soweit fuer die Quelle relevant:
+  `Brokerstand` oder `Datenstand`, `Kursstand`, `Agent zuletzt`.
+- Agenten duerfen in der GUI nicht nur als pauschales `OK` erscheinen. Je
+  Quelle muss sichtbar sein:
+  - welcher Agent gelaufen ist
+  - wofuer dieser Agent fachlich zustaendig ist
+  - wann der letzte technische Lauf war
+  - ob das Ergebnis `OK`, `WARNUNG`, `FEHLER` oder `RUNNING` war
+  - bei abweichendem Zeitpunkt: wann der letzte erfolgreiche Lauf war
+- Positionen muessen fuer Analyse sichtbar machen, ob ihr aktueller Wert aus
+  Broker/API, Dokument oder externem Kursprovider stammt.
+- `updatedAt` allein darf in der GUI nicht als fachliche Wahrheit angezeigt
+  werden, wenn differenziertere Felder vorhanden sind.
+
 ### 4. Instrumente, Kurse und Historie
 
 - `instrumentMappings`
@@ -108,6 +164,17 @@ muss `priceSource` oder `quoteProvider`, `quoteStatus`, `valuationDate` oder
 `quoteAsOf` und soweit moeglich `quoteVenue`, `quoteFetchedAt` und
 `quoteFreshness` tragen. `updatedAt` bedeutet nur Schreibzeitpunkt des Agents,
 nicht zwingend Kurszeitpunkt.
+
+Regel: Fuer Preisquellen mit haeufigen Agentlaeufen muss neben dem letzten
+Abruf auch die letzte fachliche Preisaenderung gespeichert werden. Beispiel:
+Intergold kann taeglich vom Agent abgerufen werden, aber die Websitepreise
+koennen unveraendert bleiben. Dann gilt:
+
+- `lastAgentSuccessAt`: letzter erfolgreicher Abruf
+- `quoteDataUpdatedAt`: Preisstand laut Quelle oder Abrufzeitpunkt der
+  aktuellen Preisantwort
+- `quoteDataChangedAt`: letzter Zeitpunkt, an dem mindestens ein Preiswert
+  gegenueber dem vorherigen Stand geaendert wurde
 
 ### 5. Overrides und Health
 
@@ -173,6 +240,21 @@ technisch abgedeckt sind:
 - Status-quo-Baseline 2026-06-13 ersetzt fruehere obsolet gewordene Imports.
 - CSV/PDF-Basis schreibt Positionen, Ledger, Transaktionen, Kosten und Fakten.
 - Neue Mail-PDFs muessen den Stand ab Baseline fortschreiben.
+- `Transaction export.csv` wird anhand `transaction_id` idempotent in
+  `sourceDocumentFacts`, `ledgerEntries`, `transactions`, `costEvents` und
+  `incomeEvents` geschrieben.
+- Manuell selbst gesendete App-Exporte ohne Betreff werden durch
+  `traderepublic_manual_exports` nach Inhalt klassifiziert.
+- Oeffentlich handelbare Wertpapiere duerfen mit Boerse-Frankfurt-Kursen
+  bewertet werden, muessen aber als solche erkennbar bleiben.
+- Trade-Republic-Broker-Snapshots aus `Net Worth.pdf` werden parallel als
+  Brokerfelder gespeichert:
+  - `brokerQuotePrice`
+  - `brokerQuoteAsOf`
+  - `brokerCurrentValue`
+  - `brokerQuoteProvider`
+- Private Markets duerfen aus dem Trade-Republic-Net-Worth-Dokument bewertet
+  werden, wenn keine stabile externe Kursquelle existiert.
 
 ### Ginmon
 

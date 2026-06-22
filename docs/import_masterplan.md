@@ -111,18 +111,25 @@ Wichtig:
     Historie
   - zusaetzlicher Bitget-Ledger-Agent laeuft stuendlich und schreibt Bills,
     Fills, Fees, Earn-Zinsen und Tax-Facts historisch/idempotent nach Firestore
+  - Ledger-Teilabrufe mit Rate-Limit/Netzwerkfehler schreiben `WARNUNG` plus
+    `warnings`; sie duerfen nicht still als voller OK-Lauf erscheinen
+  - Transparenzfelder:
+    - `sourceDataUpdatedAt` / `sourceDataProvider=bitget_api`
+    - `quoteDataUpdatedAt` / `quoteDataProvider=bitget_api`
+    - `lastAgentRunAt` / `lastAgentSuccessAt`
   - Bitget wird fuer Bitget-only bewertet: keine CoinGecko- oder
     Frankfurter-Boerse-Fallbacks fuer Krypto
   - aktueller sauberer Schnitt:
     - `sourcePositions` enthaelt nur die aktuelle Portfolioansicht
-    - TRUMP, MELANIA und auf `0,00 EUR` rundende Dust-Positionen sind aus der
+    - TRUMP, MELANIA und Nicht-Cash-Dust unter `1 EUR` sind aus der
       Portfolioansicht ausgeschlossen
     - diese Rohbestaende bleiben im Rohsnapshot unter `rawPositions` und
       `excludedPositions` nachvollziehbar
   - historische Exporte von 13.06.2024 bis 13.06.2026 sind gesichert
   - TRUMP- und MELANIA-Einstand sind in USDT verifiziert
-  - EUR-Einstand und BTC-Einstand werden einmalig mit Bank-/Kreditkartendaten
-    vervollstaendigt
+  - BTC-Einstand `3.000 EUR` ist aktuell nutzerbestaetigt in
+    `sourceCostBasis`; langfristig soll er mit Bank-/Kreditkartendaten
+    rekonstruiert werden
 
 ### 6. EquatePlus
 
@@ -180,10 +187,13 @@ Wichtig:
 ### 13. Betriebliche Altersvorsorge
 
 - Ziel: langfristige Vermoegenskomponente im Gesamtbild
-- Realistisch: monatlich oder quartalsweise ausreichend
+- Realistisch: fachlicher Datenwechsel selten, aber taegliche technische
+  Pruefung ist robust und erzeugt keine Dubletten
 - Methode:
-  - `manueller Eintrag in der App`
-  - kein Automatisierungsprojekt, solange der Aufwand den Nutzen uebersteigt
+  - `Meine VBV` Portal-Stichtag
+  - PDF-Kontoinformation als Primaerbeleg
+  - Speicherung in `sourceSummaries`, `sourceDocuments` und
+    `sourceDocumentFacts`
 
 ## Importmethoden - klare Definition
 
