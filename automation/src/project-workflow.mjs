@@ -21,6 +21,7 @@ const commandAliases = {
   fts: "save",
   save: "save",
   s: "save",
+  ftp: "upload",
   ftu: "upload",
   upload: "upload",
   u: "upload",
@@ -32,8 +33,8 @@ const commandAliases = {
 const command = commandAliases[rawCommand] ?? commandAliases[commandName];
 
 function printUsage() {
-  console.log("Nutzung: ftd | fts [commit-message] | ftu [commit-message]");
-  console.log("Hinweis: Alte numerische Kurzbefehle sind deaktiviert. Bitte nur ftd, fts und ftu verwenden.");
+  console.log("Nutzung: ftd | fts [commit-message] | ftp [commit-message]");
+  console.log("Hinweis: ftu bleibt als alter Alias fuer ftp verfuegbar. Alte numerische Kurzbefehle sind deaktiviert.");
 }
 
 if (rawCommand === "--help" || rawCommand === "-h" || args.includes("--help") || args.includes("-h")) {
@@ -166,7 +167,7 @@ function ensureNormalGitState() {
 
   const branch = currentBranch();
   if (branch !== "main") {
-    fail(`Aktiver Branch ist '${branch}'. Bitte auf 'main' wechseln, bevor ftd/fts/ftu laufen.`);
+    fail(`Aktiver Branch ist '${branch}'. Bitte auf 'main' wechseln, bevor ftd/fts/ftp laufen.`);
   }
 }
 
@@ -468,7 +469,7 @@ function runSave() {
   git(["commit", "-m", message]);
   section("Fertig");
   console.log(`Lokaler Commit: ${gitOutput(["rev-parse", "--short", "HEAD"])}`);
-  console.log("Nicht gepusht und nicht deployed. Fuer Uebergabe `ftu` ausfuehren.");
+  console.log("Nicht gepusht und nicht deployed. Fuer Publish/Uebergabe `ftp` ausfuehren.");
 }
 
 function updateHandoffDocs({ phase, source, target, baseCommit, handoffCommit, deployTime }) {
@@ -479,17 +480,17 @@ function updateHandoffDocs({ phase, source, target, baseCommit, handoffCommit, d
   const status = gitStatusPorcelain().split("\n").filter(Boolean).slice(0, 30).join("\n");
 
   if (phase === "start") {
-    const entry = `### ${now} - ftu Handoff ${source} zu ${target}
+    const entry = `### ${now} - ftp Handoff ${source} zu ${target}
 
 Datum/Zeit: ${now}
 Quellgeraet: ${source}
 Zielgeraet: ${target}
 Commit/Stand: Ausgangscommit \`${baseCommit}\`; Handoff-Commit wird in diesem
-\`ftu\`-Lauf erstellt
+\`ftp\`-Lauf erstellt
 Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
 Firebase deployen
 Erledigt:
-- \`ftu\` wurde auf ${source} gestartet
+- \`ftp\` wurde auf ${source} gestartet
 - App-Build wird im Workflow ausgefuehrt
 - Geaenderte Dateien vor Handoff:
 ${status ? status.split("\n").map((line) => `  - ${line}`).join("\n") : "  - keine vorbestehenden Aenderungen"}
@@ -500,7 +501,7 @@ Wechselprobleme:
 - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
 - Mac Studio bleibt produktiver Agent-Knoten
 Lokale Besonderheiten:
-- Kurzbefehle: \`ftd\` Download, \`fts\` Save, \`ftu\` Upload
+- Kurzbefehle: \`ftd\` Download, \`fts\` Save, \`ftp\` Publish; \`ftu\` ist alter Alias
 
 `;
 
@@ -514,15 +515,15 @@ Lokale Besonderheiten:
       const replacement = `## Aktueller Geraete-Handoff
 
 - Stand: ${now}
-- Aktion: \`ftu\` vom ${source} Richtung ${target}
+- Aktion: \`ftp\` vom ${source} Richtung ${target}
 - Ausgangscommit: \`${baseCommit}\`
-- Handoff-Commit: wird in diesem \`ftu\`-Lauf erstellt
-- Firebase Deploy: wird in diesem \`ftu\`-Lauf ausgefuehrt
+- Handoff-Commit: wird in diesem \`ftp\`-Lauf erstellt
+- Firebase Deploy: wird in diesem \`ftp\`-Lauf ausgefuehrt
 - Naechster Schritt auf ${target}: \`ftd\` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
   - Mac Studio bleibt produktiver Agent-Knoten
-  - Kurzbefehle sind \`ftd\`, \`fts\`, \`ftu\`
+  - Kurzbefehle sind \`ftd\`, \`fts\`, \`ftp\`; \`ftu\` ist alter Alias
 `;
       writeFileSync(memoryPath, replaceSection(text, "## Aktueller Geraete-Handoff", replacement));
     }
@@ -531,7 +532,12 @@ Lokale Besonderheiten:
   if (phase === "deployed") {
     if (existsSync(memoryPath)) {
       let text = readFileSync(memoryPath, "utf8");
+      text = text.replace("- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt", `- Handoff-Commit: \`${handoffCommit}\``);
       text = text.replace("- Handoff-Commit: wird in diesem `ftu`-Lauf erstellt", `- Handoff-Commit: \`${handoffCommit}\``);
+      text = text.replace(
+        "- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt",
+        `- Firebase Deploy: ${deployTime} erfolgreich`,
+      );
       text = text.replace(
         "- Firebase Deploy: wird in diesem `ftu`-Lauf ausgefuehrt",
         `- Firebase Deploy: ${deployTime} erfolgreich`,
@@ -541,6 +547,7 @@ Lokale Besonderheiten:
 
     if (existsSync(switchPath)) {
       let text = readFileSync(switchPath, "utf8");
+      text = text.replace("`ftp`-Lauf erstellt", `\`ftp\`-Lauf erstellt; Handoff-Commit \`${handoffCommit}\``);
       text = text.replace("`ftu`-Lauf erstellt", `\`ftu\`-Lauf erstellt; Handoff-Commit \`${handoffCommit}\``);
       text = text.replace(
         "Erledigt:\n",
@@ -587,7 +594,7 @@ function firebaseDeploy() {
 }
 
 function runUploadPrepare() {
-  section("ftu / Upload vorbereiten");
+  section("ftp / Publish vorbereiten");
   const device = getDevice();
   const source = device.computerName;
   const target = targetFor(device);
@@ -634,7 +641,7 @@ function runUploadPrepare() {
 }
 
 function runUploadFinalize() {
-  section("ftu / Upload abschliessen");
+  section("ftp / Publish abschliessen");
   const device = getDevice();
   const state = readHandoffState() ?? {};
   const source = state.source ?? device.computerName;

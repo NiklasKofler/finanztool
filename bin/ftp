@@ -1,0 +1,5 @@
+#!/bin/zsh
+set -euo pipefail
+
+REPO="/Users/niklaskofler/Documents/finanztool"
+exec "$REPO/bin/ftu" "$@"

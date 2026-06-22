@@ -26,7 +26,7 @@ Nach jeder wichtigen Session:
 1. dieses Dokument aktualisieren
 2. bei Geraetewechseln oder Problemen `docs/device_switch_log.md`
    aktualisieren
-3. lokal sichern mit `fts` oder uebergeben/deployen mit `ftu`
+3. lokal sichern mit `fts` oder veroeffentlichen/uebergeben mit `ftp`
 
 ## Projektziel
 
@@ -52,7 +52,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 - Die bevorzugten Terminal-Kurzbefehle sind:
   - `ftd` = Download/Update
   - `fts` = Save/lokaler Commit
-  - `ftu` = Upload/Push/Firebase Deploy/Handoff
+  - `ftp` = Publish/Push/Firebase Deploy/Handoff
+  - `ftu` = alter Alias fuer `ftp`, bleibt kompatibel
 - Installation der Kurzbefehle pro Geraet:
   `npm run ft:install`
 - `ftd` wird dabei als Shell-Funktion installiert. Nach erfolgreichem Download
@@ -69,8 +70,8 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
     Backup-Branch und rebasiert lokale Commits auf `origin/main`.
   - `ftd --force` ist der bewusste Notfall-Download mit Backup-Branch und
     Datei-Backup.
-  - `ftu` prueft vor dem Commit, ob GitHub neuer ist, und bricht dann ab.
-  - `ftu` deployed Firebase erst nach verifiziertem Push und nur Hosting.
+  - `ftp`/`ftu` prueft vor dem Commit, ob GitHub neuer ist, und bricht dann ab.
+  - `ftp`/`ftu` deployed Firebase erst nach verifiziertem Push und nur Hosting.
 
 ## Rollen der Geraete
 
@@ -139,16 +140,16 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-22 18:09 CEST
-- Aktion: `ftu` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `dd9fa3a`
-- Handoff-Commit: `434c93b`
-- Firebase Deploy: 2026-06-22 18:09 CEST erfolgreich
+- Stand: 2026-06-22 20:28 CEST
+- Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
+- Ausgangscommit: `9994c4d`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
   - Mac Studio bleibt produktiver Agent-Knoten
-  - Kurzbefehle sind `ftd`, `fts`, `ftu`
+  - Kurzbefehle sind `ftd`, `fts`, `ftp`; `ftu` ist alter Alias
 
 ## Fachlich bereits umgesetzt
 
@@ -550,7 +551,7 @@ npm run install:all
 npm run ft:install
 ftd
 fts "Commit Message"
-ftu "Commit Message"
+ftp "Commit Message"
 npm run dev
 firebase deploy --only hosting,firestore:rules
 
@@ -967,13 +968,14 @@ npm run sync:health
 
 Auf dem aktuellen Entwicklungsgeraet `ftd` ausfuehren und den neuesten Eintrag
 aus `docs/device_switch_log.md` beachten. Auf dem MacBook Pro keine
-produktiven Studio-Agents starten. Bei Rueckgabe an den Mac Studio `ftu`
+produktiven Studio-Agents starten. Bei Rueckgabe an den Mac Studio `ftp`
 ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 `launchctl list | grep finanztool` pruefen.
 
 ## Bedienkuerzel
 
-- Es gelten nur noch die Kurzbefehle `ftd`, `fts` und `ftu`.
+- Es gelten die Kurzbefehle `ftd`, `fts` und `ftp`; `ftu` bleibt als alter
+  Alias fuer `ftp` verfuegbar.
 - `ftd`: Projekt auf der aktuellen Maschine vom gemeinsamen GitHub-Stand
   aktualisieren/herunterladen.
   Ablauf:
@@ -1002,11 +1004,11 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   2. `git status` und `git diff --stat` pruefen.
   3. Sinnvolle Aenderungen committen.
   4. Nicht pushen und nicht deployen.
-- `ftu`: aktuellen Stand bauen, lokal speichern/committen, auf GitHub pushen
+- `ftp`: aktuellen Stand bauen, lokal speichern/committen, auf GitHub pushen
   und nach Firebase deployen.
   Danach ist das Projekt an das jeweils andere Geraet uebergeben. Beispiel:
-  auf Mac Studio entwickeln -> `ftu` -> auf MacBook Pro `ftd`; oder
-  auf MacBook Pro entwickeln -> `ftu` -> auf Mac Studio `ftd`, damit die
+  auf Mac Studio entwickeln -> `ftp` -> auf MacBook Pro `ftd`; oder
+  auf MacBook Pro entwickeln -> `ftp` -> auf Mac Studio `ftd`, damit die
   dort laufenden Agents den neuen Code erhalten.
   Vor dem Commit muss Codex `docs/working_memory.md` und bei Geraetewechseln
   `docs/device_switch_log.md` aktualisieren.
@@ -1016,7 +1018,8 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Datum: 2026-06-21 CEST
 - Quelle: Lokale Codex-Session, Agent-Audit, Flatex-/Kursstrategie und UI-Arbeit auf `localhost`
 - Uebergabestand: Lokaler Savepoint `7808ec6` wurde mit `fts`
-  gespeichert; anschliessend wurde `ftu` gestartet, um diesen Stand an
+  gespeichert; anschliessend wurde der damalige Upload-Befehl `ftu` gestartet,
+  um diesen Stand an
   GitHub/Firebase und danach ans MacBook Pro zu uebergeben.
 - Zusatzstand 2026-06-21: Kursstrategie fuer Wertpapiere umgestellt auf
   haeufige aktuelle Kurse und sparsame Tageshistorie. `quotesCurrent` wird
@@ -1237,11 +1240,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Status-Badge und bei abweichendem Zeitpunkt der letzte Erfolg angezeigt.
   - Der Kurs-/Datenstand bleibt ein eigener Datenpunkt und wird nicht mehr mit
     Agentenlaufzeiten vermischt.
-  - Responsive-Regel: Agenten duerfen in Depotkarten nicht als eigenstaendige
-    Kacheln wirken. Auf iPhone-15-Breite und kleiner muessen sie als kompakte
-    Zeilen ohne Boxhintergrund/umlaufenden Rahmen erscheinen: Name links,
-    Status rechts, darunter nur Lauf/Erfolg. Lange Aufgabenbeschreibungen
-    werden auf Mobile ausgeblendet.
+  - Responsive-Regel: Agentenkacheln muessen immer die volle verfuegbare
+    Depotkartenbreite nutzen und duerfen auf Mobile nicht in die Icon-Spalte
+    oder eine zu schmale Grid-Spalte fallen. Auf iPhone-15-Breite sollen sie
+    einspaltig, kompakt und ohne vertikales Buchstabenbrechen erscheinen.
 - Aktuelle Agent-Metadaten in der GUI:
   - `bitget`: Bestände, Wallets und aktuelle Bewertung aus der Bitget API
   - `bitget_ledger`: Transaktionen, Gebühren, Zinsen/Earn und Bewegungen

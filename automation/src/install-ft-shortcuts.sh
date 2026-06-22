@@ -14,7 +14,7 @@ fi
 
 mkdir -p "$TARGET_DIR"
 
-for command in ftd fts ftu; do
+for command in ftd fts ftu ftp; do
   chmod +x "$REPO/bin/$command"
   ln -sf "$REPO/bin/$command" "$TARGET_DIR/$command"
 done
@@ -53,6 +53,10 @@ mv "$tmpfile" "$ZSHRC"
   echo "ftu() {"
   echo '  "$FINANZTOOL_REPO/bin/ftu" "$@"'
   echo "}"
+  echo ""
+  echo "ftp() {"
+  echo '  "$FINANZTOOL_REPO/bin/ftp" "$@"'
+  echo "}"
   echo "$BLOCK_END"
 } >> "$ZSHRC"
 
@@ -60,6 +64,7 @@ echo "Installiert:"
 echo "  $TARGET_DIR/ftd -> $REPO/bin/ftd"
 echo "  $TARGET_DIR/fts -> $REPO/bin/fts"
 echo "  $TARGET_DIR/ftu -> $REPO/bin/ftu"
+echo "  $TARGET_DIR/ftp -> $REPO/bin/ftp"
 echo ""
 echo "Falls die Befehle in einem bestehenden Terminal nicht gefunden werden:"
 echo "  source ~/.zshrc"

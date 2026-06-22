@@ -16,6 +16,7 @@
     "ftd": "zsh bin/ftd",
     "fts": "zsh bin/fts",
     "ftu": "zsh bin/ftu",
+    "ftp": "zsh bin/ftp",
     "ft:install": "zsh automation/src/install-ft-shortcuts.sh"
   },
   "engines": {

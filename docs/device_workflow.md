@@ -70,7 +70,8 @@ Es gelten nur noch diese Kurzbefehle:
 ```bash
 ftd   # download/update
 fts   # save/lokaler commit
-ftu   # upload/push/deploy/handoff
+ftp   # publish/push/deploy/handoff
+ftu   # alter Alias fuer ftp
 ```
 
 Alte numerische Befehle sind deaktiviert und duerfen nicht mehr verwendet
@@ -112,12 +113,12 @@ Wichtig fuer alle Kurzbefehle:
   Backup-Branch unter `backup/ftd-force-*` angelegt und lokale geaenderte
   Dateien werden nach `automation/runtime/force-download-backups/*`
   kopiert. Erst danach wird hart auf `origin/main` gesetzt.
-- `ftu` startet nur von Branch `main` und nur ohne offenen Merge/Rebase.
-- `ftu` prueft vor dem Commit, ob `origin/main` im lokalen Stand enthalten
+- `ftp`/`ftu` startet nur von Branch `main` und nur ohne offenen Merge/Rebase.
+- `ftp`/`ftu` prueft vor dem Commit, ob `origin/main` im lokalen Stand enthalten
   ist. Wenn GitHub neuer ist, wird nicht gepusht und nicht deployed.
-- Nach dem Push verifiziert `ftu`, dass lokaler `HEAD` und `origin/main`
+- Nach dem Push verifiziert `ftp`/`ftu`, dass lokaler `HEAD` und `origin/main`
   identisch sind. Firebase wird nur danach deployed.
-- `ftu` deployed bewusst nur Firebase Hosting. Firestore/Storage-Regeln und
+- `ftp`/`ftu` deployed bewusst nur Firebase Hosting. Firestore/Storage-Regeln und
   Indexes werden dadurch nicht versehentlich ueberschrieben.
 
 ### ftd
@@ -201,14 +202,14 @@ Nicht ausfuehren:
 - kein Firebase Deploy
 
 Wichtig: Ein `fts`-Commit ist nur auf diesem Geraet sichtbar. Das andere
-Geraet bekommt ihn erst nach `ftu`.
+Geraet bekommt ihn erst nach `ftp` bzw. dem alten Alias `ftu`.
 
-### ftu
+### ftp
 
 Projekt hochladen, Firebase deployen und an das andere Geraet uebergeben.
 
 ```bash
-ftu "optionale Commit Message"
+ftp "optionale Commit Message"
 ```
 
 Ablauf:
@@ -246,10 +247,13 @@ git push origin main
 
 Uebergabe-Beispiele:
 
-- Mac Studio entwickelt -> `ftu` -> MacBook Pro `ftd`
-- MacBook Pro entwickelt -> `ftu` -> Mac Studio `ftd`
+- Mac Studio entwickelt -> `ftp` -> MacBook Pro `ftd`
+- MacBook Pro entwickelt -> `ftp` -> Mac Studio `ftd`
 
-Bei `ftu` muss Codex vor dem Commit die Arbeitsdoku aktualisieren:
+`ftu` bleibt als alter Alias fuer `ftp` verfuegbar. Neue Anweisungen sollen
+`ftp` verwenden.
+
+Bei `ftp`/`ftu` muss Codex vor dem Commit die Arbeitsdoku aktualisieren:
 
 - `docs/device_switch_log.md`
 - `docs/working_memory.md` nur als kurze Orientierung, nicht als zweite
@@ -367,7 +371,8 @@ lokalen Aenderungen. Gib mir danach kurz Feedback:
 Merke dir fuer diesen Chat die Finanztool-Kurzbefehle:
 ftd = Projekt herunterladen/aktualisieren
 fts = lokal speichern/committen
-ftu = bauen, GitHub pushen, Firebase deployen und an das andere Geraet uebergeben
+ftp = bauen, GitHub pushen, Firebase deployen und an das andere Geraet uebergeben
+ftu = alter Alias fuer ftp
 ```
 
 ## Was immer dokumentiert werden muss
