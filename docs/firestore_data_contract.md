@@ -169,6 +169,12 @@ muss `priceSource` oder `quoteProvider`, `quoteStatus`, `valuationDate` oder
 `quoteFreshness` tragen. `updatedAt` bedeutet nur Schreibzeitpunkt des Agents,
 nicht zwingend Kurszeitpunkt.
 
+Wenn ein externer Kurslauf eine Position aktualisiert, muessen
+`quoteProvider`, `priceSource` und `valuationMethod` dieselbe aktive
+Kursquelle ausdruecken. Brokerwerte duerfen separat als `brokerCurrentValue`
+und `brokerQuoteProvider` erhalten bleiben, aber nicht den aktiven
+`priceSource` verwirren.
+
 Regel: Fuer Preisquellen mit haeufigen Agentlaeufen muss neben dem letzten
 Abruf auch die letzte fachliche Preisaenderung gespeichert werden. Beispiel:
 Intergold kann taeglich vom Agent abgerufen werden, aber die Websitepreise
@@ -190,7 +196,13 @@ koennen unveraendert bleiben. Dann gilt:
 - `systemHealth`
   - aggregierte Warnungen und Fehler fuer die GUI
 - `automationCommands`
-  - App-zu-Agent-Kommandos, z. B. manueller Kurs-Sync
+  - App-zu-Agent-Kommandos, z. B. manueller Kurs-Sync oder gezielter
+    Trade-Republic-Portal-Refresh
+  - erlaubte App-Commands:
+    - `sync_quotes_manual` mit `type=sync_quotes`
+    - `traderepublic_portal_refresh` mit `type=traderepublic_portal_refresh`
+  - Zugangsdaten duerfen nie in `automationCommands` stehen. App-Commands
+    enthalten nur Typ, Status, Nutzer und Zeitstempel.
 
 Regel: Wenn ein Agent Daten nicht vollstaendig oder plausibel liefern kann,
 muss daraus eine sichtbare Warnung entstehen. Ein `OK` darf nur bedeuten:
@@ -259,6 +271,72 @@ technisch abgedeckt sind:
   - `brokerQuoteProvider`
 - Private Markets duerfen aus dem Trade-Republic-Net-Worth-Dokument bewertet
   werden, wenn keine stabile externe Kursquelle existiert.
+- Der Portal-Agent `traderepublic_portal` darf aktuelle Werte aus dem
+  authentifizierten Trade-Republic-Webportal speichern, muss sie aber klar als
+  Portalquelle kennzeichnen:
+  - `quoteProvider=traderepublic_portal_web` fuer sichtbare gelistete
+    Positionen
+  - `quoteProvider=traderepublic_portal_total_implied` fuer Private Markets,
+    wenn der Wert nur aus Portfolio-Gesamtwert minus gelistete Positionen
+    abgeleitet ist
+  - `valuationMethod=traderepublic_portal_cash_v1` fuer Cash
+  - `sourceDocumentFacts/traderepublic_portal_snapshot_latest` als letzter
+    Portal-Snapshot
+- Portal-Snapshots duerfen aktuelle Bewertung und Transparenz verbessern, sind
+  aber kein Ersatz fuer vollstaendige Kosten-, Steuer- und Transaktionshistorie.
+  Diese muss weiter aus Exporten/PDFs in `sourceDocuments`,
+  `sourceDocumentFacts`, `transactions`, `ledgerEntries`, `costEvents` und
+  `incomeEvents` kommen.
+- Portal-Dokumente aus der Trade-Republic-Web-App muessen doppelt abgesichert
+  werden:
+  - technischer Dedupe ueber PDF-Hash
+  - fachlicher Dedupe ueber `portalTransactionSignature`
+- Wenn ein Portal-Dokument operativ angewendet wurde, muss eine
+  Anwendungsspur in `sourceDocumentFacts` existieren:
+  - `factType=portal_document_application`
+  - `status=APPLIED`
+  - `sourceDocumentFactId`
+  - `appliedTo`
+- Wenn derselbe Vorgang bereits aus dem manuellen Export/CSV bekannt ist, darf
+  er nicht erneut in `transactions`, `ledgerEntries`, `costEvents` oder
+  `sourcePositions` wirken. Stattdessen wird die Anwendungsspur mit
+  `status=SKIPPED_DUPLICATE_MANUAL` geschrieben.
+- Gleiche PDF-Dateien sollen langfristig nicht mehrfach als vollwertige
+  `sourceDocuments` je Kanal existieren. Zielregel: ein kanonisches Dokument
+  pro `source + fileHash`; weitere Funde werden nur als `seenVia` oder
+  `duplicateOf` referenziert. Bis diese technische Bereinigung umgesetzt ist,
+  darf eine redundante Dokumentspur keine operative Mehrfachanwendung erzeugen.
+- Stand 2026-06-23 reicht `traderepublic_portal` noch nicht als alleinige
+  Vollstaendigkeitsquelle. Nach Portal-Inventur vom 2026-06-23 gilt:
+  - `Billing Execution`, `Inbound Invoice` und `Tax Report 2025` sind aus dem
+    Webportal erreichbar und werden als Portal-Dokumente gespeichert.
+  - Duplicate-Statement-Mails sind fuer Wertpapierabrechnungen nicht mehr
+    erforderlich.
+  - Private-Equity-Portalabrechnungen duerfen nicht zusaetzlich operativ
+    zaehlen, wenn derselbe Cashflow bereits als `private_market_cash` aus dem
+    `Transaction export.csv` vorhanden ist.
+  - Private-Equity-Einstandswerte duerfen nicht blind aus allen
+    `private_market_cash`-Fakten summiert werden. Fuer
+    `LU3176111881` gilt: ausgefuehrte Trade-Fakten (`factType=trade`,
+    Einstand = `Stueck * Kurs`) haben Vorrang; `private_market_cash` ist nur
+    Rueckfallquelle, wenn keine ausgefuehrten Trade-Fakten vorhanden sind.
+  - Zinsen sind im Portal-DOM sichtbar, aber der `Statement`-PDF-Button ist
+    nicht verlaesslich. Der DOM-Fallback darf Zinsen nur speichern, wenn echte
+    Zinsmerkmale wie `Interest`, `Accrued`, `You received` oder `Zins`
+    sichtbar sind. Fallback-Fakten muessen
+    `sourceChannel=traderepublic_portal_dom` tragen.
+  - Bis die offenen Cash-/Zins-Fallbacks vollständig verifiziert sind, bleibt
+    `Transaction export.csv` die sichere Quelle fuer Zinsen, Steuern,
+    Dividenden, Cash-Historie und Private-Markets-Cashflows.
+  - `Net Worth.pdf` ist fuer taegliche aktuelle Werte nicht mehr zwingend,
+    wenn `traderepublic_portal` erfolgreich Portfolio/Cash liest; es bleibt
+    optional als Kontrollreport.
+- Depotuebergreifende Regel:
+  - Unbekannte Dokumente, unbekannte Dokumentfakten und ungelöste
+    Portal-Dokumentfehler muessen in `systemHealth/current.alerts`
+    erscheinen.
+  - Ein Agent darf bei solchen offenen Problemen nicht `OK` melden, sondern
+    muss `WARNUNG` oder `FEHLER` setzen.
 
 ### Ginmon
 

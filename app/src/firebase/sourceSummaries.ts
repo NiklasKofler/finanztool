@@ -127,6 +127,14 @@ export interface AgentStatusDocument {
   source?: string;
   status?: "OK" | "WARNUNG" | "FEHLER" | "RUNNING" | string;
   message?: string | null;
+  warningCount?: number | null;
+  unknownCount?: number | null;
+  portalDocumentFailedCount?: number | null;
+  portalDocumentUnresolvedFailureCount?: number | null;
+  portalDocumentDomFallbackCount?: number | null;
+  portalDocumentUnknownLabels?: string[] | null;
+  unknownDocuments?: Array<Record<string, unknown>> | null;
+  warnings?: unknown[] | null;
   lastSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   lastAgentRunAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   lastAgentSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -229,8 +237,28 @@ export async function requestQuoteSync(db: Firestore, requestedBy?: string | nul
   });
 }
 
+export async function requestTradeRepublicPortalRefresh(db: Firestore, requestedBy?: string | null) {
+  const commandRef = doc(db, "automationCommands", "traderepublic_portal_refresh");
+  await setDoc(commandRef, {
+    type: "traderepublic_portal_refresh",
+    status: "REQUESTED",
+    requestedBy: requestedBy ?? null,
+    requestedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function loadQuoteSyncCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
   const snapshot = await getDoc(doc(db, "automationCommands", "sync_quotes_manual"));
+  if (!snapshot.exists()) return null;
+  return {
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<AutomationCommandDocument, "id">),
+  };
+}
+
+export async function loadTradeRepublicPortalCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
+  const snapshot = await getDoc(doc(db, "automationCommands", "traderepublic_portal_refresh"));
   if (!snapshot.exists()) return null;
   return {
     id: snapshot.id,

@@ -34,6 +34,15 @@ function runFullRefresh() {
   if (result.status !== 0) throw new Error(`Gesamtaktualisierung fehlgeschlagen: Exit ${result.status}`);
 }
 
+function runTradeRepublicPortalRefresh() {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "download-traderepublic-local.mjs"), "--write"], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`Trade-Republic-Portal-Refresh fehlgeschlagen: Exit ${result.status}`);
+}
+
 const firestore = new FirestoreRest({
   projectId,
   accessToken: await getFirebaseCliAccessToken(),
@@ -45,12 +54,19 @@ const [commands, statuses] = await Promise.all([
 ]);
 const quoteAgentStatus = statuses.find((status) => status.id === "quotes");
 const manualRefreshStatus = statuses.find((status) => status.id === "manual_refresh");
-if (quoteAgentStatus?.status === "RUNNING" || manualRefreshStatus?.status === "RUNNING") {
+const tradeRepublicPortalStatus = statuses.find((status) => status.id === "traderepublic_portal");
+if (
+  quoteAgentStatus?.status === "RUNNING" ||
+  manualRefreshStatus?.status === "RUNNING" ||
+  tradeRepublicPortalStatus?.status === "RUNNING"
+) {
   console.log("[info] Aktualisierung laeuft bereits. Offene Befehle bleiben fuer den naechsten Lauf liegen.");
   process.exit(0);
 }
 const pendingCommands = commands
-  .filter((command) => ["sync_quotes", "full_refresh"].includes(command.type) && command.status === "REQUESTED")
+  .filter((command) =>
+    ["sync_quotes", "full_refresh", "traderepublic_portal_refresh"].includes(command.type) &&
+    command.status === "REQUESTED")
   .sort((left, right) => {
     const leftDate = parseDate(left.requestedAt)?.getTime() ?? 0;
     const rightDate = parseDate(right.requestedAt)?.getTime() ?? 0;
@@ -74,6 +90,7 @@ for (const command of pendingCommands) {
   try {
     if (command.type === "sync_quotes") runFullRefresh();
     if (command.type === "full_refresh") runFullRefresh();
+    if (command.type === "traderepublic_portal_refresh") runTradeRepublicPortalRefresh();
     const completedAt = new Date();
     await firestore.setDocument("automationCommands", command.id, {
       ...command,

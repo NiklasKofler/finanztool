@@ -507,6 +507,8 @@ async function main() {
         quoteStatus: "OK",
         quoteUpdatedAt: now,
         quoteFetchedAt: now,
+        priceSource: quoteProvider,
+        priceSourceUrl: quote.sourceUrl ?? mapping.sourceUrl ?? null,
         quoteVenue: quote.mic ?? mapping.mic ?? null,
         quoteAgeMinutes: quoteFreshness.quoteAgeMinutes,
         quoteFreshness: quoteFreshness.quoteFreshness,
@@ -594,6 +596,8 @@ async function main() {
         oldestQuoteAsOf: quoteMeta.oldestQuoteAsOf,
         quoteFreshness: quoteMeta.quoteFreshness,
         quoteUpdatedAt: now,
+        quoteDataProvider: quoteProvider,
+        quoteDataUpdatedAt: now,
         positionCount: sourcePositions.length,
         securityPositionCount: securityPositions.length,
         valuationMethod:

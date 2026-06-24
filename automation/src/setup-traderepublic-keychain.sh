@@ -1,19 +1,37 @@
 #!/bin/zsh
 set -euo pipefail
 
-SERVICE="finanztool-traderepublic-pdf-password"
 ACCOUNT="${USER:-niklaskofler}"
+PDF_SERVICE="finanztool-traderepublic-pdf-password"
+PHONE_SERVICE="finanztool-traderepublic-phone"
+PIN_SERVICE="finanztool-traderepublic-pin"
 
-echo "Trade-Republic PDF-Passwort fuer verschluesselte Duplicate-PDFs speichern."
-echo "Der Wert wird nur lokal im macOS-Schluesselbund abgelegt."
-printf "PDF-Passwort: "
+store_secret() {
+  local service="$1"
+  local label="$2"
+  local secret="$3"
+  if [[ -z "$secret" ]]; then
+    echo "[skip] $label bleibt unveraendert."
+    return
+  fi
+  security add-generic-password -U -a "$ACCOUNT" -s "$service" -w "$secret"
+  echo "[ok] $label im Schluesselbund gespeichert: $service"
+}
+
+echo "Trade-Republic-Zugangsdaten lokal im macOS-Schluesselbund speichern."
+echo "Leer lassen, wenn ein Wert unveraendert bleiben soll."
+echo ""
+
+printf "Telefonnummer im internationalen Format (+43...): "
+read -r PHONE
+store_secret "$PHONE_SERVICE" "Telefonnummer" "$PHONE"
+
+printf "Trade-Republic PIN: "
+read -rs PIN
+printf "\n"
+store_secret "$PIN_SERVICE" "PIN" "$PIN"
+
+printf "PDF-Passwort fuer Duplicate-PDFs: "
 read -rs PASSWORD
 printf "\n"
-
-if [[ -z "$PASSWORD" ]]; then
-  echo "Abgebrochen: Passwort ist leer." >&2
-  exit 1
-fi
-
-security add-generic-password -U -a "$ACCOUNT" -s "$SERVICE" -w "$PASSWORD"
-echo "[ok] Passwort im Schluesselbund gespeichert: $SERVICE"
+store_secret "$PDF_SERVICE" "PDF-Passwort" "$PASSWORD"

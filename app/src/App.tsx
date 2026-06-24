@@ -27,7 +27,9 @@ import {
   loadSourceSummaries,
   loadSystemHealth,
   loadQuoteSyncCommand,
+  loadTradeRepublicPortalCommand,
   requestQuoteSync,
+  requestTradeRepublicPortalRefresh,
   type AgentStatusDocument,
   type SourceSummaryAccount,
   type SourceSummaryDocument,
@@ -61,10 +63,11 @@ const sourceSortOrder = [
   "vbv",
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
+type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
 
 const agentStatusIds: Record<string, string | string[]> = {
   flatex: ["flatex", "flatex_documents"],
-  traderepublic: ["traderepublic_manual_exports"],
+  traderepublic: ["traderepublic_manual_exports", "traderepublic_portal"],
   ginmon: ["ginmon", "ginmon_documents"],
   intergold: "intergold",
   bitget: ["bitget", "bitget_ledger"],
@@ -123,11 +126,32 @@ const agentDisplayMeta: Record<string, { label: string; responsibility: string }
     label: "Trade Republic Export-Agent",
     responsibility: "Selbst gesendete Exporte ohne Betreff: Net Worth, Transaction Export und Account Statement",
   },
+  traderepublic_portal: {
+    label: "Trade Republic Portal-Agent",
+    responsibility: "Manueller Portal-Refresh: Login, App-Bestaetigung und Transaction-History-Export aus Trade Republic",
+  },
   vbv: {
     label: "VBV Agent",
     responsibility: "VBV-Portalstichtag, Kontoinformation-PDF und Vertragswerte",
   },
 };
+
+function getTradeRepublicPortalButtonLabel(
+  requestStatus: CommandRequestStatus,
+  portalStatus?: AgentStatusDocument,
+) {
+  const message = portalStatus?.message ?? "";
+  if (requestStatus === "requesting") return "Anfrage";
+  if (requestStatus === "requested") return "Wartet";
+  if (requestStatus === "error") return "Fehler";
+  if (requestStatus !== "running") return "Refresh";
+
+  if (/bestaetigung|bestätigung|freigabe|approve|app/i.test(message)) return "App bestätigen";
+  if (/pin/i.test(message)) return "PIN";
+  if (/telefon|land|login/i.test(message)) return "Login";
+  if (/portal|snapshot|portfolio|transaction|download/i.test(message)) return "Liest Portal";
+  return "Läuft";
+}
 
 function formatCurrency(value?: number) {
   if (typeof value !== "number") {
@@ -525,6 +549,29 @@ function getAgentSuccessTimestamp(status?: AgentStatusDocument) {
   return status?.lastAgentSuccessAt ?? status?.lastSuccessAt ?? null;
 }
 
+function getAgentDetailLines(status?: AgentStatusDocument) {
+  if (!status) return [];
+  const lines: string[] = [];
+  if (typeof status.portalDocumentUnresolvedFailureCount === "number" && status.portalDocumentUnresolvedFailureCount > 0) {
+    lines.push(`${status.portalDocumentUnresolvedFailureCount} Portal-Dokumentfehler ungelöst`);
+  } else if (typeof status.portalDocumentFailedCount === "number" && status.portalDocumentFailedCount > 0) {
+    lines.push(`${status.portalDocumentFailedCount} Portal-Dokumentbutton ohne PDF`);
+  }
+  if (typeof status.portalDocumentDomFallbackCount === "number" && status.portalDocumentDomFallbackCount > 0) {
+    lines.push(`${status.portalDocumentDomFallbackCount} DOM-Fallback(s) ausgewertet`);
+  }
+  if (status.portalDocumentUnknownLabels?.length) {
+    lines.push(`Unbekannte Labels: ${status.portalDocumentUnknownLabels.join(", ")}`);
+  }
+  if (typeof status.unknownCount === "number" && status.unknownCount > 0) {
+    lines.push(`${status.unknownCount} unbekannte Dokumente`);
+  }
+  if (typeof status.warningCount === "number" && status.warningCount > 0 && !lines.length) {
+    lines.push(`${status.warningCount} Warnung(en)`);
+  }
+  return lines.slice(0, 3);
+}
+
 function AgentStatusBadge({
   status,
   emptyLabel = "Ohne Agent",
@@ -733,9 +780,9 @@ function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [quoteRequestStatus, setQuoteRequestStatus] = useState<
-    "idle" | "requesting" | "requested" | "running" | "error"
-  >("idle");
+  const [quoteRequestStatus, setQuoteRequestStatus] = useState<CommandRequestStatus>("idle");
+  const [tradeRepublicPortalRequestStatus, setTradeRepublicPortalRequestStatus] =
+    useState<CommandRequestStatus>("idle");
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
@@ -812,22 +859,24 @@ function App() {
     await signOut(services.auth);
   }
 
+  async function refreshPortfolioData() {
+    const services = getFirebaseServices();
+    if (!services) return;
+    const [summaries, loadedAgentStatuses, loadedPositions, health] = await Promise.all([
+      loadSourceSummaries(services.db),
+      loadAgentStatuses(services.db),
+      loadSourcePositions(services.db),
+      loadSystemHealth(services.db),
+    ]);
+    setSourceSummaries(summaries);
+    setAgentStatuses(loadedAgentStatuses);
+    setPositions(loadedPositions);
+    setSystemHealth(health);
+  }
+
   async function handleRequestQuoteSync() {
     const services = getFirebaseServices();
     if (!services || !authUser) return;
-
-    async function refreshPortfolioData() {
-      const [summaries, loadedAgentStatuses, loadedPositions, health] = await Promise.all([
-        loadSourceSummaries(services!.db),
-        loadAgentStatuses(services!.db),
-        loadSourcePositions(services!.db),
-        loadSystemHealth(services!.db),
-      ]);
-      setSourceSummaries(summaries);
-      setAgentStatuses(loadedAgentStatuses);
-      setPositions(loadedPositions);
-      setSystemHealth(health);
-    }
 
     try {
       setQuoteRequestStatus("requesting");
@@ -855,6 +904,43 @@ function App() {
       setQuoteRequestStatus("idle");
     } catch {
       setQuoteRequestStatus("error");
+    }
+  }
+
+  async function handleRequestTradeRepublicPortalRefresh() {
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    try {
+      setTradeRepublicPortalRequestStatus("requesting");
+      await requestTradeRepublicPortalRefresh(services.db, authUser.email);
+      setTradeRepublicPortalRequestStatus("requested");
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4000));
+        const [command, loadedAgentStatuses] = await Promise.all([
+          loadTradeRepublicPortalCommand(services.db),
+          loadAgentStatuses(services.db),
+        ]);
+        setAgentStatuses(loadedAgentStatuses);
+        if (command?.status === "RUNNING") {
+          setTradeRepublicPortalRequestStatus("running");
+          continue;
+        }
+        if (command?.status === "DONE") {
+          await refreshPortfolioData();
+          setTradeRepublicPortalRequestStatus("idle");
+          return;
+        }
+        if (command?.status === "ERROR") {
+          await refreshPortfolioData().catch(() => undefined);
+          setTradeRepublicPortalRequestStatus("error");
+          return;
+        }
+      }
+      await refreshPortfolioData().catch(() => undefined);
+      setTradeRepublicPortalRequestStatus("idle");
+    } catch {
+      setTradeRepublicPortalRequestStatus("error");
     }
   }
 
@@ -1218,6 +1304,10 @@ function App() {
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
               const sourceAgentRuns = getSourceAgentRunViews(source.id, agentStatuses);
+              const tradeRepublicPortalButtonLabel = getTradeRepublicPortalButtonLabel(
+                tradeRepublicPortalRequestStatus,
+                agentStatuses.traderepublic_portal,
+              );
 
               return (
                 <article className="source-card" key={source.id}>
@@ -1230,8 +1320,25 @@ function App() {
                         <h3>{source.name}</h3>
                         <p>{source.purpose}</p>
                       </div>
-                      <AgentStatusBadge status={source.agentStatus} />
+                      <div className="source-card__header-actions">
+                        <AgentStatusBadge status={source.agentStatus} />
+                      </div>
                     </div>
+
+                    {source.id === "traderepublic" ? (
+                      <div className="source-card__portal-action source-card__portal-action--primary">
+                        <button
+                          type="button"
+                          className="source-card__refresh-button source-card__refresh-button--wide"
+                          onClick={handleRequestTradeRepublicPortalRefresh}
+                          disabled={["requesting", "requested", "running"].includes(tradeRepublicPortalRequestStatus)}
+                        >
+                          <RefreshCcw aria-hidden="true" />
+                          <span>Trade Republic: {tradeRepublicPortalButtonLabel}</span>
+                        </button>
+                      </div>
+                    ) : null}
+
                     <dl className="source-card__metrics">
                       <div>
                         <dt>Depotwert</dt>
@@ -1316,6 +1423,7 @@ function App() {
                             const runText = formatUpdatedAt(runTimestamp);
                             const successText = formatUpdatedAt(successTimestamp);
                             const showSuccess = successText !== "Noch offen" && successText !== runText;
+                            const detailLines = getAgentDetailLines(entry.status);
                             return (
                               <div className="source-card__agent-row" key={entry.id}>
                                 <div className="source-card__agent-head">
@@ -1341,6 +1449,13 @@ function App() {
                                 </div>
                                 {entry.status?.message && entry.status.status !== "OK" ? (
                                   <div className="source-card__agent-message">{entry.status.message}</div>
+                                ) : null}
+                                {detailLines.length ? (
+                                  <div className="source-card__agent-details">
+                                    {detailLines.map((line) => (
+                                      <span key={line}>{line}</span>
+                                    ))}
+                                  </div>
                                 ) : null}
                               </div>
                             );

@@ -21,6 +21,8 @@ const services = [
   { service: "finanztool-flatex-password", label: "Flatex Passwort" },
   { service: "finanztool-ginmon-email", label: "Ginmon E-Mail" },
   { service: "finanztool-ginmon-password", label: "Ginmon Passwort" },
+  { service: "finanztool-traderepublic-phone", label: "Trade Republic Telefonnummer" },
+  { service: "finanztool-traderepublic-pin", label: "Trade Republic PIN" },
   { service: "finanztool-traderepublic-pdf-password", label: "Trade Republic PDF-Passwort" },
   { service: "finanztool-vbv-email", label: "VBV E-Mail" },
   { service: "finanztool-vbv-password", label: "VBV Passwort" },

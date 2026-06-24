@@ -73,6 +73,50 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   - `ftp`/`ftu` prueft vor dem Commit, ob GitHub neuer ist, und bricht dann ab.
   - `ftp`/`ftu` deployed Firebase erst nach verifiziertem Push und nur Hosting.
 
+## Aktueller Trade-Republic-Fahrplan ab 2026-06-23
+
+Zielbild:
+
+- Der Trade-Republic-Mail-Agent soll fachlich abgeloest werden.
+- Zielquelle ist das authentifizierte Trade-Republic-Webportal.
+- Prioritaet der Datenquellen:
+  1. Offizielle PDFs/Downloads aus dem Webportal, wenn vorhanden.
+  2. DOM-/Accessibility-Scraping nur fuer aktuelle Portalwerte oder wenn ein
+     offizieller Download nicht angeboten wird.
+  3. Selbst gemailte App-Exporte bleiben nur Rueckfall-/Kontrollkanal, bis der
+     Portal-Agent alle notwendigen Informationen nachweislich vollstaendig
+     liefert.
+
+Arbeitsreihenfolge:
+
+1. Login stabilisieren:
+   - Web-Login mit lokal gespeicherter Telefonnummer/PIN.
+   - Nutzer bestaetigt Login in der Trade-Republic-App.
+   - Die Trade-Republic-Karte muss waehrenddessen sichtbar zeigen, dass auf
+     die App-Bestaetigung gewartet wird.
+2. Portal inventarisieren:
+   - Wo sind PDF-/Dokumentdownloads erreichbar?
+   - Welche Dokumenttypen gibt es je Transaktion/Activity/Portfolio?
+   - Welche Links sind echte Downloads und welche sind nur temporaere
+     Presigned-URLs?
+3. PDFs herunterladen, hashen, archivieren und parsen:
+   - Abrechnungen/Sparplanausfuehrungen
+   - Zins-/Cash-/Einzahlungsbelege, falls vorhanden
+   - Private-Markets-Dokumente, falls vorhanden
+   - Tax/Annual/Legal nur soweit fachlich relevant
+4. Datenlueckenanalyse:
+   - Was liefert das Portal vollstaendig?
+   - Was liefert nur das Net-Worth-/Transaction-/Account-Statement-Exportpaket?
+   - Welche Kosten, Steuern, Zinsen, Einstandswerte oder Historienfelder fehlen
+     noch?
+
+Umsetzung 2026-06-23:
+
+- Der Trade-Republic-Refresh-Button zeigt waehrend eines laufenden
+  Portal-Refreshs jetzt Agentphasen aus `agentStatus/traderepublic_portal`.
+- Wenn die Agentmeldung auf App-Bestaetigung/Freigabe wartet, zeigt der Button
+  `App bestätigen`.
+
 ## Rollen der Geraete
 
 ### MacBook Pro
@@ -140,11 +184,11 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-22 20:28 CEST
+- Stand: 2026-06-24 23:13 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `9994c4d`
-- Handoff-Commit: `bbc6885`
-- Firebase Deploy: 2026-06-22 20:28 CEST erfolgreich
+- Ausgangscommit: `10e5d16`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -1254,6 +1298,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `intergold`: Websitepreise, Belege und Metallbewertung
   - `traderepublic_manual_exports`: selbst gemailte Trade-Republic-Exporte ohne
     Betreff, Net Worth, Transaction Export und Account Statement
+  - `traderepublic_portal`: manueller Portal-Refresh aus der Karte; Chrome-
+    Login mit lokaler Keychain, App-Bestaetigung und offizieller
+    Transaction-History-Download, kein Import von unsicheren Browsertext-
+    Scrapes
   - `capitalcom`: Kontostand, Cash und offene Positionen aus der API
   - `vbv`: Portalstichtag, Kontoinformation-PDF und Vertragswerte
 - Umgesetzte Dateien:
@@ -1321,6 +1369,53 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     aktive Trade-Republic-Agent auf dem Mac Studio.
   - LaunchAgent `com.niklas.finanztool.traderepublic-mail` soll vorerst nicht
     geladen sein.
+  - Neuer App-Button/Portal-Agent 2026-06-22:
+    - Trade-Republic-Karte zeigt einen `Refresh`-Button.
+    - Button schreibt `automationCommands/traderepublic_portal_refresh`.
+    - Command-Runner startet
+      `automation/src/download-traderepublic-local.mjs --write`.
+    - Login-Daten duerfen nie ins Repo oder Firestore; sie liegen lokal in
+      Keychain-Services `finanztool-traderepublic-phone` und
+      `finanztool-traderepublic-pin`.
+    - Der Agent wartet nach Telefon/PIN auf die Bestaetigung in der
+      Trade-Republic-App.
+    - Portal-Snapshot-Update 2026-06-23:
+      - Der Agent liest zusaetzlich `Portfolio`, `Transactions` und `Activity`
+        aus dem Trade-Republic-Webportal.
+      - Er stellt die Portfolio-Liste vor dem Parsen auf `Since buy`; `Daily
+        trend` darf nicht als Positionsbestand interpretiert werden.
+      - Er unterstuetzt deutsches und englisches Zahlenformat, z. B.
+        `149,49 EUR` und `149.49 EUR`.
+      - Geschrieben wird `sourceDocumentFacts/traderepublic_portal_snapshot_latest`
+        als Portal-Beobachtung mit sichtbaren Positionen, sichtbaren
+        Transaktionen, Cash und Activity-Text.
+      - Sichtbare Brokerage-Positionen werden nur bei eindeutigem Namensmatch
+        mit `quoteProvider=traderepublic_portal_web` aktualisiert.
+      - Private Markets werden nur als `traderepublic_portal_total_implied`
+        aktualisiert: Portfolio-Gesamtwert minus gelistete Positionen.
+      - Cash kommt aus `Profile > Transactions`.
+      - `sourceSummaries/traderepublic.netValue` enthaelt jetzt Portalwert plus
+        Cash; `depotValue` bleibt der Investmentwert ohne Cash.
+      - Wenn kein offizieller Download gefunden wird, ist das kein harter
+        Fehler mehr, solange der Portal-Snapshot erfolgreich war. Der Agent
+        schreibt dann `agentStatus/traderepublic_portal=OK` mit Hinweis
+        `kein offizieller Download-Button gefunden`.
+    - Offizielle Downloads aus dem Portal werden weiterhin, falls vorhanden, in
+      `00_Inbox/TradeRepublic/ManualExports/Portal` abgelegt und durch den
+      bestehenden Manual-Export-Parser verarbeitet.
+    - Browsertext aus dem Portal ist aktuelle Bewertungs-/Transparenzquelle,
+      aber kein vollstaendiger Audit-Ersatz fuer Transaktionen, Steuern und
+      Kosten. Dafuer bleiben `Transaction export`, `Account statement`,
+      `Net Worth` und Tax-Reports massgeblich.
+  - Verifikation 2026-06-23:
+    - echter Portal-Write-Lauf erfolgreich.
+    - `agentStatus/traderepublic_portal=OK`
+    - `visiblePositionCount=4`, `visibleTransactionCount=30`
+    - `cashValue=149,49 EUR`
+    - `brokerSnapshotValue=2.445,65 EUR`
+    - `brokerageValue=1.263,83 EUR`
+    - `privateMarketsValue=1.181,82 EUR`
+    - `netValue=2.595,14 EUR` inklusive Cash.
 - Neue verbindliche Betriebsregel 2026-06-22:
   - Bis Trade Republic automatische vollstaendige Exporte anbietet, sendet der
     Nutzer moeglichst taeglich App-Exporte ohne Betreff an die eigene
@@ -1348,6 +1443,181 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       `PARSED` angewendet wurde, darf ein spaeterer transient schlechter
       Wiederholungsscan keine Health-Warnung erzeugen.
     - Verifikation: echter Maillauf `sync:traderepublic-manual-exports -- --no-quotes`
-      verarbeitet 3/3 Dokumente, `systemHealth/current=OK`.
+  - Portal-PDF-Crawler Stufe 1 umgesetzt am 2026-06-23:
+    - Datei: `automation/src/download-traderepublic-local.mjs`
+    - Nach Login/App-Freigabe scannt der Agent `Profile > Transactions` nach
+      Dokumenten.
+    - Erkannte Labels: `Billing Execution`, `Inbound Invoice`, `Statement`,
+      `Transaction confirmation`, `Dividend equivalent`.
+    - PDF-Popups werden direkt heruntergeladen; temporaere Presigned-URLs
+      werden nicht gespeichert.
+    - Dedupe primaer per SHA-256.
+    - Ablage Original:
+      `01_Originale/TradeRepublic/PortalDocuments/<documentType>/`
+    - Ablage Text:
+      `02_Archiviert/TradeRepublic/PortalDocuments/Text/<documentType>/`
+    - Bei `--write` werden `sourceDocuments`,
+      `sourceDocumentFacts` und Fehler-Fakten geschrieben.
+    - Voll geparst in Stufe 1:
+      - `Billing Execution` als `security_execution`
+      - `Inbound Invoice` als `cash_deposit`
+    - Noch nicht automatisch in Ledger/Kosten/Zinsen ueberfuehrt:
+      `Statement`, `Transaction confirmation`, `Dividend equivalent`.
+    - Verifikation:
+      - `node --check automation/src/download-traderepublic-local.mjs`
+        erfolgreich.
+      - `npm --prefix app run build` erfolgreich.
+      - Login-Erkennung korrigiert: authentifizierte URLs wie
+        `/profile/activities` zaehlen als eingeloggt, auch wenn der Body-Text
+        noch nicht alle erwarteten Woerter enthaelt.
+      - Portal-Detailansicht ist `.sideModal`, Dokumentbuttons liegen in
+        `.detailDocuments`; die ganze Seite darf nicht als Dokumentbereich
+        interpretiert werden.
+      - Echter `--write`-Lauf am 2026-06-23 erfolgreich:
+        - `sourceDocuments`: 4 Portal-Dokumente
+        - `sourceDocumentFacts`: 4 Portal-Fakten
+        - 3 `security_execution` aus `Billing Execution`
+        - 1 `cash_deposit` aus `Inbound Invoice`
+        - 0 Portal-Dokumentfehler
+        - `agentStatus/traderepublic_portal=OK`
+      - Agentstatus zeigt kuenftig PDF-Anzahl im aktuellen Lauf plus kumulierte
+        Portal-Dokumentanzahl.
+  - Portal-Fakten-Anwendung umgesetzt am 2026-06-23:
+    - Datei: `automation/src/download-traderepublic-local.mjs`
+    - Neuer Befehl:
+      `npm --prefix automation run sync:traderepublic-portal-facts`
+    - Zweck: bereits geladene Portal-Dokumentfakten ohne Browser-Login
+      idempotent operativ anwenden.
+    - Portal-Dokumente bekommen eine fachliche `portalTransactionSignature`
+      aus Dokumentlabel, Datum, Titel und Betrag. Damit weiss der Agent vor
+      dem Klick, ob ein Portalvorgang bereits bekannt ist.
+    - Operative Anwendung schreibt:
+      - `transactions/traderepublic_portal_tx_*`
+      - `ledgerEntries/traderepublic_portal_ledger_*`
+      - bei Gebuehren `costEvents/*`
+      - aktualisierte `sourcePositions` fuer Menge/Einstand
+      - `sourceDocumentFacts/traderepublic_portal_application_*`
+    - Dedupe gegen Manual-Export:
+      - Wertpapierausfuehrungen: Datum, ISIN, Menge, Betrag
+      - Cash-Einzahlungen: Wertstellung, Betrag, Konto
+    - Wenn ein manueller Export denselben Vorgang bereits enthaelt, wird der
+      Portalvorgang als `SKIPPED_DUPLICATE_MANUAL` dokumentiert und nicht
+      operativ geschrieben.
+    - Verifikation:
+      - `node --check automation/src/download-traderepublic-local.mjs`
+        erfolgreich.
+      - Erster Lauf `sync:traderepublic-portal-facts`: 4 neu angewendet.
+      - Zweiter Lauf `sync:traderepublic-portal-facts`: 0 neu, 4
+        uebersprungen.
+      - Firestore: 4 `portal_document_application` mit `status=APPLIED`,
+        3 vorlaeufige Portal-Transaktionen, 4 Portal-Ledger-Eintraege.
+  - Informationsluecke Trade Republic Stand 2026-06-23:
+    - Grosser Portal-Lauf mit `TR_PORTAL_DOCUMENT_SCAN_LIMIT=80`:
+      - 67 Portal-Dokumente insgesamt
+      - 65 `billing_execution`
+      - 1 `inbound_invoice`
+      - 1 `tax_report`
+      - alle 67 als `PARSED`
+    - Tax Report 2025 ist im Webportal unter
+      `Profile > Activity > Annual Tax Report 2025` erreichbar und wurde als
+      Portal-PDF/Fakt gespeichert. Er muss nicht mehr manuell per Mail kommen,
+      solange der Portalzugriff funktioniert.
+    - Duplicate-Statement-Mails sind fuer Wertpapierabrechnungen nicht mehr
+      erforderlich, weil dieselben `Billing Execution`-PDFs aus der Web-App
+      geladen werden.
+    - Private-Equity-Korrektur:
+      - Sechs Private-Equity-Portalbuchungen waren kurz doppelt angewendet,
+        weil `private_market_cash` aus dem CSV nicht als Duplikat zu
+        `Billing Execution` erkannt wurde.
+      - Fix: `private_market_cash` wird jetzt gegen Private-Equity-
+        Portalabrechnungen dedupliziert.
+      - Betroffene Portal-Anwendungen wurden auf
+        `SKIPPED_DUPLICATE_MANUAL` gesetzt und aus
+        `transactions`/`ledgerEntries` entfernt.
+      - Private-Equity-Einstand kommt nicht mehr aus allen
+        `private_market_cash`-Fakten, weil diese auch Vorabzahlungen/
+        Cashflows enthalten koennen.
+      - Neue Regel seit 2026-06-23: Fuer Private Equity `LU3176111881`
+        haben ausgefuehrte Trade-Fakten Vorrang. Einstand = Summe
+        `Stueck * Kurs` aus `factType=trade`; verifiziert:
+        `11,178226` Stueck und `1.145,40 EUR` Einstand.
+      - `private_market_cash` ist nur Rueckfallquelle, wenn keine
+        ausgefuehrten Private-Equity-Trade-Fakten vorhanden sind.
+    - Fallback-/Warnlogik umgesetzt am 2026-06-23:
+      - Wenn ein Portal-Dokumentbutton kein PDF liefert, versucht der Agent
+        einen DOM-Fallback aus der sichtbaren Detailansicht.
+      - DOM-Fakten werden mit `sourceChannel=traderepublic_portal_dom`
+        gespeichert.
+      - Zinsen werden nur dann aus dem DOM akzeptiert, wenn echte
+        Zinsmerkmale wie `Interest`, `Accrued`, `You received` oder `Zins`
+        im Detailtext stehen. Ein zu grosszuegiger Test-Fallback wurde wieder
+        aus Firestore entfernt.
+      - Drei `Transaction confirmation`-Buttons fuer Cashbewegungen lieferten
+        weiter `Something went wrong` und bleiben als echte Warnung sichtbar.
+      - `agentStatus/traderepublic_portal` steht deshalb korrekt auf
+        `WARNUNG`, nicht auf `OK`.
+      - `systemHealth/current` warnt depotuebergreifend bei unbekannten
+        Dokumenten, unbekannten Dokumentfakten und ungelösten
+        Portal-Dokumentfehlern.
+    - Noch nicht voll automatisiert:
+      - Die drei offenen `Transaction confirmation`-Buttons brauchen Retry
+        oder einen besseren DOM-Cash-Fallback.
+      - Vollstaendige historische Transaktionsliste per Web-DOM muss noch
+        produktiv als Ersatz fuer `Transaction export.csv` umgesetzt werden.
+    - Aktuelle Zusende-Regel:
+      - Keine Duplicate-Statement-Mails mehr noetig.
+      - Tax Report nicht mehr per Mail noetig.
+      - Net-Worth-PDF fuer taeglichen aktuellen Wert nicht mehr zwingend,
+        weil der Portal-Snapshot Portfolio/Cash liest; optional als Kontrolle.
+      - Bis Zins-/Cash-DOM-Fallback produktiv ist, bleibt
+        `Transaction export.csv` die sichere Quelle fuer Zinsen, Steuern,
+        Dividenden, Cash-Historie und Private-Markets-Cashflows.
+      - `Account statement.pdf` nur noch fuer Cash-Reconciliation sinnvoll,
+        solange einzelne `Transaction confirmation`-PDFs fehlschlagen.
+  - Gegencheck 2026-06-23 mit App-Freigabe:
+    - Portal-Refresh erfolgreich; keine neuen Portal-PDFs, Snapshot wurde
+      aktualisiert.
+    - Trade-Republic-Werte danach: Depotwert `2.437,42 EUR`, Cash
+      `149,49 EUR`, Netto `2.586,91 EUR`, Einstand `2.336,41 EUR`,
+      G/V `+101,01 EUR` / `+4,3 %`.
+    - Einzelpositionen: Private Equity `+36,41 EUR`, NASDAQ100 `+57,05 EUR`,
+      Core S&P 500 `+16,11 EUR`, Netflix `-4,04 EUR`,
+      Stoxx Europe Defense `-4,52 EUR`.
+    - Wichtig: Netflix bleibt der Stockperk/Bonusfall mit Einstand
+      `10,06 EUR`; laut aktuellem Portal ist aber zusaetzlich Stoxx Europe
+      Defense leicht negativ. Trade Republic gesamt ist trotzdem positiv.
+    - UI-Fix: Trade-Republic-Portal-Button sitzt jetzt als breite Aktionszeile
+      in der Trade-Republic-Karte und zeigt waehrend des Logins
+      `Trade Republic: App bestätigen`.
+  - Preislogik-/Redundanz-Audit 2026-06-24:
+    - Gelistete Trade-Republic-Positionen werden aktuell aktiv mit
+      Boerse-Frankfurt/Xetra-Kursen bewertet. Felder muessen konsistent sein:
+      `quoteProvider=boerse-frankfurt`,
+      `priceSource=boerse-frankfurt`,
+      `valuationMethod=boerse-frankfurt_quote_v1`.
+    - Der letzte Broker-/Portalwert bleibt separat als `brokerCurrentValue`
+      und `brokerQuoteProvider=traderepublic_portal_web` erhalten.
+    - Private Equity bleibt `traderepublic_portal_total_implied`.
+    - Cash bleibt `traderepublic_portal_cash_v1`.
+    - Fix: `sync-quotes-local.mjs` schreibt jetzt `priceSource`,
+      `priceSourceUrl`, `quoteDataProvider` und `quoteDataUpdatedAt`
+      konsistent pro Kurslauf.
+    - Aktueller Firestore-Stand nach Kurslauf:
+      Depotwert `2.428,22 EUR`, Cash `149,49 EUR`, Netto
+      `2.577,71 EUR`, Einstand `2.336,41 EUR`, G/V
+      `+91,81 EUR` / `+3,9 %`.
+    - Duplikatpruefung:
+      - keine doppelten `transactions.transactionId`
+      - `63` Portal-Anwendungen korrekt als
+        `SKIPPED_DUPLICATE_MANUAL`
+      - zwei Private-Equity-Ledgerzeilen am 2026-06-08 ueber je
+        `50 EUR` sind echte zwei Ausfuehrungen mit unterschiedlichen
+        Trade-Republic-Transaktions-IDs/Uhrzeiten
+      - eine echte redundante Dokumentspur bleibt: `Tax Report 2025.pdf`
+        gleicher `fileHash` in Baseline, Mail-Import und Portal-Import;
+        wirkt nicht operativ auf Werte, soll spaeter ueber kanonischen
+        `source + fileHash`-Dedupe bereinigt werden.
+    - UI-Fix nach Nutzerfeedback: Trade-Republic-Portal-Button wurde ganz
+      nach oben direkt unter den Trade-Republic-Kopf verschoben.
 - Detailplan:
   - `docs/traderepublic_import_strategie.md`

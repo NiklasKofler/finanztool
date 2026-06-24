@@ -47,6 +47,190 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-24 23:13 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-24 23:13 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `10e5d16`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-automation-commands-local.mjs
+  -  M automation/src/setup-traderepublic-keychain.sh
+  -  M automation/src/sync-quotes-local.mjs
+  -  M docs/device_switch_log.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  - ?? automation/src/download-traderepublic-local.mjs
+  - ?? automation/src/trade-republic-browser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
+### 2026-06-24 23:04 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-24 23:04 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `10e5d16`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-automation-commands-local.mjs
+  -  M automation/src/setup-traderepublic-keychain.sh
+  -  M docs/device_switch_log.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  - ?? automation/src/download-traderepublic-local.mjs
+  - ?? automation/src/trade-republic-browser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
+### 2026-06-23 23:52 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-23 23:52 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `10e5d16`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-automation-commands-local.mjs
+  -  M automation/src/setup-traderepublic-keychain.sh
+  -  M docs/device_switch_log.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  - ?? automation/src/download-traderepublic-local.mjs
+  - ?? automation/src/trade-republic-browser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
+### 2026-06-23 22:34 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-23 22:34 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `10e5d16`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-automation-commands-local.mjs
+  -  M automation/src/setup-traderepublic-keychain.sh
+  -  M docs/device_switch_log.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  - ?? automation/src/download-traderepublic-local.mjs
+  - ?? automation/src/trade-republic-browser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
+### 2026-06-23 20:21 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-23 20:21 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `10e5d16`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-automation-commands-local.mjs
+  -  M automation/src/setup-traderepublic-keychain.sh
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  - ?? automation/src/download-traderepublic-local.mjs
+  - ?? automation/src/trade-republic-browser.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-22 20:28 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-22 20:28 CEST

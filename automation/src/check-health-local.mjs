@@ -17,6 +17,7 @@ const documentValuedInstruments = {
 const staleHoursByAgent = {
   flatex: 12,
   traderepublic_manual_exports: 2,
+  traderepublic_portal: 24,
   ginmon: 48,
   intergold: 72,
   bitget: 6,
@@ -197,7 +198,7 @@ const firestore = new FirestoreRest({
 });
 
 const now = new Date();
-const [positions, summaries, statuses, mappings, imports, sourceAccounts, sourceDocuments] = await Promise.all([
+const [positions, summaries, statuses, mappings, imports, sourceAccounts, sourceDocuments, sourceDocumentFacts] = await Promise.all([
   firestore.listDocuments("sourcePositions"),
   firestore.listDocuments("sourceSummaries"),
   firestore.listDocuments("agentStatus"),
@@ -205,6 +206,7 @@ const [positions, summaries, statuses, mappings, imports, sourceAccounts, source
   firestore.listDocuments("imports"),
   firestore.listDocuments("sourceAccounts"),
   firestore.listDocuments("sourceDocuments"),
+  firestore.listDocuments("sourceDocumentFacts"),
 ]);
 
 const alerts = [];
@@ -561,6 +563,105 @@ if (unclassifiedTradeRepublicDocuments.length) {
         documentType: document.documentType,
         parseStatus: document.parseStatus,
         baselineId: document.baselineId ?? null,
+      })),
+    ),
+  );
+}
+
+const genericUnclassifiedDocuments = sourceDocuments.filter(
+  (document) =>
+    expectedSources.includes(document.source) &&
+    !["ginmon", "flatex", "traderepublic"].includes(document.source) &&
+    (document.documentType === "unknown" ||
+      document.documentType === "unknown_portal_document" ||
+      document.parseStatus === "UNKNOWN" ||
+      document.parseStatus === "UNPARSED"),
+);
+
+if (genericUnclassifiedDocuments.length) {
+  const bySource = genericUnclassifiedDocuments.reduce((groups, document) => {
+    const source = document.source ?? "unknown";
+    groups[source] = (groups[source] ?? 0) + 1;
+    return groups;
+  }, {});
+  alerts.push(
+    alert(
+      "generic_unclassified_documents",
+      "warning",
+      "Unbekannte Dokumente erkannt",
+      Object.entries(bySource)
+        .map(([source, count]) => `${source}: ${count}`)
+        .join(", "),
+      null,
+      genericUnclassifiedDocuments.slice(0, 12).map((document) => ({
+        id: document.id,
+        source: document.source,
+        fileName: document.fileName,
+        documentType: document.documentType,
+        parseStatus: document.parseStatus,
+      })),
+    ),
+  );
+}
+
+const unknownFacts = sourceDocumentFacts.filter(
+  (fact) =>
+    expectedSources.includes(fact.source) &&
+    (fact.factType === "unknown" ||
+      fact.factType === "unknown_portal_document" ||
+      fact.parseStatus === "UNKNOWN" ||
+      fact.parseStatus === "UNPARSED"),
+);
+
+if (unknownFacts.length) {
+  alerts.push(
+    alert(
+      "unknown_document_facts",
+      "warning",
+      "Unbekannte Dokumentfakten erkannt",
+      `${unknownFacts.length} Dokumentfakt(en) passen nicht in die bisherige Datenstruktur.`,
+      null,
+      unknownFacts.slice(0, 12).map((fact) => ({
+        id: fact.id,
+        source: fact.source,
+        sourceChannel: fact.sourceChannel ?? null,
+        factType: fact.factType,
+        parseStatus: fact.parseStatus ?? null,
+        portalDocumentLabel: fact.portalDocumentLabel ?? null,
+      })),
+    ),
+  );
+}
+
+const portalSuccessSignatures = new Set(
+  sourceDocumentFacts
+    .filter((fact) => fact.source === "traderepublic")
+    .filter((fact) => ["traderepublic_portal_web", "traderepublic_portal_dom"].includes(fact.sourceChannel))
+    .filter((fact) => !["portal_document_failure", "portal_document_application"].includes(fact.factType))
+    .map((fact) => fact.portalTransactionSignature)
+    .filter(Boolean),
+);
+const unresolvedPortalFailures = sourceDocumentFacts.filter(
+  (fact) =>
+    fact.source === "traderepublic" &&
+    fact.factType === "portal_document_failure" &&
+    !portalSuccessSignatures.has(fact.portalTransactionSignature),
+);
+
+if (unresolvedPortalFailures.length) {
+  alerts.push(
+    alert(
+      "traderepublic_portal_unresolved_document_failures",
+      "warning",
+      "Trade-Republic-Portal-Dokumente nicht abrufbar",
+      `${unresolvedPortalFailures.length} Portal-Dokumentbutton(s) liefern weder PDF noch auswertbaren DOM-Fallback.`,
+      "traderepublic",
+      unresolvedPortalFailures.slice(0, 10).map((fact) => ({
+        id: fact.id,
+        label: fact.portalDocumentLabel,
+        transactionTitle: fact.transactionTitle,
+        transactionPortalDate: fact.transactionPortalDate,
+        message: fact.message,
       })),
     ),
   );
