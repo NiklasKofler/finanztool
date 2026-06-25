@@ -187,8 +187,8 @@ Umsetzung 2026-06-23:
 - Stand: 2026-06-25 12:39 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
 - Ausgangscommit: `cc1207f`
-- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
-- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
+- Handoff-Commit: `15bd8b7`
+- Firebase Deploy: 2026-06-25 12:39 CEST erfolgreich
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
