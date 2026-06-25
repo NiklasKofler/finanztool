@@ -35,6 +35,8 @@
     "backfill:summaries": "node src/backfill-summaries.mjs",
     "deploy:firestore-rules": "node src/deploy-firestore-rules.mjs",
     "serve:app": "node src/serve-app.mjs",
+    "serve:documents": "node src/serve-documents-local.mjs",
+    "install:document-server": "zsh src/install-document-server-agent.sh",
     "setup:ginmon": "zsh src/setup-ginmon-keychain.sh",
     "inspect:ginmon": "node src/inspect-ginmon-browser.mjs",
     "download:ginmon": "node src/download-ginmon-local.mjs",

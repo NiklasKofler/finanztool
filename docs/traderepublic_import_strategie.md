@@ -1256,3 +1256,89 @@ UI-Fix 2026-06-24:
 - Text: `Trade Republic: Refresh`, im Loginlauf je nach Agentphase
   `Trade Republic: App bestätigen`, `... Login`, `... PIN`,
   `... Liest Portal`.
+- Fehlerfall repariert:
+  - Wenn der Button keinen Firestore-Command schreiben konnte, blieb in der
+    Karte nur `Trade Republic: Fehler` stehen und in der Trade-Republic-App
+    erschien keine Freigabe.
+  - Die UI zeigt bei fehlgeschlagener Anforderung jetzt `Erneut starten` plus
+    technische Fehlermeldung unter dem Button.
+  - Firestore-Regeln wurden am 2026-06-24 gezielt fuer
+    `automationCommands/traderepublic_portal_refresh` deployed.
+  - End-to-End-Test danach erfolgreich:
+    Command `REQUESTED -> RUNNING -> DONE`, Chrome/Login gestartet,
+    Nutzer-App-Freigabe bestaetigt, Portal-Snapshot aktualisiert.
+  - Ergebnis des Testlaufs:
+    - `agentStatus/traderepublic_portal.status=WARNUNG`
+    - Grund der Warnung bleiben die drei alten
+      `Transaction confirmation`-Dokumentbuttons mit `Something went wrong`
+    - aktueller Portal-Snapshot: Depotwert `2.423,14 EUR`, Cash
+      `149,49 EUR`, Netto `2.572,63 EUR`
+
+## Dokumenten-Postfach und Warnabschluss 2026-06-25
+
+Ziel:
+
+- Trade-Republic-Warnungen duerfen nicht nur als Kartentext sichtbar sein.
+- Nicht verarbeitete oder unbekannte Dokumente muessen als pruefbare
+  Postfach-Eintraege in der App erscheinen.
+- Der Nutzer muss pro Dokument oder Dokumenttyp entscheiden koennen:
+  - fachlich abgedeckt
+  - nicht relevant
+  - Parser/Importlogik muss erweitert werden
+
+Umsetzung:
+
+- Neue Firestore-Collection:
+  - `documentReviewDecisions`
+- Zulaessige Entscheidungen:
+  - `covered`
+  - `not_relevant`
+  - `needs_parser`
+- Scope:
+  - `item`: nur genau dieser Dokument-/Faktenfall
+  - `document_type`: alle passenden Dokumente mit gleichem Label/Typ
+- Die App liest problematische Eintraege aus:
+  - `sourceDocuments`
+  - `sourceDocumentFacts`
+  - `documentReviewDecisions`
+- In der App gibt es jetzt ein zentrales `Dokumenten-Postfach` oberhalb der
+  Depotkarten.
+- Das Postfach ist depotuebergreifend: Trade Republic, Flatex, Ginmon,
+  Intergold, Bitget, Capital.com, VBV und spaetere Bankkonten/Kreditkarten.
+- Zunaechst werden dort nur offene/fehlerhafte oder unbekannte Dokumentfaelle
+  angezeigt.
+- Offene Eintraege zaehlen als Warnung.
+- Geschlossene Eintraege bleiben sichtbar, zaehlen aber nicht mehr als
+  offener Fehler.
+
+Wichtige fachliche Regel:
+
+- `Transaction confirmation` wird nicht pauschal ignoriert.
+- Dieser Dokumenttyp kann grundsaetzlich relevant sein.
+- Die drei alten Portalfehler wurden deshalb nur einzeln als
+  `covered` markiert:
+  - `2026-02-02`
+  - `2026-03-03`
+  - `2026-03-31`
+- Grund:
+  - Trade Republic liefert fuer diese alten Portalbuttons kein PDF
+    (`Something went wrong`).
+  - Die fachlichen Transaktionsdaten sind bereits ueber vorhandene
+    Trade-Republic-Transaktionsdaten abgedeckt.
+
+Verifizierter Stand nach Umsetzung:
+
+- `agentStatus/traderepublic_portal.status=OK`
+- `portalDocumentUnresolvedFailureCount=0`
+- `portalDocumentReviewedFailureCount=3`
+- `systemHealth/current` enthaelt keine Trade-Republic-Warnung mehr.
+- Uebrig ist aktuell nur eine Ginmon-Warnung fuer zwei nicht klassifizierte
+  Vertrags-/Datenschutzdokumente.
+
+Technische Regel fuer die Zukunft:
+
+- Neue unbekannte Trade-Republic-Dokumente duerfen nicht stillschweigend
+  verschwinden.
+- Sie muessen als offener Eintrag im Dokumenten-Postfach erscheinen.
+- Erst eine explizite Review-Entscheidung darf sie aus Health-Warnungen
+  herausnehmen.

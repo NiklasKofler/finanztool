@@ -14,5 +14,6 @@ npm run install:traderepublic-manual-export-agent
 npm run install:vbv-agent
 npm run install:quote-agent
 npm run install:command-runner
+npm run install:document-server
 
 echo "[ok] Alle Finanztool-LaunchAgents wurden installiert."

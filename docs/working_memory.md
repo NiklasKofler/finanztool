@@ -184,11 +184,11 @@ Umsetzung 2026-06-23:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-24 23:13 CEST
+- Stand: 2026-06-25 12:39 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `10e5d16`
-- Handoff-Commit: `1280336`
-- Firebase Deploy: 2026-06-24 23:15 CEST erfolgreich
+- Ausgangscommit: `cc1207f`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -1288,6 +1288,11 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Depotkartenbreite nutzen und duerfen auf Mobile nicht in die Icon-Spalte
     oder eine zu schmale Grid-Spalte fallen. Auf iPhone-15-Breite sollen sie
     einspaltig, kompakt und ohne vertikales Buchstabenbrechen erscheinen.
+  - Dashboard-Regel: `Aktive Quellen` und `Warnungen` gehoeren in der
+    Uebersicht in eine gemeinsame Status-Kachel. Warntexte duerfen auf
+    iPhone-15-Breite nicht in eine halbe Kachel gequetscht werden; die
+    eigentliche Warnliste nutzt innerhalb dieser Status-Kachel die volle
+    verfuegbare Breite.
 - Aktuelle Agent-Metadaten in der GUI:
   - `bitget`: Bestände, Wallets und aktuelle Bewertung aus der Bitget API
   - `bitget_ledger`: Transaktionen, Gebühren, Zinsen/Earn und Bewegungen
@@ -1552,16 +1557,18 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
         Zinsmerkmale wie `Interest`, `Accrued`, `You received` oder `Zins`
         im Detailtext stehen. Ein zu grosszuegiger Test-Fallback wurde wieder
         aus Firestore entfernt.
-      - Drei `Transaction confirmation`-Buttons fuer Cashbewegungen lieferten
-        weiter `Something went wrong` und bleiben als echte Warnung sichtbar.
-      - `agentStatus/traderepublic_portal` steht deshalb korrekt auf
-        `WARNUNG`, nicht auf `OK`.
+      - Drei alte `Transaction confirmation`-Buttons fuer Cashbewegungen
+        lieferten weiter `Something went wrong`.
+      - Seit 2026-06-25 werden solche Faelle nicht geloescht, sondern ueber
+        `documentReviewDecisions` fachlich geschlossen, wenn sie durch andere
+        gespeicherte Trade-Republic-Daten abgedeckt sind.
+      - Fuer die drei bekannten Faelle vom `2026-02-02`, `2026-03-03` und
+        `2026-03-31` gibt es je eine `covered`-Entscheidung mit Scope `item`.
+      - `agentStatus/traderepublic_portal` steht danach wieder auf `OK`.
       - `systemHealth/current` warnt depotuebergreifend bei unbekannten
         Dokumenten, unbekannten Dokumentfakten und ungelösten
         Portal-Dokumentfehlern.
     - Noch nicht voll automatisiert:
-      - Die drei offenen `Transaction confirmation`-Buttons brauchen Retry
-        oder einen besseren DOM-Cash-Fallback.
       - Vollstaendige historische Transaktionsliste per Web-DOM muss noch
         produktiv als Ersatz fuer `Transaction export.csv` umgesetzt werden.
     - Aktuelle Zusende-Regel:
@@ -1619,5 +1626,35 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
         `source + fileHash`-Dedupe bereinigt werden.
     - UI-Fix nach Nutzerfeedback: Trade-Republic-Portal-Button wurde ganz
       nach oben direkt unter den Trade-Republic-Kopf verschoben.
+  - Dokumenten-Postfach 2026-06-25:
+    - Neue Collection `documentReviewDecisions`.
+    - Die App zeigt problematische Dokumente/Fakten nicht mehr versteckt in
+      einer einzelnen Depotkarte, sondern zentral oberhalb der Depotkarten als
+      `Dokumenten-Postfach`.
+    - Zunaechst zeigt dieses Postfach nur offene/fehlerhafte oder unbekannte
+      Dokumentfaelle aus allen Depots.
+    - Dokumente mit lokalem PDF-Pfad koennen im Browser geoeffnet werden:
+      `PDF öffnen` ruft den lokalen Dokumentserver
+      `http://127.0.0.1:5176/documents/<sourceDocumentId>` auf.
+    - Der Dokumentserver laeuft als LaunchAgent
+      `com.niklas.finanztool.document-server` und wurde auf dem Mac Studio
+      installiert.
+    - Test 2026-06-25: `ginmon_doc_31664763` wurde erfolgreich als
+      `application/pdf` ausgeliefert, 12 Seiten.
+    - Nutzer kann Dokumentfaelle ueber Standardaktionen klassifizieren:
+      `Welcome-Dokument`, `Wichtig`, `Abgedeckt`, `Nicht relevant`.
+    - Normale GUI-Entscheidungen gelten nur fuer das konkrete Dokument
+      (`scope=item`). Typweite Entscheidungen werden nicht mehr in der GUI
+      angeboten, damit ein Klick auf `Nicht relevant` nicht alle
+      `unknown`-Dokumente ausblendet.
+    - `Wichtig` setzt `needs_parser` und bleibt als offener Klaerungsfall im
+      Postfach sichtbar.
+    - Health und Trade-Republic-Portal-Agent ignorieren nur entschiedene
+      Faelle; neue unbekannte oder nicht abrufbare Dokumente bleiben offen.
+    - Verifizierter Stand:
+      - `agentStatus/traderepublic_portal.status=OK`
+      - `portalDocumentUnresolvedFailureCount=0`
+      - `portalDocumentReviewedFailureCount=3`
+      - `systemHealth/current` enthaelt keine Trade-Republic-Warnung mehr.
 - Detailplan:
   - `docs/traderepublic_import_strategie.md`

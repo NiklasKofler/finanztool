@@ -153,6 +153,213 @@ export interface AutomationCommandDocument {
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
+export type DocumentInboxDecision = "covered" | "not_relevant" | "needs_parser";
+export type DocumentInboxDecisionScope = "item" | "document_type";
+
+export interface DocumentReviewDecisionDocument {
+  id: string;
+  source?: string | null;
+  scope?: DocumentInboxDecisionScope | string | null;
+  decision?: DocumentInboxDecision | string | null;
+  status?: "ACTIVE" | "REVOKED" | string | null;
+  targetId?: string | null;
+  targetSignature?: string | null;
+  targetLabel?: string | null;
+  targetDocumentType?: string | null;
+  reason?: string | null;
+  decidedBy?: string | null;
+  decidedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
+interface SourceDocumentIssueRecord {
+  id: string;
+  source?: string | null;
+  sourceChannel?: string | null;
+  fileName?: string | null;
+  filePath?: string | null;
+  documentType?: string | null;
+  parseStatus?: string | null;
+  status?: string | null;
+  baselineId?: string | null;
+  fileHash?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
+interface SourceDocumentFactIssueRecord {
+  id: string;
+  source?: string | null;
+  sourceChannel?: string | null;
+  factType?: string | null;
+  status?: string | null;
+  parseStatus?: string | null;
+  portalDocumentLabel?: string | null;
+  documentType?: string | null;
+  message?: string | null;
+  transactionTitle?: string | null;
+  transactionPortalDate?: string | null;
+  portalTransactionSignature?: string | null;
+  rawTransactionText?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
+export interface DocumentInboxItem {
+  id: string;
+  source: string;
+  origin: "sourceDocument" | "sourceDocumentFact";
+  severity: "warning" | "error";
+  title: string;
+  message: string;
+  documentType?: string | null;
+  label?: string | null;
+  date?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  targetId: string;
+  targetSignature?: string | null;
+  sourceChannel?: string | null;
+  rawStatus?: string | null;
+  documentUrl?: string | null;
+  reviewDecision?: DocumentReviewDecisionDocument | null;
+}
+
+function sanitizeFirestoreId(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 220) || "item";
+}
+
+function documentIssueDecisionId(item: Pick<DocumentInboxItem, "source" | "targetId">) {
+  return `${item.source}_item_${sanitizeFirestoreId(item.targetId)}`;
+}
+
+function documentTypeDecisionId(item: Pick<DocumentInboxItem, "source" | "label" | "documentType">) {
+  return `${item.source}_type_${sanitizeFirestoreId(item.label ?? item.documentType ?? "unknown")}`;
+}
+
+function isGenericUnclassifiedDocumentType(documentType?: string | null) {
+  const normalized = String(documentType ?? "").toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "unknown_document" ||
+    normalized === "unknown_portal_document" ||
+    normalized === "unparsed" ||
+    normalized === "unclassified"
+  );
+}
+
+function isUnknownDocument(document: SourceDocumentIssueRecord) {
+  return (
+    document.documentType === "unknown" ||
+    document.documentType === "unknown_portal_document" ||
+    document.parseStatus === "UNKNOWN" ||
+    document.parseStatus === "UNPARSED" ||
+    document.parseStatus === "FEHLER" ||
+    document.parseStatus === "ERROR"
+  );
+}
+
+function isUnknownFact(fact: SourceDocumentFactIssueRecord) {
+  return (
+    fact.factType === "portal_document_failure" ||
+    fact.factType === "unknown" ||
+    fact.factType === "unknown_portal_document" ||
+    fact.parseStatus === "UNKNOWN" ||
+    fact.parseStatus === "UNPARSED" ||
+    fact.parseStatus === "FEHLER" ||
+    fact.parseStatus === "ERROR"
+  );
+}
+
+function decisionMatchesItem(decision: DocumentReviewDecisionDocument, item: DocumentInboxItem) {
+  if (!decision || decision.status === "REVOKED" || decision.source !== item.source) return false;
+  if (decision.scope === "document_type") {
+    if (
+      decision.targetLabel &&
+      !isGenericUnclassifiedDocumentType(decision.targetLabel) &&
+      decision.targetLabel === item.label
+    ) {
+      return true;
+    }
+    if (isGenericUnclassifiedDocumentType(decision.targetDocumentType)) return false;
+    return Boolean(decision.targetDocumentType && decision.targetDocumentType === item.documentType);
+  }
+
+  return Boolean(
+    decision.targetId === item.targetId ||
+      (decision.targetSignature && decision.targetSignature === item.targetSignature),
+  );
+}
+
+function decisionRank(decision?: DocumentReviewDecisionDocument | null) {
+  if (!decision || decision.status === "REVOKED") return 0;
+  if (decision.decision === "needs_parser") return 1;
+  if (decision.decision === "not_relevant") return 2;
+  if (decision.decision === "covered") return 3;
+  return 1;
+}
+
+function documentRecordToInboxItem(document: SourceDocumentIssueRecord): DocumentInboxItem {
+  const documentType = document.documentType ?? "unknown";
+  const canOpenPdf = Boolean(document.filePath && document.fileName?.toLowerCase().endsWith(".pdf"));
+  return {
+    id: `document:${document.id}`,
+    source: document.source ?? "unknown",
+    origin: "sourceDocument",
+    severity: document.parseStatus === "ERROR" || document.parseStatus === "FEHLER" ? "error" : "warning",
+    title: document.fileName ?? "Unbekanntes Dokument",
+    message: `Dokumenttyp ${documentType} wurde noch nicht fachlich klassifiziert.`,
+    documentType,
+    label: document.fileName ?? documentType,
+    date: document.updatedAt ?? null,
+    targetId: document.id,
+    targetSignature: document.fileHash ?? document.baselineId ?? null,
+    sourceChannel: document.sourceChannel ?? null,
+    rawStatus: document.parseStatus ?? document.status ?? null,
+    documentUrl: canOpenPdf ? `http://127.0.0.1:5176/documents/${encodeURIComponent(document.id)}` : null,
+  };
+}
+
+function factRecordToInboxItem(fact: SourceDocumentFactIssueRecord): DocumentInboxItem {
+  if (fact.factType === "portal_document_failure") {
+    const label = fact.portalDocumentLabel ?? fact.documentType ?? "Portal-Dokument";
+    return {
+      id: `fact:${fact.id}`,
+      source: fact.source ?? "unknown",
+      origin: "sourceDocumentFact",
+      severity: "warning",
+      title: label,
+      message: fact.message ?? "Portal-Dokument konnte nicht geladen oder ausgewertet werden.",
+      documentType: fact.documentType ?? fact.factType ?? null,
+      label,
+      date: fact.transactionPortalDate ?? fact.updatedAt ?? null,
+      targetId: fact.id,
+      targetSignature: fact.portalTransactionSignature ?? null,
+      sourceChannel: fact.sourceChannel ?? null,
+      rawStatus: fact.status ?? fact.parseStatus ?? null,
+    };
+  }
+
+  const factType = fact.factType ?? "unknown";
+  return {
+    id: `fact:${fact.id}`,
+    source: fact.source ?? "unknown",
+    origin: "sourceDocumentFact",
+    severity: fact.status === "ERROR" || fact.status === "FEHLER" ? "error" : "warning",
+    title: fact.portalDocumentLabel ?? factType,
+    message: `Dokumentfakt ${factType} passt noch nicht in die Datenstruktur.`,
+    documentType: fact.documentType ?? factType,
+    label: fact.portalDocumentLabel ?? factType,
+    date: fact.transactionPortalDate ?? fact.updatedAt ?? null,
+    targetId: fact.id,
+    targetSignature: fact.portalTransactionSignature ?? null,
+    sourceChannel: fact.sourceChannel ?? null,
+    rawStatus: fact.status ?? fact.parseStatus ?? null,
+  };
+}
+
 export async function loadSourceSummaries(db: Firestore) {
   const snapshot = await getDocs(collection(db, "sourceSummaries"));
   return Object.fromEntries(
@@ -224,6 +431,77 @@ export async function loadSystemHealth(db: Firestore): Promise<SystemHealth | nu
   const snapshot = await getDoc(doc(db, "systemHealth", "current"));
   if (!snapshot.exists()) return null;
   return snapshot.data() as SystemHealth;
+}
+
+export async function loadDocumentInboxItems(
+  db: Firestore,
+  sourceId?: string,
+): Promise<DocumentInboxItem[]> {
+  const [documentsSnapshot, factsSnapshot, decisionsSnapshot] = await Promise.all([
+    getDocs(collection(db, "sourceDocuments")),
+    getDocs(collection(db, "sourceDocumentFacts")),
+    getDocs(collection(db, "documentReviewDecisions")),
+  ]);
+  const documents = documentsSnapshot.docs.map((snapshot) => ({
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<SourceDocumentIssueRecord, "id">),
+  }));
+  const facts = factsSnapshot.docs.map((snapshot) => ({
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<SourceDocumentFactIssueRecord, "id">),
+  }));
+  const decisions = decisionsSnapshot.docs.map((snapshot) => ({
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<DocumentReviewDecisionDocument, "id">),
+  }));
+
+  return [
+    ...documents.filter(isUnknownDocument).map(documentRecordToInboxItem),
+    ...facts.filter(isUnknownFact).map(factRecordToInboxItem),
+  ]
+    .filter((item) => !sourceId || item.source === sourceId)
+    .map((item) => ({
+      ...item,
+      reviewDecision:
+        decisions
+          .filter((decision) => decisionMatchesItem(decision, item))
+          .sort((left, right) => decisionRank(right) - decisionRank(left))[0] ?? null,
+    }))
+    .sort((left, right) => {
+      const leftResolved = decisionRank(left.reviewDecision) > 0 ? 1 : 0;
+      const rightResolved = decisionRank(right.reviewDecision) > 0 ? 1 : 0;
+      if (leftResolved !== rightResolved) return leftResolved - rightResolved;
+      return String(right.date ?? "").localeCompare(String(left.date ?? ""));
+    });
+}
+
+export async function markDocumentInboxItemDecision(
+  db: Firestore,
+  item: DocumentInboxItem,
+  decision: DocumentInboxDecision,
+  reason: string,
+  decidedBy?: string | null,
+  scope: DocumentInboxDecisionScope = "item",
+) {
+  const decisionRef = doc(
+    db,
+    "documentReviewDecisions",
+    scope === "document_type" ? documentTypeDecisionId(item) : documentIssueDecisionId(item),
+  );
+  await setDoc(decisionRef, {
+    source: item.source,
+    scope,
+    decision,
+    status: "ACTIVE",
+    targetId: scope === "item" ? item.targetId : null,
+    targetSignature: scope === "item" ? item.targetSignature ?? null : null,
+    targetLabel: item.label ?? null,
+    targetDocumentType: item.documentType ?? null,
+    reason,
+    decidedBy: decidedBy ?? null,
+    decidedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function requestQuoteSync(db: Firestore, requestedBy?: string | null) {

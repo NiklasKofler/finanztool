@@ -49,6 +49,44 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-25 12:39 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-25 12:39 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `cc1207f`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/download-traderepublic-local.mjs
+  -  M automation/src/install-all-agents.sh
+  -  M docs/device_workflow.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/traderepublic_import_strategie.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  -  M package.json
+  - ?? automation/launchd/com.niklas.finanztool.document-server.plist.template
+  - ?? automation/src/install-document-server-agent.sh
+  - ?? automation/src/serve-documents-local.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-24 23:13 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-24 23:13 CEST

@@ -143,6 +143,53 @@ async function getFirestore() {
   return firestore;
 }
 
+function activeReviewDecisions(decisions) {
+  return decisions.filter(
+    (decision) =>
+      decision.status !== "REVOKED" &&
+      ["covered", "not_relevant"].includes(decision.decision),
+  );
+}
+
+function isGenericUnclassifiedDocumentType(documentType) {
+  const normalized = String(documentType ?? "").toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "unknown_document" ||
+    normalized === "unknown_portal_document" ||
+    normalized === "unparsed" ||
+    normalized === "unclassified"
+  );
+}
+
+function reviewDecisionMatchesIssue(decision, issue) {
+  if (!decision || decision.source !== issue.source) return false;
+  if (decision.scope === "document_type") {
+    const issueLabel = issue.portalDocumentLabel ?? issue.documentType;
+    const issueType = issue.documentType ?? issue.factType;
+    if (
+      decision.targetLabel &&
+      !isGenericUnclassifiedDocumentType(decision.targetLabel) &&
+      decision.targetLabel === issueLabel
+    ) {
+      return true;
+    }
+    if (isGenericUnclassifiedDocumentType(decision.targetDocumentType)) return false;
+    return Boolean(decision.targetDocumentType && decision.targetDocumentType === issueType);
+  }
+
+  return Boolean(
+    decision.targetId === issue.id ||
+      (decision.targetSignature &&
+        decision.targetSignature === (issue.portalTransactionSignature ?? issue.fileHash ?? issue.baselineId)),
+  );
+}
+
+function isIssueResolvedByDecision(issue, decisions) {
+  return decisions.some((decision) => reviewDecisionMatchesIssue(decision, issue));
+}
+
 async function writeStatus(status, message, extra = {}) {
   const client = await getFirestore();
   if (!client) return;
@@ -1116,10 +1163,12 @@ async function writePortalDocumentFailure(firestoreClient, failure, now) {
 
 async function getPortalDocumentTotals(firestoreClient) {
   if (!firestoreClient) return {};
-  const [documents, facts] = await Promise.all([
+  const [documents, facts, decisions] = await Promise.all([
     firestoreClient.listDocuments("sourceDocuments"),
     firestoreClient.listDocuments("sourceDocumentFacts"),
+    firestoreClient.listDocuments("documentReviewDecisions"),
   ]);
+  const activeDecisions = activeReviewDecisions(decisions);
   const portalDocuments = documents.filter(
     (document) => document.source === source && document.sourceChannel === "traderepublic_portal_web",
   );
@@ -1133,7 +1182,16 @@ async function getPortalDocumentTotals(firestoreClient) {
       .filter(Boolean),
   );
   const unresolvedFailures = portalFacts.filter(
-    (fact) => fact.factType === "portal_document_failure" && !successfulSignatures.has(fact.portalTransactionSignature),
+    (fact) =>
+      fact.factType === "portal_document_failure" &&
+      !successfulSignatures.has(fact.portalTransactionSignature) &&
+      !isIssueResolvedByDecision(fact, activeDecisions),
+  );
+  const reviewedFailures = portalFacts.filter(
+    (fact) =>
+      fact.factType === "portal_document_failure" &&
+      !successfulSignatures.has(fact.portalTransactionSignature) &&
+      isIssueResolvedByDecision(fact, activeDecisions),
   );
   return {
     portalDocumentTotalCount: portalDocuments.length,
@@ -1143,6 +1201,7 @@ async function getPortalDocumentTotals(firestoreClient) {
     portalDocumentApplicationTotalCount: portalFacts.filter((fact) => fact.factType === "portal_document_application").length,
     portalDocumentFailureTotalCount: portalFacts.filter((fact) => fact.factType === "portal_document_failure").length,
     portalDocumentUnresolvedFailureCount: unresolvedFailures.length,
+    portalDocumentReviewedFailureCount: reviewedFailures.length,
     portalDocumentUnresolvedFailures: unresolvedFailures.slice(0, 8).map((failure) => ({
       label: failure.portalDocumentLabel ?? null,
       transactionTitle: failure.transactionTitle ?? null,

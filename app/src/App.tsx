@@ -23,14 +23,17 @@ import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
   loadAgentStatuses,
+  loadDocumentInboxItems,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
   loadQuoteSyncCommand,
   loadTradeRepublicPortalCommand,
+  markDocumentInboxItemDecision,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
   type AgentStatusDocument,
+  type DocumentInboxItem,
   type SourceSummaryAccount,
   type SourceSummaryDocument,
   type SourceSummaryVbvAccountInformation,
@@ -143,7 +146,7 @@ function getTradeRepublicPortalButtonLabel(
   const message = portalStatus?.message ?? "";
   if (requestStatus === "requesting") return "Anfrage";
   if (requestStatus === "requested") return "Wartet";
-  if (requestStatus === "error") return "Fehler";
+  if (requestStatus === "error") return "Erneut starten";
   if (requestStatus !== "running") return "Refresh";
 
   if (/bestaetigung|bestätigung|freigabe|approve|app/i.test(message)) return "App bestätigen";
@@ -572,6 +575,155 @@ function getAgentDetailLines(status?: AgentStatusDocument) {
   return lines.slice(0, 3);
 }
 
+function getSourceDisplayName(sourceId: string) {
+  return sourceOverviews.find((source) => source.id === sourceId)?.name ?? sourceId;
+}
+
+function getDocumentInboxDecisionLabel(item: DocumentInboxItem) {
+  const decision = item.reviewDecision?.decision;
+  if (decision === "covered") return "Abgedeckt";
+  if (decision === "not_relevant") return "Nicht relevant";
+  if (decision === "needs_parser") return "Parser nötig";
+  return item.severity === "error" ? "Fehler" : "Offen";
+}
+
+function getDocumentInboxDecisionTone(item: DocumentInboxItem) {
+  if (item.reviewDecision?.decision === "covered" || item.reviewDecision?.decision === "not_relevant") return "good";
+  if (item.reviewDecision?.decision === "needs_parser") return "info";
+  return item.severity === "error" ? "warn" : "warn";
+}
+
+function DocumentInbox({
+  items,
+  onClassify,
+  pendingDecisionId,
+}: {
+  items: DocumentInboxItem[];
+  onClassify: (
+    item: DocumentInboxItem,
+    decision: "covered" | "not_relevant" | "needs_parser",
+    reason: string,
+  ) => void;
+  pendingDecisionId: string | null;
+}) {
+  const openItems = items.filter((item) => !item.reviewDecision || item.reviewDecision.decision === "needs_parser");
+
+  if (!items.length) return null;
+
+  return (
+    <details className="document-inbox" open>
+      <summary>
+        <span>Offene Dokumentfälle</span>
+        <strong>{numberFormatter.format(openItems.length)}</strong>
+      </summary>
+      <div className="document-inbox__list">
+        {openItems.map((item) => {
+          const isPending = pendingDecisionId === item.id;
+          const isClosed = Boolean(item.reviewDecision && item.reviewDecision.decision !== "needs_parser");
+          return (
+            <article className={`document-inbox__row${isClosed ? " document-inbox__row--closed" : ""}`} key={item.id}>
+              <div className="document-inbox__main">
+                <div className="document-inbox__title">
+                  <strong>{item.title}</strong>
+                  <span className={`status-badge status-badge--${getDocumentInboxDecisionTone(item)}`}>
+                    {getDocumentInboxDecisionLabel(item)}
+                  </span>
+                </div>
+                <p>{item.message}</p>
+                <div className="document-inbox__meta">
+                  <span>{getSourceDisplayName(item.source)}</span>
+                  <span>{formatUpdatedAt(item.date)}</span>
+                  {item.label ? <span>{item.label}</span> : null}
+                  {item.sourceChannel ? <span>{item.sourceChannel}</span> : null}
+                </div>
+                {item.reviewDecision?.reason ? (
+                  <div className="document-inbox__decision">
+                    Entscheidung: {item.reviewDecision.reason}
+                  </div>
+                ) : null}
+              </div>
+              {item.documentUrl || !isClosed ? (
+                <div className="document-inbox__actions">
+                  {item.documentUrl ? (
+                    <a
+                      className="secondary-button document-inbox__button document-inbox__button--link"
+                      href={item.documentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      PDF öffnen
+                    </a>
+                  ) : null}
+                  {!isClosed ? (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary-button document-inbox__button"
+                        disabled={isPending}
+                        onClick={() =>
+                          onClassify(
+                            item,
+                            "not_relevant",
+                            "Welcome-Dokument; zur Ablage behalten, aber ohne Portfolio-, Kosten-, Steuer- oder Performance-Daten.",
+                          )
+                        }
+                      >
+                        Welcome-Dokument
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button document-inbox__button"
+                        disabled={isPending}
+                        onClick={() =>
+                          onClassify(
+                            item,
+                            "needs_parser",
+                            "Wichtig; fachlich klaeren und Parser/Agent erweitern, bevor der Fall geschlossen wird.",
+                          )
+                        }
+                      >
+                        Wichtig
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button document-inbox__button"
+                        disabled={isPending}
+                        onClick={() =>
+                          onClassify(
+                            item,
+                            "covered",
+                            "Fachlich durch bereits gespeicherte Daten abgedeckt; kein offener Importfehler.",
+                          )
+                        }
+                      >
+                        Abgedeckt
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button document-inbox__button"
+                        disabled={isPending}
+                        onClick={() =>
+                          onClassify(
+                            item,
+                            "not_relevant",
+                            "Einzeldokument fuer Portfolioanalyse, Kosten, Steuern, Performance und Reconciliation bewusst nicht relevant.",
+                          )
+                        }
+                      >
+                        Nicht relevant
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 function AgentStatusBadge({
   status,
   emptyLabel = "Ohne Agent",
@@ -776,6 +928,7 @@ function App() {
   >({});
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatusDocument>>({});
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [documentInboxItems, setDocumentInboxItems] = useState<DocumentInboxItem[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -783,6 +936,8 @@ function App() {
   const [quoteRequestStatus, setQuoteRequestStatus] = useState<CommandRequestStatus>("idle");
   const [tradeRepublicPortalRequestStatus, setTradeRepublicPortalRequestStatus] =
     useState<CommandRequestStatus>("idle");
+  const [tradeRepublicPortalRequestError, setTradeRepublicPortalRequestError] = useState<string | null>(null);
+  const [pendingDocumentDecisionId, setPendingDocumentDecisionId] = useState<string | null>(null);
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
@@ -800,6 +955,7 @@ function App() {
         setSourceSummaries({});
         setAgentStatuses({});
         setPositions([]);
+        setDocumentInboxItems([]);
         setSystemHealth(null);
         setDataStatus("auth-required");
       } else {
@@ -819,13 +975,15 @@ function App() {
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadDocumentInboxItems(services.db),
       loadSystemHealth(services.db),
     ])
-      .then(([summaries, loadedAgentStatuses, loadedPositions, health]) => {
+      .then(([summaries, loadedAgentStatuses, loadedPositions, loadedDocumentInboxItems, health]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
         setAgentStatuses(loadedAgentStatuses);
         setPositions(loadedPositions);
+        setDocumentInboxItems(loadedDocumentInboxItems);
         setSystemHealth(health);
         setDataStatus("live");
       })
@@ -862,16 +1020,36 @@ function App() {
   async function refreshPortfolioData() {
     const services = getFirebaseServices();
     if (!services) return;
-    const [summaries, loadedAgentStatuses, loadedPositions, health] = await Promise.all([
+    const [summaries, loadedAgentStatuses, loadedPositions, loadedDocumentInboxItems, health] = await Promise.all([
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadDocumentInboxItems(services.db),
       loadSystemHealth(services.db),
     ]);
     setSourceSummaries(summaries);
     setAgentStatuses(loadedAgentStatuses);
     setPositions(loadedPositions);
+    setDocumentInboxItems(loadedDocumentInboxItems);
     setSystemHealth(health);
+  }
+
+  async function handleDocumentDecision(
+    item: DocumentInboxItem,
+    decision: "covered" | "not_relevant" | "needs_parser",
+    reason: string,
+  ) {
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    try {
+      setPendingDocumentDecisionId(item.id);
+      await markDocumentInboxItemDecision(services.db, item, decision, reason, authUser.email, "item");
+      const loadedDocumentInboxItems = await loadDocumentInboxItems(services.db);
+      setDocumentInboxItems(loadedDocumentInboxItems);
+    } finally {
+      setPendingDocumentDecisionId(null);
+    }
   }
 
   async function handleRequestQuoteSync() {
@@ -912,6 +1090,7 @@ function App() {
     if (!services || !authUser) return;
 
     try {
+      setTradeRepublicPortalRequestError(null);
       setTradeRepublicPortalRequestStatus("requesting");
       await requestTradeRepublicPortalRefresh(services.db, authUser.email);
       setTradeRepublicPortalRequestStatus("requested");
@@ -933,13 +1112,17 @@ function App() {
         }
         if (command?.status === "ERROR") {
           await refreshPortfolioData().catch(() => undefined);
+          setTradeRepublicPortalRequestError(command.errorMessage ?? "Der lokale Portal-Agent hat den Auftrag mit Fehler beendet.");
           setTradeRepublicPortalRequestStatus("error");
           return;
         }
       }
       await refreshPortfolioData().catch(() => undefined);
       setTradeRepublicPortalRequestStatus("idle");
-    } catch {
+    } catch (error) {
+      setTradeRepublicPortalRequestError(
+        error instanceof Error ? error.message : "Der Portal-Refresh konnte nicht angefordert werden.",
+      );
       setTradeRepublicPortalRequestStatus("error");
     }
   }
@@ -1113,6 +1296,9 @@ function App() {
     return grouped;
   }, [displayedPositions]);
   const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
+  const openDocumentInboxItems = documentInboxItems.filter(
+    (item) => !item.reviewDecision || item.reviewDecision.decision === "needs_parser",
+  );
   const healthTone =
     systemHealth?.status === "ERROR"
       ? "error"
@@ -1196,30 +1382,33 @@ function App() {
           <span>Depots, Krypto, Edelmetalle und Vorsorgewerte</span>
         </article>
 
-        <article className="metric-card">
-          <div className="metric-card__icon">
-            <Database aria-hidden="true" />
+        <article className="metric-card metric-card--system">
+          <div className="metric-card__system-grid">
+            <div className="metric-card__system-item">
+              <div className="metric-card__icon">
+                <Database aria-hidden="true" />
+              </div>
+              <p>Aktive Quellen</p>
+              <strong>{numberFormatter.format(activeSources)}</strong>
+              <span>{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
+            </div>
+            <div className="metric-card__system-item">
+              <div className="metric-card__icon">
+                {healthTone === "good" ? <CheckCircle2 aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}
+              </div>
+              <p>Warnungen</p>
+              <strong className={`health-status health-status--${healthTone}`}>
+                {systemHealth ? systemHealth.alertCount : dataStatus === "live" ? 0 : "—"}
+              </strong>
+              <span>
+                {systemHealth
+                  ? `${systemHealth.errorCount} Fehler, ${systemHealth.warningCount} Warnungen`
+                  : dataStatus === "live"
+                    ? "Keine Health-Daten gefunden"
+                    : "Wird nach Login geladen"}
+              </span>
+            </div>
           </div>
-          <p>Aktive Quellen</p>
-          <strong>{numberFormatter.format(activeSources)}</strong>
-          <span>{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
-        </article>
-
-        <article className="metric-card">
-          <div className="metric-card__icon">
-            {healthTone === "good" ? <CheckCircle2 aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}
-          </div>
-          <p>Warnungen</p>
-          <strong className={`health-status health-status--${healthTone}`}>
-            {systemHealth ? systemHealth.alertCount : dataStatus === "live" ? 0 : "—"}
-          </strong>
-          <span>
-            {systemHealth
-              ? `${systemHealth.errorCount} Fehler, ${systemHealth.warningCount} Warnungen`
-              : dataStatus === "live"
-                ? "Keine Health-Daten gefunden"
-                : "Wird nach Login geladen"}
-          </span>
           {visibleAlerts.length ? (
             <ul className="alert-list">
               {visibleAlerts.map((alert) => (
@@ -1234,6 +1423,32 @@ function App() {
           ) : null}
         </article>
       </section>
+
+      {dataStatus === "live" ? (
+        <section className="panel document-inbox-panel" aria-label="Dokumenten-Postfach">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Dokumente</p>
+              <h2>Dokumenten-Postfach</h2>
+            </div>
+            <Archive aria-hidden="true" />
+          </div>
+          <p className="document-inbox-panel__intro">
+            Offene Dokumente, die ein Agent nicht klassifizieren oder verarbeiten konnte.
+          </p>
+          {openDocumentInboxItems.length ? (
+            <DocumentInbox
+              items={openDocumentInboxItems}
+              pendingDecisionId={pendingDocumentDecisionId}
+              onClassify={handleDocumentDecision}
+            />
+          ) : (
+            <div className="document-inbox-panel__empty">
+              Keine offenen Dokumentprobleme.
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {dataStatus !== "live" ? (
         <section className="panel auth-panel">
@@ -1336,6 +1551,11 @@ function App() {
                           <RefreshCcw aria-hidden="true" />
                           <span>Trade Republic: {tradeRepublicPortalButtonLabel}</span>
                         </button>
+                        {tradeRepublicPortalRequestStatus === "error" && tradeRepublicPortalRequestError ? (
+                          <div className="source-card__portal-error">
+                            {tradeRepublicPortalRequestError}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
 

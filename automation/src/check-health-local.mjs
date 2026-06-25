@@ -99,6 +99,53 @@ function sanitizeId(value) {
     .replace(/^_+|_+$/g, "");
 }
 
+function activeReviewDecisions(decisions) {
+  return decisions.filter(
+    (decision) =>
+      decision.status !== "REVOKED" &&
+      ["covered", "not_relevant"].includes(decision.decision),
+  );
+}
+
+function isGenericUnclassifiedDocumentType(documentType) {
+  const normalized = String(documentType ?? "").toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "unknown_document" ||
+    normalized === "unknown_portal_document" ||
+    normalized === "unparsed" ||
+    normalized === "unclassified"
+  );
+}
+
+function reviewDecisionMatchesIssue(decision, issue) {
+  if (!decision || decision.source !== issue.source) return false;
+  if (decision.scope === "document_type") {
+    const issueLabel = issue.portalDocumentLabel ?? issue.fileName ?? issue.documentType;
+    const issueType = issue.documentType ?? issue.factType;
+    if (
+      decision.targetLabel &&
+      !isGenericUnclassifiedDocumentType(decision.targetLabel) &&
+      decision.targetLabel === issueLabel
+    ) {
+      return true;
+    }
+    if (isGenericUnclassifiedDocumentType(decision.targetDocumentType)) return false;
+    return Boolean(decision.targetDocumentType && decision.targetDocumentType === issueType);
+  }
+
+  return Boolean(
+    decision.targetId === issue.id ||
+      (decision.targetSignature &&
+        decision.targetSignature === (issue.portalTransactionSignature ?? issue.fileHash ?? issue.baselineId)),
+  );
+}
+
+function isIssueResolvedByDecision(issue, decisions) {
+  return decisions.some((decision) => reviewDecisionMatchesIssue(decision, issue));
+}
+
 function accountIdFromPosition(position) {
   return (
     position.accountNumber ??
@@ -198,7 +245,7 @@ const firestore = new FirestoreRest({
 });
 
 const now = new Date();
-const [positions, summaries, statuses, mappings, imports, sourceAccounts, sourceDocuments, sourceDocumentFacts] = await Promise.all([
+const [positions, summaries, statuses, mappings, imports, sourceAccounts, sourceDocuments, sourceDocumentFacts, documentReviewDecisions] = await Promise.all([
   firestore.listDocuments("sourcePositions"),
   firestore.listDocuments("sourceSummaries"),
   firestore.listDocuments("agentStatus"),
@@ -207,6 +254,7 @@ const [positions, summaries, statuses, mappings, imports, sourceAccounts, source
   firestore.listDocuments("sourceAccounts"),
   firestore.listDocuments("sourceDocuments"),
   firestore.listDocuments("sourceDocumentFacts"),
+  firestore.listDocuments("documentReviewDecisions"),
 ]);
 
 const alerts = [];
@@ -215,6 +263,22 @@ const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
 const observedAccounts = observedAccountsFromData(summaries, positions);
 const previousAccountsById = new Map(sourceAccounts.map((account) => [account.id, account]));
 const observedSources = new Set([...observedAccounts.values()].map((account) => account.source));
+const activeDecisions = activeReviewDecisions(documentReviewDecisions);
+const portalSuccessSignatures = new Set(
+  sourceDocumentFacts
+    .filter((fact) => fact.source === "traderepublic")
+    .filter((fact) => ["traderepublic_portal_web", "traderepublic_portal_dom"].includes(fact.sourceChannel))
+    .filter((fact) => !["portal_document_failure", "portal_document_application"].includes(fact.factType))
+    .map((fact) => fact.portalTransactionSignature)
+    .filter(Boolean),
+);
+const unresolvedPortalFailures = sourceDocumentFacts.filter(
+  (fact) =>
+    fact.source === "traderepublic" &&
+    fact.factType === "portal_document_failure" &&
+    !portalSuccessSignatures.has(fact.portalTransactionSignature) &&
+    !isIssueResolvedByDecision(fact, activeDecisions),
+);
 
 for (const account of observedAccounts.values()) {
   const { fromSummary: _fromSummary, ...accountData } = account;
@@ -274,7 +338,12 @@ for (const source of expectedSources) {
 
 for (const status of statuses) {
   const agentId = status.id;
-  if (status.status && status.status !== "OK") {
+  const reviewedTradeRepublicPortalWarning =
+    agentId === "traderepublic_portal" &&
+    status.status === "WARNUNG" &&
+    unresolvedPortalFailures.length === 0 &&
+    (status.portalDocumentUnresolvedFailureCount ?? 0) > 0;
+  if (status.status && status.status !== "OK" && !reviewedTradeRepublicPortalWarning) {
     alerts.push(
       alert(
         `agent_status_${agentId}`,
@@ -489,6 +558,7 @@ const unclassifiedGinmonDocuments = sourceDocuments.filter(
   (document) =>
     document.source === "ginmon" &&
     !allowedUnclassifiedGinmonDocuments.has(document.id) &&
+    !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.parseStatus === "UNKNOWN" ||
       document.parseStatus === "UNPARSED"),
@@ -516,6 +586,7 @@ if (unclassifiedGinmonDocuments.length) {
 const unclassifiedFlatexDocuments = sourceDocuments.filter(
   (document) =>
     document.source === "flatex" &&
+    !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.parseStatus === "UNKNOWN" ||
       document.parseStatus === "UNPARSED"),
@@ -544,6 +615,7 @@ if (unclassifiedFlatexDocuments.length) {
 const unclassifiedTradeRepublicDocuments = sourceDocuments.filter(
   (document) =>
     document.source === "traderepublic" &&
+    !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.parseStatus === "UNKNOWN" ||
       document.parseStatus === "UNPARSED"),
@@ -572,6 +644,7 @@ const genericUnclassifiedDocuments = sourceDocuments.filter(
   (document) =>
     expectedSources.includes(document.source) &&
     !["ginmon", "flatex", "traderepublic"].includes(document.source) &&
+    !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.documentType === "unknown_portal_document" ||
       document.parseStatus === "UNKNOWN" ||
@@ -607,6 +680,7 @@ if (genericUnclassifiedDocuments.length) {
 const unknownFacts = sourceDocumentFacts.filter(
   (fact) =>
     expectedSources.includes(fact.source) &&
+    !isIssueResolvedByDecision(fact, activeDecisions) &&
     (fact.factType === "unknown" ||
       fact.factType === "unknown_portal_document" ||
       fact.parseStatus === "UNKNOWN" ||
@@ -632,21 +706,6 @@ if (unknownFacts.length) {
     ),
   );
 }
-
-const portalSuccessSignatures = new Set(
-  sourceDocumentFacts
-    .filter((fact) => fact.source === "traderepublic")
-    .filter((fact) => ["traderepublic_portal_web", "traderepublic_portal_dom"].includes(fact.sourceChannel))
-    .filter((fact) => !["portal_document_failure", "portal_document_application"].includes(fact.factType))
-    .map((fact) => fact.portalTransactionSignature)
-    .filter(Boolean),
-);
-const unresolvedPortalFailures = sourceDocumentFacts.filter(
-  (fact) =>
-    fact.source === "traderepublic" &&
-    fact.factType === "portal_document_failure" &&
-    !portalSuccessSignatures.has(fact.portalTransactionSignature),
-);
 
 if (unresolvedPortalFailures.length) {
   alerts.push(

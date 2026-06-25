@@ -338,6 +338,21 @@ npm run sync:health
 launchctl list | grep finanztool
 ```
 
+Der lokale PDF-Zugriff im zentralen Dokumenten-Postfach braucht den
+Dokumentserver:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool/automation
+npm run install:document-server
+curl http://127.0.0.1:5176/health
+```
+
+Er wird durch `install:all-agents` mit installiert und laeuft als:
+
+```text
+com.niklas.finanztool.document-server
+```
+
 ## Erstbefehl fuer ein neues Codex-Fenster
 
 Diesen Prompt kann Niklas am jeweils anderen Geraet einfuegen:

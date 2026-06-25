@@ -1,6 +1,6 @@
 # Firestore Data Contract
 
-Stand: 2026-06-21
+Stand: 2026-06-25
 
 Dieses Dokument beschreibt die kanonische Firestore-Struktur fuer alle Quellen.
 Es ist die Leitplanke, damit Flatex, Trade Republic, Ginmon, Intergold, Bitget,
@@ -36,10 +36,45 @@ historischen Collections.
   - alle fachlich relevanten Fakten aus Dokumenten
   - Beispiele: Depotposition aus Statement, Steuerzeile, Kostenzeile,
     Kontoauszugssaldo, Zinsbuchung, Belegposition
+- `documentReviewDecisions`
+  - Nutzer-/Codex-Entscheidungen zu Dokumenten oder Dokumenttypen, die nicht
+    automatisch verarbeitet werden konnten
+  - darf nie Rohdokumente ersetzen; es dokumentiert nur, wie ein offener
+    Dokumentfall fachlich behandelt wird
+  - wichtige Felder: `source`, `scope`, `decision`, `status`, `targetId`,
+    `targetSignature`, `targetLabel`, `targetDocumentType`, `reason`,
+    `decidedBy`, `decidedAt`
 
 Regel: Wenn ein Dokument Informationen enthaelt, die spaeter fuer Analyse,
 Kosten, Steuern, Performance oder Reconciliation nuetzlich sein koennen, muessen
 sie mindestens als `sourceDocumentFacts` gespeichert werden.
+
+Regel: Unbekannte, nicht abrufbare oder nicht klassifizierte Dokumente muessen
+sichtbar bleiben. Eine Health-Warnung darf erst verschwinden, wenn eine
+explizite Entscheidung in `documentReviewDecisions` existiert. Gueltige
+Entscheidungen:
+
+- `covered`: fachlich durch andere bereits gespeicherte Daten abgedeckt
+- `not_relevant`: fuer Portfolioanalyse bewusst nicht relevant
+- `needs_parser`: relevant, aber Parser/Agent muss erweitert werden
+
+Der Scope `item` gilt nur fuer genau diesen Dokument-/Faktenfall. Der Scope
+`document_type` gilt fuer alle passenden Dokumente mit gleichem Label oder Typ
+und muss entsprechend vorsichtig verwendet werden. In der normalen GUI wird
+`document_type` nicht angeboten, weil generische Typen wie `unknown` sonst
+versehentlich viele offene Dokumente schliessen koennen. Standard ist immer
+eine Entscheidung auf Einzeldokument-Ebene.
+
+Standard-Aktionen im Dokumenten-Postfach:
+
+- `Welcome-Dokument`: Einzeldokument bewusst als nicht relevant schliessen;
+  das PDF bleibt als Quelle erhalten.
+- `Wichtig`: Einzeldokument bleibt offen (`needs_parser`), bis geklaert ist,
+  welche Daten daraus fachlich gespeichert werden muessen.
+- `Abgedeckt`: Einzeldokument ist durch bereits gespeicherte Daten fachlich
+  abgedeckt.
+- `Nicht relevant`: Einzeldokument enthaelt keine relevanten Portfolio-,
+  Kosten-, Steuer-, Performance- oder Reconciliation-Daten.
 
 ### 2. Bewegungen, Kosten und Ertraege
 
@@ -124,6 +159,15 @@ Pflichtfelder bzw. kanonische Bedeutung:
 
 GUI-Regel:
 
+- Es gibt ein zentrales Dokumenten-Postfach fuer alle Quellen. Es zeigt
+  zunaechst offene, unbekannte oder fehlerhafte Dokumentfaelle. Spaeter kann es
+  zur vollstaendigen Dokumentenablage erweitert werden.
+- Postfach-Dokumente mit lokalem PDF-Pfad muessen oeffenbar sein. Die App
+  verlinkt dafuer auf den lokalen Dokumentserver
+  `http://127.0.0.1:5176/documents/<sourceDocumentId>`.
+- Der Dokumentserver darf nur lokale, erlaubte Depot-/Download-Pfade aus
+  `sourceDocuments.filePath` ausliefern und laeuft als LaunchAgent
+  `com.niklas.finanztool.document-server`.
 - Depotkarten muessen mindestens zeigen, soweit fuer die Quelle relevant:
   `Brokerstand` oder `Datenstand`, `Kursstand`, `Agent zuletzt`.
 - Agenten duerfen in der GUI nicht nur als pauschales `OK` erscheinen. Je
@@ -137,6 +181,10 @@ GUI-Regel:
   nutzen. Auf iPhone-15-Breite und kleiner duerfen sie nicht in die Icon-Spalte
   oder eine zu schmale Grid-Spalte fallen; sie sind einspaltig, kompakt und
   ohne vertikales Buchstabenbrechen darzustellen.
+- Die Dashboard-Kennzahlen `Aktive Quellen` und `Warnungen` werden als eine
+  gemeinsame Status-Kachel dargestellt. Die Warnliste muss auch auf
+  iPhone-15-Breite lesbar bleiben und darf nicht in eine zu schmale
+  Einzelkachel fallen.
 - Positionen muessen fuer Analyse sichtbar machen, ob ihr aktueller Wert aus
   Broker/API, Dokument oder externem Kursprovider stammt.
 - `updatedAt` allein darf in der GUI nicht als fachliche Wahrheit angezeigt

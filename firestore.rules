@@ -30,6 +30,30 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /documentReviewDecisions/{decisionId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && request.resource.data.keys().hasOnly([
+          "source",
+          "scope",
+          "decision",
+          "status",
+          "targetId",
+          "targetSignature",
+          "targetLabel",
+          "targetDocumentType",
+          "reason",
+          "decidedBy",
+          "decidedAt",
+          "updatedAt"
+        ])
+        && request.resource.data.source is string
+        && request.resource.data.scope in ["item", "document_type"]
+        && request.resource.data.decision in ["covered", "not_relevant", "needs_parser"]
+        && request.resource.data.status == "ACTIVE";
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read: if isOwner();
       allow write: if false;
