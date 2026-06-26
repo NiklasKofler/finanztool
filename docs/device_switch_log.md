@@ -53,6 +53,37 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-26 20:19 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-26 20:19 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `9e2f6aa`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M app/src/App.tsx
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M docs/device_workflow.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/working_memory.md
+  -  M package.json
+  -  M storage.rules
+  - ?? automation/src/sync-document-storage-local.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-26 19:53 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-26 19:53 CEST

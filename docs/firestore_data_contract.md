@@ -162,17 +162,19 @@ GUI-Regel:
 - Es gibt ein zentrales Dokumenten-Postfach fuer alle Quellen. Es zeigt
   zunaechst offene, unbekannte oder fehlerhafte Dokumentfaelle. Spaeter kann es
   zur vollstaendigen Dokumentenablage erweitert werden.
-- Postfach-Dokumente mit lokalem PDF-Pfad muessen oeffenbar sein. Die App
-  verlinkt dafuer auf den lokalen Dokumentserver
-  `http://127.0.0.1:5176/documents/<sourceDocumentId>`.
-- Der Dokumentserver darf nur lokale, erlaubte Depot-/Download-Pfade aus
-  `sourceDocuments.filePath` ausliefern und laeuft als LaunchAgent
-  `com.niklas.finanztool.document-server`.
+- Postfach-Dokumente muessen auf allen Endgeraeten oeffenbar sein. Primaere
+  Quelle dafuer ist Firebase Storage: `sourceDocuments.storagePath` zeigt auf
+  die zentrale Kopie. Die App laedt diese Datei authentifiziert ueber Firebase
+  Storage und oeffnet sie als PDF/Datei im Browser.
 - Firestore ist fuer Dokumente das Register und die Faktenbasis, nicht der
-  PDF-Blob-Speicher: `sourceDocuments` enthaelt Metadaten, Hash, Parserstatus
-  und lokalen `filePath`; `sourceDocumentFacts` enthaelt extrahierte Daten.
-  Die PDF-Anzeige in der App erfolgt lokal ueber den Mac-Dokumentserver. Der
-  Server muss bei abgelaufenem Firebase-CLI-Token automatisch neu authentifizieren.
+  PDF-Blob-Speicher: `sourceDocuments` enthaelt Metadaten, Hash, Parserstatus,
+  lokalen `filePath` und zentralen `storagePath`; `sourceDocumentFacts`
+  enthaelt extrahierte Daten. Die Originaldateien bleiben zusaetzlich in
+  Google Drive erhalten.
+- Der lokale Dokumentserver
+  `http://127.0.0.1:5176/documents/<sourceDocumentId>` ist nur noch Fallback
+  fuer Dokumente, die noch keinen `storagePath` haben oder waehrend lokaler
+  Entwicklung direkt aus Drive/Downloads gelesen werden muessen.
 - Depotkarten muessen mindestens zeigen, soweit fuer die Quelle relevant:
   `Brokerstand` oder `Datenstand`, `Kursstand`, `Agent zuletzt`.
 - Agenten duerfen in der GUI nicht nur als pauschales `OK` erscheinen. Je

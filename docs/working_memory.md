@@ -184,11 +184,11 @@ Umsetzung 2026-06-23:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-26 19:53 CEST
+- Stand: 2026-06-26 20:19 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `492c942`
-- Handoff-Commit: `5a7fa05`
-- Firebase Deploy: 2026-06-26 19:53 CEST erfolgreich
+- Ausgangscommit: `9e2f6aa`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -1633,21 +1633,22 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       `Dokumenten-Postfach`.
     - Zunaechst zeigt dieses Postfach nur offene/fehlerhafte oder unbekannte
       Dokumentfaelle aus allen Depots.
-    - Dokumente mit lokalem PDF-Pfad koennen im Browser geoeffnet werden:
-      `PDF öffnen` ruft den lokalen Dokumentserver
-      `http://127.0.0.1:5176/documents/<sourceDocumentId>` auf.
-    - Der Dokumentserver laeuft als LaunchAgent
-      `com.niklas.finanztool.document-server` und wurde auf dem Mac Studio
-      installiert.
-    - Test 2026-06-25: `ginmon_doc_31664763` wurde erfolgreich als
-      `application/pdf` ausgeliefert, 12 Seiten.
-    - Fix 2026-06-25: Dokumentserver erneuert den Firebase-CLI-Access-Token
-      bei `401` automatisch und liest `sourceDocuments` danach erneut.
-      Ursache fuer zeitweise nicht oeffnende PDFs war ein abgelaufener Token,
-      nicht ein fehlendes lokales PDF.
-    - Wichtig: Firestore speichert Dokumentregister, Fakten und lokale
-      `filePath`-Verweise; die PDF-Datei selbst wird fuer die lokale Anzeige
-      aus Google Drive/Downloads ueber den Mac-Dokumentserver ausgeliefert.
+    - Dokumente muessen geraeteuebergreifend oeffenbar sein. Primaer wird
+      dafuer Firebase Storage genutzt (`sourceDocuments.storagePath`).
+      Die App laedt PDFs authentifiziert ueber Firebase Storage und oeffnet
+      sie als Browser-Datei.
+    - Backfill 2026-06-26:
+      - Storage-Regeln deployed: Lesen nur fuer
+        `niklas.kofler@gmail.com`, Schreiben nicht aus der Client-App.
+      - `sync-document-storage-local.mjs` angelegt.
+      - Alle 744 `sourceDocuments` besitzen jetzt `storagePath`.
+      - Counts: Flatex 283/283, Ginmon 382/382, Trade Republic 78/78,
+        VBV 1/1.
+      - Beispiel verifiziert: `ginmon_doc_31350057` existiert in Firebase
+        Storage als `application/pdf`, 599472 Byte.
+    - Der lokale Dokumentserver
+      `http://127.0.0.1:5176/documents/<sourceDocumentId>` bleibt nur Fallback
+      fuer lokale Entwicklung oder Dokumente ohne `storagePath`.
     - Nutzer kann Dokumentfaelle ueber Standardaktionen klassifizieren:
       `Welcome-Dokument`, `Wichtig`, `Abgedeckt`, `Nicht relevant`.
     - Normale GUI-Entscheidungen gelten nur fuer das konkrete Dokument

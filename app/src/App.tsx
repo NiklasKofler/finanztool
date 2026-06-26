@@ -5,6 +5,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
+import { getBlob, ref as storageRef } from "firebase/storage";
 import {
   Activity,
   AlertTriangle,
@@ -596,7 +597,9 @@ function getDocumentInboxDecisionTone(item: DocumentInboxItem) {
 function DocumentInbox({
   items,
   onClassify,
+  onOpenDocument,
   pendingDecisionId,
+  pendingOpenDocumentId,
 }: {
   items: DocumentInboxItem[];
   onClassify: (
@@ -604,7 +607,9 @@ function DocumentInbox({
     decision: "covered" | "not_relevant" | "needs_parser",
     reason: string,
   ) => void;
+  onOpenDocument: (item: DocumentInboxItem) => void;
   pendingDecisionId: string | null;
+  pendingOpenDocumentId: string | null;
 }) {
   const openItems = items.filter((item) => !item.reviewDecision || item.reviewDecision.decision === "needs_parser");
 
@@ -619,7 +624,9 @@ function DocumentInbox({
       <div className="document-inbox__list">
         {openItems.map((item) => {
           const isPending = pendingDecisionId === item.id;
+          const isOpening = pendingOpenDocumentId === item.id;
           const isClosed = Boolean(item.reviewDecision && item.reviewDecision.decision !== "needs_parser");
+          const hasDocumentAccess = Boolean(item.documentStoragePath || item.documentUrl);
           return (
             <article className={`document-inbox__row${isClosed ? " document-inbox__row--closed" : ""}`} key={item.id}>
               <div className="document-inbox__main">
@@ -642,9 +649,18 @@ function DocumentInbox({
                   </div>
                 ) : null}
               </div>
-              {item.documentUrl || !isClosed ? (
+              {hasDocumentAccess || !isClosed ? (
                 <div className="document-inbox__actions">
-                  {item.documentUrl ? (
+                  {item.documentStoragePath ? (
+                    <button
+                      type="button"
+                      className="secondary-button document-inbox__button"
+                      disabled={isOpening}
+                      onClick={() => onOpenDocument(item)}
+                    >
+                      {isOpening ? "Öffne PDF" : "PDF öffnen"}
+                    </button>
+                  ) : item.documentUrl ? (
                     <a
                       className="secondary-button document-inbox__button document-inbox__button--link"
                       href={item.documentUrl}
@@ -938,6 +954,7 @@ function App() {
     useState<CommandRequestStatus>("idle");
   const [tradeRepublicPortalRequestError, setTradeRepublicPortalRequestError] = useState<string | null>(null);
   const [pendingDocumentDecisionId, setPendingDocumentDecisionId] = useState<string | null>(null);
+  const [pendingDocumentOpenId, setPendingDocumentOpenId] = useState<string | null>(null);
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
@@ -1049,6 +1066,35 @@ function App() {
       setDocumentInboxItems(loadedDocumentInboxItems);
     } finally {
       setPendingDocumentDecisionId(null);
+    }
+  }
+
+  async function handleOpenDocument(item: DocumentInboxItem) {
+    if (item.documentUrl && !item.documentStoragePath) {
+      window.open(item.documentUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (!item.documentStoragePath) return;
+    const services = getFirebaseServices();
+    if (!services) return;
+    const documentWindow = window.open("", "_blank", "noopener,noreferrer");
+
+    try {
+      setPendingDocumentOpenId(item.id);
+      const blob = await getBlob(storageRef(services.storage, item.documentStoragePath));
+      const objectUrl = URL.createObjectURL(blob);
+      if (documentWindow) {
+        documentWindow.location.href = objectUrl;
+      } else {
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
+    } catch (error) {
+      documentWindow?.close();
+      throw error;
+    } finally {
+      setPendingDocumentOpenId(null);
     }
   }
 
@@ -1440,6 +1486,8 @@ function App() {
             <DocumentInbox
               items={openDocumentInboxItems}
               pendingDecisionId={pendingDocumentDecisionId}
+              pendingOpenDocumentId={pendingDocumentOpenId}
+              onOpenDocument={handleOpenDocument}
               onClassify={handleDocumentDecision}
             />
           ) : (

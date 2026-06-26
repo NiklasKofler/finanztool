@@ -178,6 +178,10 @@ interface SourceDocumentIssueRecord {
   sourceChannel?: string | null;
   fileName?: string | null;
   filePath?: string | null;
+  storagePath?: string | null;
+  rawStoragePath?: string | null;
+  driveWebUrl?: string | null;
+  driveUrl?: string | null;
   documentType?: string | null;
   parseStatus?: string | null;
   status?: string | null;
@@ -218,6 +222,8 @@ export interface DocumentInboxItem {
   sourceChannel?: string | null;
   rawStatus?: string | null;
   documentUrl?: string | null;
+  documentStoragePath?: string | null;
+  documentAccessMode?: "firebase_storage" | "drive" | "local" | null;
   reviewDecision?: DocumentReviewDecisionDocument | null;
 }
 
@@ -303,7 +309,10 @@ function decisionRank(decision?: DocumentReviewDecisionDocument | null) {
 
 function documentRecordToInboxItem(document: SourceDocumentIssueRecord): DocumentInboxItem {
   const documentType = document.documentType ?? "unknown";
+  const storagePath = document.storagePath ?? document.rawStoragePath ?? null;
+  const driveUrl = document.driveWebUrl ?? document.driveUrl ?? null;
   const canOpenPdf = Boolean(document.filePath && document.fileName?.toLowerCase().endsWith(".pdf"));
+  const localDocumentUrl = canOpenPdf ? `http://127.0.0.1:5176/documents/${encodeURIComponent(document.id)}` : null;
   return {
     id: `document:${document.id}`,
     source: document.source ?? "unknown",
@@ -318,7 +327,9 @@ function documentRecordToInboxItem(document: SourceDocumentIssueRecord): Documen
     targetSignature: document.fileHash ?? document.baselineId ?? null,
     sourceChannel: document.sourceChannel ?? null,
     rawStatus: document.parseStatus ?? document.status ?? null,
-    documentUrl: canOpenPdf ? `http://127.0.0.1:5176/documents/${encodeURIComponent(document.id)}` : null,
+    documentUrl: driveUrl ?? (storagePath ? null : localDocumentUrl),
+    documentStoragePath: storagePath,
+    documentAccessMode: storagePath ? "firebase_storage" : driveUrl ? "drive" : localDocumentUrl ? "local" : null,
   };
 }
 

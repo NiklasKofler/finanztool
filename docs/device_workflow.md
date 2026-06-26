@@ -338,8 +338,12 @@ npm run sync:health
 launchctl list | grep finanztool
 ```
 
-Der lokale PDF-Zugriff im zentralen Dokumenten-Postfach braucht den
-Dokumentserver:
+Das zentrale Dokumenten-Postfach oeffnet Dokumente primaer ueber Firebase
+Storage. Das funktioniert auf Mac Studio, MacBook, iPhone und anderen
+Geraeten, solange die App mit `niklas.kofler@gmail.com` angemeldet ist.
+
+Der lokale Dokumentserver ist nur Fallback fuer Entwicklung oder Altfaelle
+ohne `sourceDocuments.storagePath`:
 
 ```bash
 cd /Users/niklaskofler/Documents/finanztool/automation

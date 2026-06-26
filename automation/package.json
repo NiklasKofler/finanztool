@@ -36,6 +36,7 @@
     "deploy:firestore-rules": "node src/deploy-firestore-rules.mjs",
     "serve:app": "node src/serve-app.mjs",
     "serve:documents": "node src/serve-documents-local.mjs",
+    "sync:document-storage": "node src/sync-document-storage-local.mjs",
     "install:document-server": "zsh src/install-document-server-agent.sh",
     "setup:ginmon": "zsh src/setup-ginmon-keychain.sh",
     "inspect:ginmon": "node src/inspect-ginmon-browser.mjs",

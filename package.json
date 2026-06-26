@@ -13,6 +13,7 @@
     "deploy:firestore-rules": "npm --prefix automation run deploy:firestore-rules",
     "serve:app": "npm --prefix automation run serve:app",
     "serve:documents": "npm --prefix automation run serve:documents",
+    "sync:document-storage": "npm --prefix automation run sync:document-storage",
     "install:all": "npm --prefix app install && npm --prefix automation install",
     "ftd": "zsh bin/ftd",
     "fts": "zsh bin/fts",
