@@ -168,6 +168,11 @@ GUI-Regel:
 - Der Dokumentserver darf nur lokale, erlaubte Depot-/Download-Pfade aus
   `sourceDocuments.filePath` ausliefern und laeuft als LaunchAgent
   `com.niklas.finanztool.document-server`.
+- Firestore ist fuer Dokumente das Register und die Faktenbasis, nicht der
+  PDF-Blob-Speicher: `sourceDocuments` enthaelt Metadaten, Hash, Parserstatus
+  und lokalen `filePath`; `sourceDocumentFacts` enthaelt extrahierte Daten.
+  Die PDF-Anzeige in der App erfolgt lokal ueber den Mac-Dokumentserver. Der
+  Server muss bei abgelaufenem Firebase-CLI-Token automatisch neu authentifizieren.
 - Depotkarten muessen mindestens zeigen, soweit fuer die Quelle relevant:
   `Brokerstand` oder `Datenstand`, `Kursstand`, `Agent zuletzt`.
 - Agenten duerfen in der GUI nicht nur als pauschales `OK` erscheinen. Je

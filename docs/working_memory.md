@@ -184,11 +184,11 @@ Umsetzung 2026-06-23:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-25 12:39 CEST
+- Stand: 2026-06-26 19:53 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `cc1207f`
-- Handoff-Commit: `15bd8b7`
-- Firebase Deploy: 2026-06-25 12:39 CEST erfolgreich
+- Ausgangscommit: `492c942`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -1641,6 +1641,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       installiert.
     - Test 2026-06-25: `ginmon_doc_31664763` wurde erfolgreich als
       `application/pdf` ausgeliefert, 12 Seiten.
+    - Fix 2026-06-25: Dokumentserver erneuert den Firebase-CLI-Access-Token
+      bei `401` automatisch und liest `sourceDocuments` danach erneut.
+      Ursache fuer zeitweise nicht oeffnende PDFs war ein abgelaufener Token,
+      nicht ein fehlendes lokales PDF.
+    - Wichtig: Firestore speichert Dokumentregister, Fakten und lokale
+      `filePath`-Verweise; die PDF-Datei selbst wird fuer die lokale Anzeige
+      aus Google Drive/Downloads ueber den Mac-Dokumentserver ausgeliefert.
     - Nutzer kann Dokumentfaelle ueber Standardaktionen klassifizieren:
       `Welcome-Dokument`, `Wichtig`, `Abgedeckt`, `Nicht relevant`.
     - Normale GUI-Entscheidungen gelten nur fuer das konkrete Dokument

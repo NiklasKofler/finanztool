@@ -46,7 +46,12 @@ function attachmentName(document) {
   return name.replace(/[^\w .()ÄÖÜäöüß-]+/g, "_");
 }
 
-async function getFirestore() {
+function isAuthExpiredError(error) {
+  return error instanceof Error && /Firestore REST Fehler 401|invalid authentication credentials/i.test(error.message);
+}
+
+async function getFirestore({ forceRefresh = false } = {}) {
+  if (forceRefresh) firestore = null;
   if (firestore) return firestore;
   firestore = new FirestoreRest({
     projectId,
@@ -58,8 +63,15 @@ async function getFirestore() {
 async function getSourceDocument(documentId) {
   const now = Date.now();
   if (now - documentCache.loadedAt > 30_000) {
-    const client = await getFirestore();
-    const documents = await client.listDocuments("sourceDocuments");
+    let client = await getFirestore();
+    let documents;
+    try {
+      documents = await client.listDocuments("sourceDocuments");
+    } catch (error) {
+      if (!isAuthExpiredError(error)) throw error;
+      client = await getFirestore({ forceRefresh: true });
+      documents = await client.listDocuments("sourceDocuments");
+    }
     documentCache = {
       loadedAt: now,
       byId: new Map(documents.map((document) => [document.id, document])),
