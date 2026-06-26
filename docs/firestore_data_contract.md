@@ -57,6 +57,11 @@ Entscheidungen:
 - `covered`: fachlich durch andere bereits gespeicherte Daten abgedeckt
 - `not_relevant`: fuer Portfolioanalyse bewusst nicht relevant
 - `needs_parser`: relevant, aber Parser/Agent muss erweitert werden
+- `deferred`: wichtig, ruht zur spaeteren fachlichen Pruefung und darf nicht
+  vergessen werden; zaehlt nicht als akute Health-Warnung und verschwindet aus
+  dem aktiven Dokumenten-Postfach. Es bleibt in `documentReviewDecisions`
+  nachvollziehbar und soll spaeter in einer separaten Rueckstell-/Pruefansicht
+  wieder sichtbar gemacht werden.
 
 Der Scope `item` gilt nur fuer genau diesen Dokument-/Faktenfall. Der Scope
 `document_type` gilt fuer alle passenden Dokumente mit gleichem Label oder Typ
@@ -69,8 +74,9 @@ Standard-Aktionen im Dokumenten-Postfach:
 
 - `Welcome-Dokument`: Einzeldokument bewusst als nicht relevant schliessen;
   das PDF bleibt als Quelle erhalten.
-- `Wichtig`: Einzeldokument bleibt offen (`needs_parser`), bis geklaert ist,
-  welche Daten daraus fachlich gespeichert werden muessen.
+- `Wichtig`: Einzeldokument wird als `deferred` markiert. Es ruht zur
+  spaeteren fachlichen Pruefung, verschwindet aus den offenen Faellen und muss
+  spaeter geklaert beziehungsweise in Parser/DB einbezogen werden.
 - `Abgedeckt`: Einzeldokument ist durch bereits gespeicherte Daten fachlich
   abgedeckt.
 - `Nicht relevant`: Einzeldokument enthaelt keine relevanten Portfolio-,
@@ -410,6 +416,56 @@ technisch abgedeckt sind:
 ### Bankkonten und Kreditkarten
 
 - Ziel ist zunaechst aktueller Kontostand je Konto/Karte.
-- Spaeter sollen Umsaetze als `ledgerEntries`, Gebuehren als `costEvents` und
-  Zinsen/Cashback als `incomeEvents` gespeichert werden.
+- Umsaetze werden als `ledgerEntries`, Gebuehren/Steuern als `costEvents` und
+  Zinsen/Bonus/Cashback als `incomeEvents` gespeichert, soweit diese Daten ueber
+  die read-only Account-Information-API verfuegbar sind.
 - Kreditkarten-Saldo muss als Verbindlichkeit abbildbar sein, nicht als Depotwert.
+
+#### Bankkonten ueber Enable Banking
+
+- Bankkonten werden read-only ueber Open Banking/Enable Banking integriert.
+- Kein George-/Bank-Web-Scraping und keine Payment-/Ueberweisungsfunktion.
+- Quelle ist generisch `bank_accounts`, damit Erste/Sparkasse, Revolut,
+  bank99 und spaetere Bankkonten gleich behandelt werden.
+- Der Balance-Import schreibt den echten Kontostand als `currentValue`,
+  `cashValue` und `netValue`. Nur dieser Wert zaehlt zum Vermoegen.
+- Hoehere verfuegbare Werte inklusive Kreditrahmen duerfen nur als
+  `availableWithCredit` gespeichert werden. Die Differenz wird als
+  `creditLineEstimate` gefuehrt und zaehlt nicht als Vermoegen.
+- Bank99 darf durch den Finanztool-Agenten maximal viermal pro Kalendertag
+  abgerufen werden. Das Limit wird lokal im Agenten erzwungen.
+- Der Initialbestand ist vorhanden. Der normale Sync liest Transaktionen
+  inkrementell je Konto ab `latestTransactionDate - 2 Tage`.
+- Historische Nachpflege laeuft getrennt mit
+  `npm run sync:bank-accounts:backfill` fuer 180 Tage, damit die laufende
+  Aktualisierung schnell bleibt.
+- Bankumsaetze werden idempotent als `ledgerEntries` je Konto mit stabiler
+  Dedupe-Logik geschrieben.
+- `transactionCount` in `sourceAccounts` und `sourceSummaries.accounts`
+  bezeichnet die insgesamt gespeicherte Historie je Konto. Der letzte Lauf wird
+  separat ueber `transactionSyncedCount`, `transactionNewCount` und
+  `transactionDuplicateCount` dokumentiert.
+- `transactionStats.mode` dokumentiert, ob ein Konto `initial`,
+  `incremental`, `explicit_lookback` oder `explicit_date_range` gelesen wurde.
+- Zusaetzlich werden je Umsatz `sourceDocumentFacts` mit `factType:
+  bank_transaction` gespeichert, damit Rohdaten/Parserstand nachvollziehbar
+  bleiben.
+- Bankkosten/Steuern werden als `costEvents` und Zinsen/Bonus/Cashback als
+  `incomeEvents` klassifiziert, sofern der Umsatztext eindeutig ist.
+- Consent-Ablauf, fehlende Konten, Rate-Limits oder API-Fehler muessen in
+  `agentStatus/bank_accounts` und `systemHealth/current` sichtbar sein.
+
+### EquatePlus
+
+- EquatePlus ist zurueckgestellt, bis erste echte Mail-Dokumente vorliegen.
+- Vorher duerfen keine Holdings-/Transaktionsparser auf theoretischen
+  Annahmen gebaut werden.
+- Nach Eingang der ersten Dokumente muessen zuerst Dokumenttypen, Dedupe-
+  Regeln und fachliche Felder bestimmt werden.
+- Ziel-Collections bleiben dieselben wie bei allen Quellen:
+  `sourceDocuments`, `sourceDocumentFacts`, `transactions`,
+  `ledgerEntries`, `costEvents`, `incomeEvents`, `sourcePositions` und
+  `sourceSummaries/equateplus`.
+- Wenn EquatePlus Informationen zu Vesting, Einbuchung, Verkauf, Steuer,
+  Gebuehr oder Mitarbeiteraktienbestand liefert, muessen diese Daten
+  historisch nachvollziehbar als Fakten und Bewegungen gespeichert werden.

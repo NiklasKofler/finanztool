@@ -1,6 +1,6 @@
 # Import Masterplan
 
-Stand: 2026-06-13
+Stand: 2026-06-26
 
 ## Hauptziel
 
@@ -18,6 +18,23 @@ Wichtig:
 2. Quellen mit stabiler Automatisierung vor manuellen Sonderfaellen
 3. Erst saubere Datenbasis, dann feinere Bewertungen und spaeter KI
 
+## Architekturregel fuer Agents
+
+- Zuerst zaehlt die aktuelle Finanzlage in der App.
+- Danach wird die Kurs-/Preis-Historie gespeichert.
+- Danach werden Kosten, Steuern, Zinsen, Gebuehren und Produktdetails
+  moeglichst vollstaendig nachgezogen.
+- API-/Online-Integrationen sind gegenueber lokalen Studio-Agenten zu
+  bevorzugen, wenn sie stabil und read-only moeglich sind.
+- Der Mac Studio soll nur dort als Agent-Host noetig sein, wo lokale Logins,
+  lokale Dateien oder Browser-Sessions technisch unvermeidbar sind.
+- Agents duerfen nicht bei jedem Refresh unnoetig alte Historie neu
+  herunterladen oder parsen. Sie muessen Dedupe, Cursors, Hashes,
+  Dokumentstatus oder Provider-Zeitstempel nutzen.
+- Der Mac Studio ist nicht das zentrale Archiv. Relevante Originale bleiben
+  beim Broker/Provider oder in Firebase Storage/Drive nachvollziehbar; lokal
+  benoetigte Kopien sind Arbeits- und Fallbackdaten.
+
 ## Quellenuebersicht
 
 | Kategorie | Quelle | Aktivitaet | Prioritaet | Ziel-Aktualitaet | Primare Importmethode | Backup-Methode | Status |
@@ -27,11 +44,11 @@ Wichtig:
 | Robo-Advisor | Ginmon | aktiv | hoch | taeglich bis woechentlich je nach Dokumentenlage | Agent | Browser-/Dokumentabruf | teilweise produktiv |
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
 | Krypto | Bitget | aktiv | hoch | alle 5 Minuten | API | CSV/Datei nur Notfall | produktiv auf Mac Studio |
-| Mitarbeiteraktien | EquatePlus | passiv/regelmaessig | mittel | bei neuer Benachrichtigung, mindestens monatlich | geplanter Mail-Agent | manueller PDF-Import | erste Benachrichtigung abwarten |
-| Bank | Sparkasse George | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter | Export oder manueller Eintrag | Anbieter pruefen |
+| Mitarbeiteraktien | EquatePlus | passiv/regelmaessig | mittel | bei neuer Benachrichtigung, mindestens monatlich | spaeter Mail-Agent nach erster echter Mail | manueller PDF-Import | zurueckgestellt bis erste Mail-Dokumente vorliegen |
+| Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99 max. 4/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse produktiv, Revolut/bank99 Sessions offen, Umsaetze offen |
 | Kreditkarte | Amazon Visa | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
 | Kreditkarte | TF Bank Kreditkarte | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
-| Bank | Revolut | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | API oder Export | manuell | offen |
+| Bank | Revolut | aktiv/vorbereitet | mittel | wenige Abrufe pro Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | im Control Panel verlinkt, Session noch offen |
 | Broker | Trading 212 | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | offen |
 | Trading | Capital.com | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | offen |
 | Vorsorge | Betriebliche Altersvorsorge | passiv | niedrig | monatlich bis quartalsweise | manueller Eintrag in der App | manueller Belegimport | entschieden |
@@ -136,21 +153,43 @@ Wichtig:
 - Ziel: Mitarbeiteraktien sauber im Gesamtvermoegen zeigen
 - Realistisch: monatlich oder bei neuen Belegen ausreichend
 - Methode:
-  - Ziel ist ein `Mail-Agent`
-  - zuerst die erste neu konfigurierte E-Mail-Benachrichtigung abwarten
-  - danach Absender, Betreff, Anhaenge und enthaltene Daten analysieren
-  - bis dahin bleibt manueller PDF-Import als Rueckfall
+  - Quelle ist zurueckgestellt, bis die ersten echten EquatePlus-Mail-
+    Dokumente eintreffen
+  - erst danach Absender, Betreff, Anhaenge, Dokumenttypen und enthaltene
+    Daten analysieren
+  - erst danach entscheiden, ob ein Mail-Agent ausreicht oder zusaetzlich
+    ein manueller PDF-Import/Portalweg noetig ist
+  - keine Annahmen ueber Holdings, Transaktionen, Vesting, Steuern oder Kosten
+    hart codieren, bevor echte Dokumente vorliegen
 
-### 7. Sparkasse George
+### 7. Bankkonten ueber Enable Banking
 
 - Ziel: Bankguthaben und Zahlungsstrukturen im Gesamtbild
-- Realistisch: meist taeglicher Stand ausreichend
+- Realistisch: wenige Abrufe pro Tag ausreichend; bank99 maximal 4 Abrufe pro
+  Tag
 - Methode:
-  - Ziel ist eine `API` ueber einen bestehenden Open-Banking-Anbieter
+  - read-only `API` ueber Enable Banking
   - nicht selbst als regulierter Kontoinformationsdienst auftreten
-  - bis zur API-Anbindung Export oder manueller Eintrag
+  - Enable-Banking-App ist aktiv und auf eigene verlinkte Konten
+    eingeschraenkt
+  - Balance-Import schreibt `sourceSummaries`, `sourcePositions`,
+    `sourceAccounts`, `imports` und `agentStatus`
+  - Quelle ist generisch `bank_accounts`
+  - echte Kontostaende zaehlen als Cash/Netto-Wert und damit zum Vermoegen
+  - verfuegbar inkl. Kredit wird separat gespeichert und nicht als Vermoegen
+    gezaehlt
 - Zusatz:
-  - wichtig fuer Gesamtvermoegen, Cash und spaetere Ausgabenanalyse
+  - wichtig fuer Gesamtvermoegen, Cash, Kreditlinien und spaetere
+    Ausgabenanalyse
+  - Transaktionen werden je Konto idempotent in `ledgerEntries` gespeichert
+  - Initialbestand ist vorhanden; normaler Sync ist inkrementell ab letztem
+    gespeicherten Umsatz je Konto minus 2 Tage Sicherheitsfenster
+  - Backfill: `npm run sync:bank-accounts:backfill` fuer 180 Tage
+  - Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
+    `incomeEvents` abgeleitet, wenn der Umsatztext eindeutig ist
+  - keine Zahlungsfunktion und kein Bank-Web-Scraping
+  - eigener Detailplan:
+    `docs/sparkasse_george_integration_plan.md`
 
 ### 8. Amazon Visa
 
@@ -225,7 +264,7 @@ Aktuelle Hauptquellen:
 - Trade Republic
 - Ginmon
 - Intergold
-- EquatePlus nach Analyse der ersten E-Mail-Benachrichtigung
+- EquatePlus erst nach Analyse der ersten echten E-Mail-Dokumente
 
 ### Manueller Eintrag
 
@@ -266,15 +305,15 @@ Dateiablage gebaut. Parser und Firestore-Import folgen danach getrennt.
 
 ### Phase 4 - Gesamtvermoegen schliessen
 
-1. EquatePlus Parser
-2. Sparkasse George
-3. Betriebliche Altersvorsorge
+1. Weitere Bank-Sessions fuer Revolut und bank99 erzeugen
+2. Amazon Visa und TF Bank Kreditkarte
+3. EquatePlus Parser nach Eingang der ersten echten Mail-Dokumente
 4. optionale Quellen wie Revolut, Trading 212, Capital.com
 
 ## Wichtigste offene Entscheidungen
 
 1. Welcher Open-Banking-Anbieter deckt Sparkasse George, Amazon Visa und TF Bank ab?
-2. Welche Informationen enthalten die ersten EquatePlus-E-Mail-Benachrichtigungen?
+2. Welche Informationen enthalten die ersten EquatePlus-Mail-Dokumente?
 3. Welche Trade-Republic-Abrechnungstypen decken die taeglichen PDFs ab und was fehlt gegenueber den periodischen Reports?
 
 ## Arbeitsregel fuer die naechsten Sessions

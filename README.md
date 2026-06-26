@@ -4,7 +4,7 @@ Persoenliches Portfolio- und Performance-Tool fuer Flatex, Trade Republic,
 Ginmon, Intergold, EquatePlus, Bitget, Capital.com und VBV. Bankkonten,
 Kreditkarten und Trading 212 sind als naechste Integrationen geplant.
 
-Stand: 2026-06-20
+Stand: 2026-06-26
 
 ## Ziel
 
@@ -131,8 +131,14 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 ### EquatePlus
 
 - Ordner ist in den Drive-Scan aufgenommen.
-- Vorhandene PDF-Dateien wurden importiert und archiviert.
-- Fachlicher Parser fuer Holdings/Transaktionen ist noch offen.
+- Quelle ist fachlich zurueckgestellt, bis die ersten echten
+  EquatePlus-Mail-Dokumente eintreffen.
+- Vorher wird kein aktiver Parser/Agent gebaut, damit wir nicht anhand
+  theoretischer Annahmen eine falsche Datenstruktur erzeugen.
+- Sobald die erste Mail vorliegt, werden Absender, Betreff, Anhaenge,
+  Dokumenttypen, Dedupe-Regeln und relevante Datenfelder analysiert.
+- Erst danach werden Holdings, Transaktionen, Kosten, Steuern und
+  Dokumentfakten in das kanonische Firestore-Modell integriert.
 
 ### Bitget
 
@@ -187,10 +193,28 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 - Aktueller Stand: `1.815,86 EUR`, Stichtag `2026-05-31`.
 - Keine Einzelpositionen.
 
+### Bankkonten
+
+- Read-only Open Banking ueber Enable Banking ist aktiv.
+- Quelle ist `bank_accounts` fuer Erste/Sparkasse, Revolut, bank99 und
+  spaetere Bankkonten.
+- Aktueller echter Kontostand wird nach Firestore geschrieben und zaehlt als
+  Cash/Netto-Wert.
+- Verfuegbar inkl. Kredit wird separat gespeichert und nicht als Vermoegen
+  gezaehlt.
+- Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden.
+- Umsaetze werden per Enable Banking idempotent in `ledgerEntries`
+  gespeichert.
+- Initialbestand ist vorhanden. Der normale Sync liest ab jetzt inkrementell:
+  letzter gespeicherter Umsatz je Konto minus 2 Tage Sicherheitsfenster.
+- Fuer historische Nachpflege gibt es `npm run sync:bank-accounts:backfill`
+  mit 180 Tagen.
+- Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
+  `incomeEvents` klassifiziert, sofern sie im Umsatztext erkennbar sind.
+
 ### Noch nicht integriert
 
 - Bankkonten/Kreditkarten:
-  - Sparkasse/George
   - Amazon Visa
   - TF Bank Kreditkarte
   - Revolut, derzeit inaktiv
@@ -337,14 +361,14 @@ Wichtige Collections:
 
 ## Naechste sinnvolle Schritte
 
-1. Bankkonten/Kreditkarten ueber Open-Banking pruefen und integrieren:
-   Sparkasse/George, Amazon Visa, TF Bank Kreditkarte.
+1. Weitere Bank-Sessions fuer Revolut und bank99 erzeugen.
 2. Trading 212 als eigene Quelle ergaenzen.
 3. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
    Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind.
 4. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
    Transaktionshistorie, Kosten/Steuern je Position.
-5. EquatePlus Parser fuer Holdings und Transaktionen ergaenzen.
+5. EquatePlus Parser erst nach Eingang der ersten echten Mail-Dokumente
+   ergaenzen.
 6. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
 7. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
 

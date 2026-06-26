@@ -49,7 +49,7 @@ service cloud.firestore {
         ])
         && request.resource.data.source is string
         && request.resource.data.scope in ["item", "document_type"]
-        && request.resource.data.decision in ["covered", "not_relevant", "needs_parser"]
+        && request.resource.data.decision in ["covered", "not_relevant", "needs_parser", "deferred"]
         && request.resource.data.status == "ACTIVE";
       allow delete: if false;
     }

@@ -5,7 +5,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getBlob, ref as storageRef } from "firebase/storage";
+import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import {
   Activity,
   AlertTriangle,
@@ -24,6 +24,7 @@ import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
   loadAgentStatuses,
+  loadBankLedgerEntries,
   loadDocumentInboxItems,
   loadSourcePositions,
   loadSourceSummaries,
@@ -34,6 +35,7 @@ import {
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
   type AgentStatusDocument,
+  type BankLedgerEntryDocument,
   type DocumentInboxItem,
   type SourceSummaryAccount,
   type SourceSummaryDocument,
@@ -65,6 +67,8 @@ const sourceSortOrder = [
   "bitget",
   "capitalcom",
   "vbv",
+  "equateplus",
+  "bank_accounts",
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
 type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
@@ -77,6 +81,7 @@ const agentStatusIds: Record<string, string | string[]> = {
   bitget: ["bitget", "bitget_ledger"],
   capitalcom: "capitalcom",
   vbv: "vbv",
+  bank_accounts: "bank_accounts",
 };
 
 const agentStatusMeta: Record<
@@ -137,6 +142,10 @@ const agentDisplayMeta: Record<string, { label: string; responsibility: string }
   vbv: {
     label: "VBV Agent",
     responsibility: "VBV-Portalstichtag, Kontoinformation-PDF und Vertragswerte",
+  },
+  bank_accounts: {
+    label: "Bankkonten Agent",
+    responsibility: "Read-only Geldstand, Kreditlinien und spaeter Transaktionen ueber Enable Banking",
   },
 };
 
@@ -382,7 +391,7 @@ function getSourcePrimaryTimestamp(source: SourceOverview) {
   }
   if (source.sourceDataUpdatedAt || source.valuationDate) {
     return {
-      label: source.id === "vbv" ? "VBV-Stand" : "Datenstand",
+      label: source.id === "vbv" ? "VBV-Stand" : source.id === "bank_accounts" ? "Bankstand" : "Datenstand",
       value: source.sourceDataUpdatedAt ?? source.valuationDate,
     };
   }
@@ -423,7 +432,7 @@ function getSourceDepotDisplayValue(source: SourceOverview) {
 }
 
 function sourceUsesAuthoritativeSummary(sourceId: string) {
-  return sourceId === "bitget";
+  return sourceId === "bitget" || sourceId === "bank_accounts";
 }
 
 function getAccountLabel(account: SourceSummaryAccount) {
@@ -434,6 +443,23 @@ function getAccountLabel(account: SourceSummaryAccount) {
     account.customerId?.trim() ||
     "Depot"
   );
+}
+
+function getBankLedgerCategoryLabel(category?: string | null) {
+  if (category === "cash_inflow") return "Eingang";
+  if (category === "cash_outflow") return "Ausgang";
+  if (category === "fee") return "Gebühr";
+  if (category === "tax") return "Steuer";
+  if (category === "interest") return "Zins";
+  if (category === "bonus") return "Bonus";
+  return "Umsatz";
+}
+
+function getBankLedgerTone(entry: BankLedgerEntryDocument) {
+  if (entry.category === "fee" || entry.category === "tax") return "negative";
+  if ((entry.amount ?? 0) > 0) return "positive";
+  if ((entry.amount ?? 0) < 0) return "negative";
+  return "neutral";
 }
 
 function getPositionSortValue(position: PortfolioPosition) {
@@ -584,14 +610,19 @@ function getDocumentInboxDecisionLabel(item: DocumentInboxItem) {
   const decision = item.reviewDecision?.decision;
   if (decision === "covered") return "Abgedeckt";
   if (decision === "not_relevant") return "Nicht relevant";
+  if (decision === "deferred") return "Wichtig";
   if (decision === "needs_parser") return "Parser nötig";
   return item.severity === "error" ? "Fehler" : "Offen";
 }
 
 function getDocumentInboxDecisionTone(item: DocumentInboxItem) {
   if (item.reviewDecision?.decision === "covered" || item.reviewDecision?.decision === "not_relevant") return "good";
-  if (item.reviewDecision?.decision === "needs_parser") return "info";
+  if (item.reviewDecision?.decision === "needs_parser" || item.reviewDecision?.decision === "deferred") return "info";
   return item.severity === "error" ? "warn" : "warn";
+}
+
+function isOpenDocumentInboxItem(item: DocumentInboxItem) {
+  return !item.reviewDecision || item.reviewDecision.decision === "needs_parser";
 }
 
 function DocumentInbox({
@@ -604,14 +635,15 @@ function DocumentInbox({
   items: DocumentInboxItem[];
   onClassify: (
     item: DocumentInboxItem,
-    decision: "covered" | "not_relevant" | "needs_parser",
+    decision: "covered" | "not_relevant" | "needs_parser" | "deferred",
     reason: string,
   ) => void;
   onOpenDocument: (item: DocumentInboxItem) => void;
   pendingDecisionId: string | null;
   pendingOpenDocumentId: string | null;
 }) {
-  const openItems = items.filter((item) => !item.reviewDecision || item.reviewDecision.decision === "needs_parser");
+  const openItems = items.filter(isOpenDocumentInboxItem);
+  const visibleItems = openItems;
 
   if (!items.length) return null;
 
@@ -622,7 +654,7 @@ function DocumentInbox({
         <strong>{numberFormatter.format(openItems.length)}</strong>
       </summary>
       <div className="document-inbox__list">
-        {openItems.map((item) => {
+        {visibleItems.map((item) => {
           const isPending = pendingDecisionId === item.id;
           const isOpening = pendingOpenDocumentId === item.id;
           const isClosed = Boolean(item.reviewDecision && item.reviewDecision.decision !== "needs_parser");
@@ -693,8 +725,8 @@ function DocumentInbox({
                         onClick={() =>
                           onClassify(
                             item,
-                            "needs_parser",
-                            "Wichtig; fachlich klaeren und Parser/Agent erweitern, bevor der Fall geschlossen wird.",
+                            "deferred",
+                            "Wichtig; ruht zur spaeteren fachlichen Pruefung und darf nicht vergessen werden.",
                           )
                         }
                       >
@@ -944,6 +976,7 @@ function App() {
   >({});
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatusDocument>>({});
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [bankLedgerEntries, setBankLedgerEntries] = useState<BankLedgerEntryDocument[]>([]);
   const [documentInboxItems, setDocumentInboxItems] = useState<DocumentInboxItem[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -955,6 +988,7 @@ function App() {
   const [tradeRepublicPortalRequestError, setTradeRepublicPortalRequestError] = useState<string | null>(null);
   const [pendingDocumentDecisionId, setPendingDocumentDecisionId] = useState<string | null>(null);
   const [pendingDocumentOpenId, setPendingDocumentOpenId] = useState<string | null>(null);
+  const [documentDecisionError, setDocumentDecisionError] = useState<string | null>(null);
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
@@ -972,6 +1006,7 @@ function App() {
         setSourceSummaries({});
         setAgentStatuses({});
         setPositions([]);
+        setBankLedgerEntries([]);
         setDocumentInboxItems([]);
         setSystemHealth(null);
         setDataStatus("auth-required");
@@ -992,14 +1027,16 @@ function App() {
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadSystemHealth(services.db),
     ])
-      .then(([summaries, loadedAgentStatuses, loadedPositions, loadedDocumentInboxItems, health]) => {
+      .then(([summaries, loadedAgentStatuses, loadedPositions, loadedBankLedgerEntries, loadedDocumentInboxItems, health]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
         setAgentStatuses(loadedAgentStatuses);
         setPositions(loadedPositions);
+        setBankLedgerEntries(loadedBankLedgerEntries);
         setDocumentInboxItems(loadedDocumentInboxItems);
         setSystemHealth(health);
         setDataStatus("live");
@@ -1037,33 +1074,42 @@ function App() {
   async function refreshPortfolioData() {
     const services = getFirebaseServices();
     if (!services) return;
-    const [summaries, loadedAgentStatuses, loadedPositions, loadedDocumentInboxItems, health] = await Promise.all([
+    const [summaries, loadedAgentStatuses, loadedPositions, loadedBankLedgerEntries, loadedDocumentInboxItems, health] = await Promise.all([
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadSystemHealth(services.db),
     ]);
     setSourceSummaries(summaries);
     setAgentStatuses(loadedAgentStatuses);
     setPositions(loadedPositions);
+    setBankLedgerEntries(loadedBankLedgerEntries);
     setDocumentInboxItems(loadedDocumentInboxItems);
     setSystemHealth(health);
   }
 
   async function handleDocumentDecision(
     item: DocumentInboxItem,
-    decision: "covered" | "not_relevant" | "needs_parser",
+    decision: "covered" | "not_relevant" | "needs_parser" | "deferred",
     reason: string,
   ) {
     const services = getFirebaseServices();
     if (!services || !authUser) return;
 
     try {
+      setDocumentDecisionError(null);
       setPendingDocumentDecisionId(item.id);
       await markDocumentInboxItemDecision(services.db, item, decision, reason, authUser.email, "item");
       const loadedDocumentInboxItems = await loadDocumentInboxItems(services.db);
       setDocumentInboxItems(loadedDocumentInboxItems);
+    } catch (error) {
+      setDocumentDecisionError(
+        error instanceof Error
+          ? `Dokumententscheidung konnte nicht gespeichert werden: ${error.message}`
+          : "Dokumententscheidung konnte nicht gespeichert werden.",
+      );
     } finally {
       setPendingDocumentDecisionId(null);
     }
@@ -1078,21 +1124,30 @@ function App() {
     if (!item.documentStoragePath) return;
     const services = getFirebaseServices();
     if (!services) return;
-    const documentWindow = window.open("", "_blank", "noopener,noreferrer");
+    const documentWindow = window.open("", "_blank");
+    if (documentWindow) {
+      documentWindow.document.title = item.title;
+      documentWindow.document.body.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      documentWindow.document.body.style.padding = "24px";
+      documentWindow.document.body.textContent = "Dokument wird geladen ...";
+    }
 
     try {
       setPendingDocumentOpenId(item.id);
-      const blob = await getBlob(storageRef(services.storage, item.documentStoragePath));
-      const objectUrl = URL.createObjectURL(blob);
+      const downloadUrl = await getDownloadURL(storageRef(services.storage, item.documentStoragePath));
       if (documentWindow) {
-        documentWindow.location.href = objectUrl;
+        documentWindow.location.href = downloadUrl;
       } else {
-        window.open(objectUrl, "_blank", "noopener,noreferrer");
+        window.open(downloadUrl, "_blank", "noopener,noreferrer");
       }
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10 * 60 * 1000);
     } catch (error) {
-      documentWindow?.close();
-      throw error;
+      if (documentWindow) {
+        documentWindow.document.body.textContent =
+          error instanceof Error
+            ? `Dokument konnte nicht geöffnet werden: ${error.message}`
+            : "Dokument konnte nicht geöffnet werden.";
+      }
+      console.error(error);
     } finally {
       setPendingDocumentOpenId(null);
     }
@@ -1318,6 +1373,12 @@ function App() {
       typeof getSourceDisplayValue(source) === "number" ||
       (source.positionCount ?? 0) > 0,
   ).length;
+  const displaySources = sources.filter(
+    (source) =>
+      source.status !== "blocked" ||
+      typeof getSourceDisplayValue(source) === "number" ||
+      (source.positionCount ?? 0) > 0,
+  );
   const displayedPositions = useMemo(
     () =>
       positions
@@ -1342,9 +1403,7 @@ function App() {
     return grouped;
   }, [displayedPositions]);
   const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
-  const openDocumentInboxItems = documentInboxItems.filter(
-    (item) => !item.reviewDecision || item.reviewDecision.decision === "needs_parser",
-  );
+  const openDocumentInboxItems = documentInboxItems.filter(isOpenDocumentInboxItem);
   const healthTone =
     systemHealth?.status === "ERROR"
       ? "error"
@@ -1482,6 +1541,9 @@ function App() {
           <p className="document-inbox-panel__intro">
             Offene Dokumente, die ein Agent nicht klassifizieren oder verarbeiten konnte.
           </p>
+          {documentDecisionError ? (
+            <p className="document-inbox-panel__error">{documentDecisionError}</p>
+          ) : null}
           {openDocumentInboxItems.length ? (
             <DocumentInbox
               items={openDocumentInboxItems}
@@ -1539,7 +1601,7 @@ function App() {
           </div>
 
           <div className="source-list">
-            {sources.map((source) => {
+            {displaySources.map((source) => {
               const sourceSummary = sourceSummaries[source.summaryId ?? source.id];
               const performanceTone = getPerformanceTone(sourceSummary?.performanceValue);
               const sourcePositionsForCard = displayedPositionsBySource[source.id] ?? [];
@@ -1566,6 +1628,8 @@ function App() {
                 sourcePreviousValue && sourceDayChange ? sourceDayChange / sourcePreviousValue : null;
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
+              const isBankAccountsSource = source.id === "bank_accounts";
+              const bankAccounts = isBankAccountsSource ? (sourceSummary?.accounts ?? []) : [];
               const sourceAgentRuns = getSourceAgentRunViews(source.id, agentStatuses);
               const tradeRepublicPortalButtonLabel = getTradeRepublicPortalButtonLabel(
                 tradeRepublicPortalRequestStatus,
@@ -1607,52 +1671,85 @@ function App() {
                       </div>
                     ) : null}
 
-                    <dl className="source-card__metrics">
-                      <div>
-                        <dt>Depotwert</dt>
-                        <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
-                      </div>
-                      <div>
-                        <dt>Cash</dt>
-                        <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
-                      </div>
-                      <div>
-                        <dt>Einstand</dt>
-                        <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
-                      </div>
-                      <div>
-                        <dt>{sourcePrimaryTimestamp.label}</dt>
-                        <dd>
-                          <span className="source-card__timestamp-inline">
-                            {formatUpdatedAt(sourcePrimaryTimestamp.value)}
-                          </span>
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>G/V</dt>
-                        <dd className={`performance-value performance-value--${performanceTone}`}>
-                          {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
-                          <span>{formatSignedPercent(sourceSummary?.performancePct)}</span>
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Heute</dt>
-                        <dd>
-                          {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
-                          <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
-                        </dd>
-                      </div>
-                      {source.agentStatus && source.agentStatus !== "OK" ? (
-                        <div>
-                          <dt>Status</dt>
-                          <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
-                        </div>
-                      ) : null}
+                    <dl className={`source-card__metrics${isBankAccountsSource ? " source-card__metrics--bank" : ""}`}>
+                      {isBankAccountsSource ? (
+                        <>
+                          <div>
+                            <dt>Geldstand</dt>
+                            <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
+                          </div>
+                          <div>
+                            <dt>Verfügbar</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
+                          </div>
+                          <div>
+                            <dt>Kreditlinie</dt>
+                            <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                          </div>
+                          <div>
+                            <dt>{sourcePrimaryTimestamp.label}</dt>
+                            <dd>
+                              <span className="source-card__timestamp-inline">
+                                {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                              </span>
+                            </dd>
+                          </div>
+                          {source.agentStatus && source.agentStatus !== "OK" ? (
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <dt>Depotwert</dt>
+                            <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
+                          </div>
+                          <div>
+                            <dt>Cash</dt>
+                            <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
+                          </div>
+                          <div>
+                            <dt>Einstand</dt>
+                            <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
+                          </div>
+                          <div>
+                            <dt>{sourcePrimaryTimestamp.label}</dt>
+                            <dd>
+                              <span className="source-card__timestamp-inline">
+                                {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                              </span>
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>G/V</dt>
+                            <dd className={`performance-value performance-value--${performanceTone}`}>
+                              {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
+                              <span>{formatSignedPercent(sourceSummary?.performancePct)}</span>
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Heute</dt>
+                            <dd>
+                              {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
+                              <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
+                            </dd>
+                          </div>
+                          {source.agentStatus && source.agentStatus !== "OK" ? (
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </dl>
-                    {typeof source.saleValue === "number" ||
+                    {!isBankAccountsSource && (typeof source.saleValue === "number" ||
                     typeof source.availableWithCredit === "number" ||
                     typeof source.creditLineEstimate === "number" ||
-                    typeof usedCreditValue === "number" ? (
+                    typeof usedCreditValue === "number") ? (
                       <dl className="source-card__metrics source-card__metrics--secondary">
                         {typeof source.saleValue === "number" ? (
                           <div>
@@ -1732,7 +1829,92 @@ function App() {
                       </div>
                     ) : null}
 
-                    {ginmonAccounts.length ? (
+                    {bankAccounts.length ? (
+                      <details className="source-accounts-details source-accounts-details--bank">
+                        <summary>
+                          <span>Bankkonten</span>
+                          <strong>{numberFormatter.format(bankAccounts.length)}</strong>
+                        </summary>
+                        <div className="source-account-list source-account-list--bank">
+                          <div className="source-account-list__header">
+                            <span>Konto</span>
+                            <span>Geldstand</span>
+                            <span>Verfügbar</span>
+                            <span>Kreditlinie</span>
+                          </div>
+                          {bankAccounts.map((account) => {
+                            const accountKey =
+                              account.providerAccountId ??
+                              account.accountNumber ??
+                              `${account.bankName ?? "bank"}-${getAccountLabel(account)}`;
+                            const accountLedgerEntries = bankLedgerEntries
+                              .filter(
+                                (entry) =>
+                                  entry.accountId === account.accountId ||
+                                  entry.providerAccountId === account.providerAccountId,
+                              )
+                              .slice(0, 8);
+                            return (
+                              <details className="source-account-details" key={accountKey}>
+                                <summary className="source-account-row source-account-row--bank">
+                                  <div className="source-account-row__main">
+                                    <strong>{getAccountLabel(account)}</strong>
+                                    <span>
+                                      {[
+                                        account.bankName,
+                                        account.accountNumber,
+                                        typeof account.transactionCount === "number"
+                                          ? `${numberFormatter.format(account.transactionCount)} Umsätze`
+                                          : null,
+                                        account.latestTransactionDate
+                                          ? `letzter Umsatz ${formatUpdatedAt(account.latestTransactionDate)}`
+                                          : null,
+                                      ].filter(Boolean).join(" · ") || "Bankkonto"}
+                                    </span>
+                                  </div>
+                                  <div className="source-account-row__value" data-label="Geldstand">
+                                    <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
+                                  </div>
+                                  <div className="source-account-row__value" data-label="Verfügbar">
+                                    <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
+                                  </div>
+                                  <div className="source-account-row__value" data-label="Kreditlinie">
+                                    <strong>{privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}</strong>
+                                  </div>
+                                </summary>
+                                {accountLedgerEntries.length ? (
+                                  <div className="bank-ledger-list">
+                                    {accountLedgerEntries.map((entry) => {
+                                      const ledgerTone = getBankLedgerTone(entry);
+                                      return (
+                                        <div className="bank-ledger-row" key={entry.id}>
+                                          <div className="bank-ledger-row__main">
+                                            <strong>{entry.bookingText ?? "Bankumsatz"}</strong>
+                                            <span>
+                                              {formatUpdatedAt(entry.date)}
+                                              {" · "}
+                                              {getBankLedgerCategoryLabel(entry.category)}
+                                              {entry.counterpartyName ? ` · ${entry.counterpartyName}` : ""}
+                                            </span>
+                                          </div>
+                                          <div className={`bank-ledger-row__amount performance-value--${ledgerTone}`}>
+                                            {privacyMode ? maskSignedMoney(entry.amount) : formatSignedMoney(entry.amount, entry.currency ?? "EUR")}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="source-account-transactions-placeholder">
+                                    Keine Umsätze im aktuell geladenen Zeitraum.
+                                  </div>
+                                )}
+                              </details>
+                            );
+                          })}
+                        </div>
+                      </details>
+                    ) : ginmonAccounts.length ? (
                       <details className="source-accounts-details">
                         <summary>
                           <span>Ginmon-Depots</span>

@@ -55,6 +55,47 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-27 00:42 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-27 00:42 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `7d16665`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M README.md
+  -  M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/domain/seedData.ts
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/package.json
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/download-traderepublic-local.mjs
+  -  M automation/src/keychain-secret-transfer.mjs
+  -  M automation/src/run-full-refresh-local.mjs
+  -  M automation/src/sync-document-storage-local.mjs
+  -  M docs/firestore_data_contract.md
+  -  M docs/import_masterplan.md
+  -  M docs/working_memory.md
+  -  M firestore.rules
+  -  M package.json
+  - ?? automation/src/enable-banking-client.mjs
+  - ?? automation/src/sync-sparkasse-george-local.mjs
+  - ?? docs/sparkasse_george_integration_plan.md
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-26 20:19 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-26 20:19 CEST

@@ -92,9 +92,23 @@ const stats = {
   skippedOutsideAllowedRoots: 0,
   skippedMissingFile: 0,
   uploaded: 0,
+  ensuredDownloadTokens: 0,
   wouldUpload: 0,
   errors: [],
 };
+
+async function ensureDownloadToken(file) {
+  const [metadata] = await file.getMetadata();
+  const customMetadata = metadata.metadata ?? {};
+  if (customMetadata.firebaseStorageDownloadTokens) return false;
+  await file.setMetadata({
+    metadata: {
+      ...customMetadata,
+      firebaseStorageDownloadTokens: crypto.randomUUID(),
+    },
+  });
+  return true;
+}
 
 for (const docSnapshot of snapshot.docs) {
   if (limit > 0 && stats.eligible >= limit) break;
@@ -102,12 +116,30 @@ for (const docSnapshot of snapshot.docs) {
   stats.scanned += 1;
 
   if (sourceFilter && document.source !== sourceFilter) continue;
-  if (!document.filePath) {
-    stats.skippedMissingPath += 1;
-    continue;
-  }
   if (document.storagePath && !forceUpload) {
     stats.skippedExistingStorage += 1;
+    if (writeEnabled) {
+      try {
+        const file = bucket.file(document.storagePath);
+        const tokenAdded = await ensureDownloadToken(file);
+        if (tokenAdded) {
+          stats.ensuredDownloadTokens += 1;
+          await docSnapshot.ref.set(
+            {
+              storageDownloadTokenStatus: "AVAILABLE",
+              storageDownloadTokenUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+      } catch (error) {
+        stats.errors.push({ id: docSnapshot.id, storagePath: document.storagePath, error: error.message });
+      }
+    }
+    continue;
+  }
+  if (!document.filePath) {
+    stats.skippedMissingPath += 1;
     continue;
   }
   if (!isPathAllowed(document.filePath)) {
@@ -150,6 +182,7 @@ for (const docSnapshot of snapshot.docs) {
             sourceDocumentId: docSnapshot.id,
             source: document.source ?? "",
             fileHash,
+            firebaseStorageDownloadTokens: crypto.randomUUID(),
           },
         },
       });
@@ -159,6 +192,7 @@ for (const docSnapshot of snapshot.docs) {
         storagePath: targetPath,
         storageBucket: bucket.name,
         storageStatus: "UPLOADED",
+        storageDownloadTokenStatus: "AVAILABLE",
         storageUploadedAt: admin.firestore.FieldValue.serverTimestamp(),
         fileHash,
       },

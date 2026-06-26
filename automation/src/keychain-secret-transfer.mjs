@@ -26,6 +26,15 @@ const services = [
   { service: "finanztool-traderepublic-pdf-password", label: "Trade Republic PDF-Passwort" },
   { service: "finanztool-vbv-email", label: "VBV E-Mail" },
   { service: "finanztool-vbv-password", label: "VBV Passwort" },
+  { service: "finanztool.enablebanking.applicationId", label: "Enable Banking Application ID" },
+  {
+    service: "finanztool.enablebanking.privateKey.5df43790-b2b4-4920-987e-df41f7393250",
+    label: "Enable Banking Private Key",
+  },
+  { service: "finanztool.enablebanking.sessionId", label: "Enable Banking Session ID" },
+  { service: "finanztool.enablebanking.sessionId.erste", label: "Enable Banking Session ID Erste/Sparkasse" },
+  { service: "finanztool.enablebanking.sessionId.revolut", label: "Enable Banking Session ID Revolut" },
+  { service: "finanztool.enablebanking.sessionId.bank99", label: "Enable Banking Session ID bank99" },
 ];
 
 function readArg(name) {

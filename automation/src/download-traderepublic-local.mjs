@@ -147,7 +147,7 @@ function activeReviewDecisions(decisions) {
   return decisions.filter(
     (decision) =>
       decision.status !== "REVOKED" &&
-      ["covered", "not_relevant"].includes(decision.decision),
+      ["covered", "not_relevant", "deferred"].includes(decision.decision),
   );
 }
 

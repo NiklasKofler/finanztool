@@ -49,6 +49,11 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   Geraetewechsel nicht den Kontext verliert.
 - Wenn beim Wechsel zwischen Mac Studio und MacBook Pro ein Problem auftritt,
   muss Codex es in `docs/device_switch_log.md` festhalten.
+- Agenten werden kuenftig vereinfacht: API-/Online-first, Mac-Studio-Agenten
+  nur wenn lokal wirklich noetig, und Refreshes sollen den aktuellen Stand
+  schnell liefern statt unnoetig alte Historie erneut zu pruefen.
+- Prioritaet der Datenhaltung: aktuelle Finanzlage, dann Preis-/Kurshistorie,
+  dann Kosten, Steuern, Zinsen und Produktdetails.
 - Die bevorzugten Terminal-Kurzbefehle sind:
   - `ftd` = Download/Update
   - `fts` = Save/lokaler Commit
@@ -184,11 +189,11 @@ Umsetzung 2026-06-23:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-26 20:19 CEST
+- Stand: 2026-06-27 00:42 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `9e2f6aa`
-- Handoff-Commit: `1320c29`
-- Firebase Deploy: 2026-06-26 20:19 CEST erfolgreich
+- Ausgangscommit: `7d16665`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -408,10 +413,84 @@ Umsetzung 2026-06-23:
 ### EquatePlus
 
 - Ordner ist im Drive-Scan enthalten
-- PDF-Dateien werden importiert und archiviert
-- Fachlicher Parser ist noch offen
-- E-Mail-Benachrichtigungen wurden aktiviert
-- Naechste Entscheidung erst nach Analyse der ersten eingehenden Benachrichtigung
+- Quelle ist ab 2026-06-26 bewusst zurueckgestellt, bis die ersten echten
+  EquatePlus-Mail-Dokumente eintreffen
+- Vorher wird kein fachlicher Parser und kein aktiver Agent gebaut, damit die
+  Datenhaltung nicht auf Annahmen statt auf realen Dokumenten basiert
+- Sobald die erste Mail vorliegt, muessen zuerst Absender, Betreff,
+  Anhaenge, Dokumenttypen, Dedupe-Regeln und alle relevanten Felder
+  analysiert werden
+- Danach wird entschieden, ob ein Mail-Agent reicht oder ob zusaetzlich ein
+  manueller PDF-/Portalweg noetig ist
+- Ziel bleibt: Holdings, Vesting/Einbuchungen, Verkaeufe, Kosten, Steuern und
+  alle fachlich relevanten Dokumentfakten in das kanonische Firestore-Modell
+  schreiben
+
+### Bankkonten / Enable Banking
+
+- Entscheidung 2026-06-26: Bankkonten werden read-only ueber Open
+  Banking/Enable Banking integriert
+- Kein Bank-Web-Scraping und keine Zahlungsfunktion
+- Konten und aktuelle Salden sind integriert.
+- Umsaetze werden als `ledgerEntries` gespeichert.
+- Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
+  `incomeEvents` gespeichert, wenn sie im Umsatztext eindeutig erkannt werden.
+- Quelle ist generisch `bank_accounts`, nicht mehr nur Sparkasse George
+- Enable-Banking-Production-App ist eingerichtet und aktiv:
+  `5df43790-b2b4-4920-987e-df41f7393250`
+- Service ist `Account Information` und auf eigene verlinkte Konten
+  eingeschraenkt (`Restricted`)
+- Im Control Panel verlinkt sind Erste Bank/Sparkasse, Revolut und bank99.
+  Pro Bank braucht der lokale Agent eine gespeicherte Enable-Banking-Session,
+  bevor Werte importiert werden koennen.
+- Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden; das
+  Limit wird lokal in `automation/runtime/enable-banking-rate-limits.json`
+  erzwungen.
+- Private Key liegt lokal unter
+  `/Users/niklaskofler/Documents/finanztool/secrets/enable-banking/5df43790-b2b4-4920-987e-df41f7393250.pem`
+  und zusaetzlich im macOS-Schluesselbund unter
+  `finanztool.enablebanking.privateKey.5df43790-b2b4-4920-987e-df41f7393250`
+- App-ID liegt im Schluesselbund unter
+  `finanztool.enablebanking.applicationId`
+- Import schreibt aktuelle Kontostaende in `sourceSummaries/bank_accounts`,
+  `sourcePositions`, `sourceAccounts`, `imports` und `agentStatus`
+- Transaktionsimport schreibt zusaetzlich `ledgerEntries`,
+  `sourceDocumentFacts`, `costEvents` und `incomeEvents`.
+- Initialbestand ist vorhanden. Normaler Sync liest inkrementell ab letztem
+  gespeicherten Umsatz je Konto minus 2 Tage Sicherheitsfenster, damit die
+  App-Aktualisierung schnell bleibt. Historischer Backfill:
+  `npm run sync:bank-accounts:backfill` fuer 180 Tage.
+- Gepruefter Stand 2026-06-26 22:10:
+  - Erste/Sparkasse-Session aktiv
+  - Kontostand `2041.64 EUR`
+  - verfuegbar inkl. Kredit `5041.64 EUR`
+  - erkannte Kreditlinie `3000.00 EUR`
+  - `ledgerEntries` fuer `bank_accounts`: 255 gespeicherte Umsaetze
+  - letzter Umsatz: `2026-06-26`
+  - letzter normaler Sync: 57 Umsaetze geprueft, 0 neue, 57 Duplikate
+  - `costEvents`: 2, `incomeEvents`: 0
+- Entscheidung 2026-06-27: laufende George/Bankkonten-Transaktionslaeufe
+  sollen nicht mehr 30 Tage starr pruefen, sondern je Konto ab
+  `latestTransactionDate - 2 Tage`. Backfill bleibt manuell.
+- Gepruefter Stand 2026-06-27 00:27 lokal:
+  - Sync-Modus: `incremental`
+  - API-Fenster: `2026-06-24` bis `2026-06-27`
+  - 4 Umsaetze geprueft, 0 neue, 4 Duplikate
+  - gespeicherte Screenshot-Umsaetze vom 2026-06-26 vorhanden:
+    Novartis `3032.70`, OEGK `66.01`, TF Bank `-260.00`,
+    PayPal `-21.76`
+  - Future/geplante Umsaetze wie `29.06.2026` werden im normalen BOOK-Ledger
+    nicht als gebuchte Historie behandelt.
+- Der echte Kontostand zaehlt als Cash/Netto-Wert. Ein von Enable Banking
+  hoeher gelieferter verfuegbarer Betrag wird als `availableWithCredit`
+  gespeichert; die Differenz wird als `creditLineEstimate` behandelt und nicht
+  als Vermoegen gezaehlt
+- GUI-Regel: Bankkonten zeigen Geldstand, verfuegbaren Betrag, Kreditlinie,
+  Bankstand und Agentstatus. Keine Einstand/G/V/Heute-Depotlogik auf
+  Bankkonten anwenden.
+- Offener Schritt: weitere Sessions fuer Revolut und bank99 erzeugen.
+- Detailplan liegt in
+  [Sparkasse George Integration](/Users/niklaskofler/Documents/finanztool/docs/sparkasse_george_integration_plan.md)
 
 ### Betriebliche Altersvorsorge
 
@@ -611,8 +690,9 @@ npm run sync:health
 
 1. Secrets verschluesselt vom MacBook auf den Mac Studio uebertragen
 2. Mac-Studio-Agents mit `npm run install:all-agents` installieren
-3. Bankkonten und Kreditkarten integrieren:
-   Sparkasse/George, Amazon Visa, TF Bank Kreditkarte, spaeter Revolut
+3. Sparkasse/George Umsaetze und Bankkosten/Zinsen ergaenzen; danach weitere
+   Bankkonten/Kreditkarten integrieren: Amazon Visa, TF Bank Kreditkarte,
+   spaeter Revolut
 4. Trading 212 als eigene Quelle ergaenzen, sobald wieder relevant oder Daten
    vorliegen
 5. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
@@ -621,7 +701,7 @@ npm run sync:health
 7. Ginmon-Kostenlogik vertiefen: fuer die zwei kleinen Ginmon-Depots fehlen
    positionsgenaue Einstandswerte; Konto-Performance kommt aber aus der
    Ginmon-API
-8. EquatePlus Parser nach erster Benachrichtigung ergaenzen
+8. EquatePlus Parser nach Eingang der ersten echten Mail-Dokumente ergaenzen
 9. UI weiter ausbauen: Filter, Sortierung, Konto-/Depotansichten,
     Detailansichten, Charts
 
@@ -1642,6 +1722,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
         `niklas.kofler@gmail.com`, Schreiben nicht aus der Client-App.
       - `sync-document-storage-local.mjs` angelegt.
       - Alle 744 `sourceDocuments` besitzen jetzt `storagePath`.
+      - Fix 2026-06-26: App oeffnet Storage-Dokumente per
+        `getDownloadURL()` statt per `getBlob()`, weil der Blob-Download im
+        Browser im Ladefenster haengen blieb.
+      - Alle 744 Storage-Objekte haben jetzt
+        `firebaseStorageDownloadTokens`; Beispiel
+        `ginmon_doc_31350057` liefert per Firebase-Download-URL `HTTP 200`
+        und ein PDF.
       - Counts: Flatex 283/283, Ginmon 382/382, Trade Republic 78/78,
         VBV 1/1.
       - Beispiel verifiziert: `ginmon_doc_31350057` existiert in Firebase
@@ -1655,8 +1742,14 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       (`scope=item`). Typweite Entscheidungen werden nicht mehr in der GUI
       angeboten, damit ein Klick auf `Nicht relevant` nicht alle
       `unknown`-Dokumente ausblendet.
-    - `Wichtig` setzt `needs_parser` und bleibt als offener Klaerungsfall im
-      Postfach sichtbar.
+    - Korrektur 2026-06-26: `Wichtig` setzt nicht mehr `needs_parser`,
+      sondern `deferred`. Bedeutung: Dokument ruht zur spaeteren fachlichen
+      Pruefung, darf nicht vergessen werden und verschwindet aus dem aktiven
+      Postfach, zaehlt aber nicht als akute Health-Warnung. Die Entscheidung
+      bleibt in `documentReviewDecisions` gespeichert; spaeter braucht es eine
+      separate Rueckstell-/Pruefansicht.
+    - Wenn eine Dokumententscheidung nicht gespeichert werden kann, zeigt die
+      GUI im Postfach eine konkrete Fehlermeldung an.
     - Health und Trade-Republic-Portal-Agent ignorieren nur entschiedene
       Faelle; neue unbekannte oder nicht abrufbare Dokumente bleiben offen.
     - Verifizierter Stand:

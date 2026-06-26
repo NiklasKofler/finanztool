@@ -3,8 +3,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
+  where,
   type Firestore,
 } from "firebase/firestore";
 import type { PortfolioPosition, SystemHealth } from "../domain/types";
@@ -65,6 +67,10 @@ export interface SourceSummaryDocument {
 }
 
 export interface SourceSummaryAccount {
+  accountId?: string | null;
+  bankKey?: string | null;
+  bankName?: string | null;
+  providerAccountId?: string | null;
   accountNumber?: string | null;
   customerId?: string | null;
   label?: string | null;
@@ -72,11 +78,38 @@ export interface SourceSummaryAccount {
   currentValue?: number | null;
   depotValue?: number | null;
   cashValue?: number | null;
+  availableWithCredit?: number | null;
+  creditLineEstimate?: number | null;
   costValue?: number | null;
   performanceValue?: number | null;
   performancePct?: number | null;
   valuationDate?: string | null;
   positionCount?: number | null;
+  transactionCount?: number | null;
+  transactionSyncedCount?: number | null;
+  transactionNewCount?: number | null;
+  transactionDuplicateCount?: number | null;
+  latestTransactionDate?: string | null;
+}
+
+export interface BankLedgerEntryDocument {
+  id: string;
+  source?: string | null;
+  accountId?: string | null;
+  providerAccountId?: string | null;
+  bankKey?: string | null;
+  bankName?: string | null;
+  accountLabel?: string | null;
+  date?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  bookingDate?: string | null;
+  valueDate?: string | null;
+  bookingText?: string | null;
+  category?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  counterpartyName?: string | null;
+  transactionId?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
 export interface SourceSummaryVbvContract {
@@ -153,7 +186,7 @@ export interface AutomationCommandDocument {
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
-export type DocumentInboxDecision = "covered" | "not_relevant" | "needs_parser";
+export type DocumentInboxDecision = "covered" | "not_relevant" | "needs_parser" | "deferred";
 export type DocumentInboxDecisionScope = "item" | "document_type";
 
 export interface DocumentReviewDecisionDocument {
@@ -301,6 +334,7 @@ function decisionMatchesItem(decision: DocumentReviewDecisionDocument, item: Doc
 
 function decisionRank(decision?: DocumentReviewDecisionDocument | null) {
   if (!decision || decision.status === "REVOKED") return 0;
+  if (decision.decision === "deferred") return 1;
   if (decision.decision === "needs_parser") return 1;
   if (decision.decision === "not_relevant") return 2;
   if (decision.decision === "covered") return 3;
@@ -436,6 +470,31 @@ export async function loadSourcePositions(db: Firestore): Promise<PortfolioPosit
       ...(doc.data() as Omit<PortfolioPosition, "id">),
     }),
   );
+}
+
+function parseDateMillis(value: BankLedgerEntryDocument["date"]) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "object" && "toDate" in value) return value.toDate().getTime();
+  if (typeof value === "object" && "seconds" in value) return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function loadBankLedgerEntries(db: Firestore): Promise<BankLedgerEntryDocument[]> {
+  const snapshot = await getDocs(query(collection(db, "ledgerEntries"), where("source", "==", "bank_accounts")));
+  return snapshot.docs
+    .map((entry) => ({
+      id: entry.id,
+      ...(entry.data() as Omit<BankLedgerEntryDocument, "id">),
+    }))
+    .filter((entry) => entry.source === "bank_accounts")
+    .map((entry) => ({
+      ...entry,
+      amount: parseMaybeNumber(entry.amount) as number | null,
+    }))
+    .sort((left, right) => parseDateMillis(right.date) - parseDateMillis(left.date))
+    .slice(0, 300);
 }
 
 export async function loadSystemHealth(db: Firestore): Promise<SystemHealth | null> {

@@ -4,7 +4,16 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 
-const expectedSources = ["flatex", "traderepublic", "ginmon", "intergold", "bitget", "capitalcom", "vbv"];
+const expectedSources = [
+  "flatex",
+  "traderepublic",
+  "ginmon",
+  "intergold",
+  "bitget",
+  "capitalcom",
+  "vbv",
+  "bank_accounts",
+];
 const sourcesWithoutPositions = new Set(["capitalcom", "vbv"]);
 const documentValuedInstruments = {
   traderepublic: {
@@ -25,6 +34,7 @@ const staleHoursByAgent = {
   capitalcom: 6,
   quotes: 2,
   vbv: 100 * 24,
+  bank_accounts: 26,
 };
 const allowedUnclassifiedGinmonDocuments = new Set([
   "ginmon_doc_21333006",
@@ -103,7 +113,7 @@ function activeReviewDecisions(decisions) {
   return decisions.filter(
     (decision) =>
       decision.status !== "REVOKED" &&
-      ["covered", "not_relevant"].includes(decision.decision),
+      ["covered", "not_relevant", "deferred"].includes(decision.decision),
   );
 }
 

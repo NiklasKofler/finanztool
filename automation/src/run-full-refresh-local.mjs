@@ -17,6 +17,7 @@ const steps = [
   { id: "ginmon_documents", label: "Ginmon Dokumente", script: "download-ginmon-local.mjs", args: ["--write-documents-only"] },
   { id: "intergold", label: "Intergold Bestand und Preise", script: "reconcile-intergold-local.mjs", args: ["--write"] },
   { id: "vbv", label: "VBV Vorsorgekasse", script: "sync-vbv-local.mjs", args: ["--write"] },
+  { id: "bank_accounts", label: "Bankkonten", script: "sync-sparkasse-george-local.mjs", args: ["--write", "--transactions"] },
   { id: "quotes", label: "Aktuelle Kurse", script: "run-quote-sync-local.mjs" },
   { id: "health", label: "Health-Check", script: "check-health-local.mjs" },
 ];

@@ -415,6 +415,18 @@
   line-height: 1.45;
 }
 
+.document-inbox-panel__error {
+  margin: 0 0 12px;
+  border: 1px solid #edc7b5;
+  border-radius: 8px;
+  background: #fff4ed;
+  color: #8a2c12;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .document-inbox-panel__empty {
   border: 1px solid #d9e8e2;
   border-radius: 8px;
@@ -672,6 +684,10 @@
   margin-top: 10px;
   border-top: 1px solid #edf1ef;
   padding-top: 10px;
+}
+
+.source-card__metrics--bank {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .source-card dt {
@@ -984,6 +1000,10 @@
   text-transform: uppercase;
 }
 
+.source-account-list--bank .source-account-list__header {
+  grid-template-columns: 18px minmax(0, 1fr) 120px 120px 120px;
+}
+
 .source-account-list__header span:not(:first-child) {
   text-align: right;
 }
@@ -1020,6 +1040,10 @@
 
 .source-account-details > summary.source-account-row {
   grid-template-columns: 18px minmax(0, 1fr) 110px 110px 145px;
+}
+
+.source-account-details > summary.source-account-row--bank {
+  grid-template-columns: 18px minmax(0, 1fr) 120px 120px 120px;
 }
 
 .source-account-details > summary::before {
@@ -1061,10 +1085,78 @@
   font-size: 0.84rem;
 }
 
+.source-account-row__value::before {
+  content: attr(data-label);
+  display: none;
+  color: #7b8582;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .source-account-row__numbers .performance-value {
   justify-content: end;
   gap: 5px;
   font-size: 0.84rem;
+}
+
+.source-account-transactions-placeholder {
+  margin: -2px 0 6px 28px;
+  border: 1px solid #e3ebe8;
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: #687572;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.bank-ledger-list {
+  display: grid;
+  gap: 5px;
+  margin: -2px 0 6px 28px;
+}
+
+.bank-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e3ebe8;
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 8px 10px;
+}
+
+.bank-ledger-row__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bank-ledger-row__main strong {
+  color: #1f2a27;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-ledger-row__main span {
+  color: #71807b;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-ledger-row__amount {
+  color: #26302e;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .vbv-account-summary {
@@ -1604,6 +1696,10 @@
     padding-top: 8px;
   }
 
+  .source-card__metrics--bank {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(1) {
     grid-column: 1;
     grid-row: 1;
@@ -1636,6 +1732,15 @@
 
   .source-card__metrics:not(.source-card__metrics--secondary) > div:nth-child(7) {
     grid-column: 1 / -1;
+  }
+
+  .source-card__metrics.source-card__metrics--bank > div {
+    grid-column: auto !important;
+    grid-row: auto !important;
+  }
+
+  .source-card__metrics.source-card__metrics--bank > div:nth-child(5) {
+    grid-column: 1 / -1 !important;
   }
 
   .source-card dt {
@@ -1810,6 +1915,10 @@
     grid-template-columns: 14px minmax(0, 1fr) minmax(72px, 0.8fr);
   }
 
+  .source-account-details > summary.source-account-row--bank {
+    grid-template-columns: 14px minmax(0, 1fr) minmax(82px, 0.78fr);
+  }
+
   .source-account-details > summary::before {
     font-size: 0.8rem;
   }
@@ -1822,10 +1931,22 @@
     grid-column: auto;
   }
 
+  .source-account-details > summary.source-account-row--bank .source-account-row__main {
+    grid-column: 2;
+  }
+
   .source-account-row__value,
   .source-account-row__numbers {
     justify-items: end;
     text-align: right;
+  }
+
+  .source-account-row--bank .source-account-row__value {
+    grid-column: 3;
+  }
+
+  .source-account-row__value[data-label]::before {
+    display: block;
   }
 
   .source-account-row__main strong {
@@ -1845,6 +1966,36 @@
   .source-account-row__numbers .performance-value {
     justify-content: end;
     font-size: 0.76rem;
+  }
+
+  .source-account-transactions-placeholder {
+    margin: -1px 0 5px 22px;
+    padding: 7px 8px;
+    font-size: 0.64rem;
+  }
+
+  .bank-ledger-list {
+    margin: -1px 0 5px 22px;
+    gap: 4px;
+  }
+
+  .bank-ledger-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 7px 8px;
+  }
+
+  .bank-ledger-row__main strong {
+    font-size: 0.7rem;
+  }
+
+  .bank-ledger-row__main span {
+    font-size: 0.6rem;
+  }
+
+  .bank-ledger-row__amount {
+    justify-self: end;
+    font-size: 0.7rem;
   }
 
   .vbv-account-summary,
