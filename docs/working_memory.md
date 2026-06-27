@@ -304,11 +304,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-27 14:55 CEST
+- Stand: 2026-06-27 15:46 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `6866c3a`
-- Handoff-Commit: `f1eed15`
-- Firebase Deploy: 2026-06-27 14:56 CEST erfolgreich
+- Ausgangscommit: `084a79c`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -2424,3 +2424,52 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - Seit der TAN-Automatisierung am 2026-06-27 waren zwei automatische
     Messages-TAN-Laeufe erfolgreich; aktueller Zielstatus fuer TF Bank ist
     wieder `OK`.
+
+## 2026-06-27 UI-Zustand, Postfach und EquatePlus mobil
+
+- Entscheidung:
+  - Ausklappzustaende duerfen nicht mehr nur im Browser oder durch
+    `localStorage` bestimmt werden.
+  - Die App speichert den persoenlichen UI-Zustand in
+    `uiPreferences/portfolio_overview.expandedSections`.
+  - Persistiert werden:
+    - Depotkarten offen/geschlossen
+    - Dokumenten-Postfach offen/geschlossen
+    - verarbeitete Dokumente/Archiv offen/geschlossen
+    - Bankkonten- und Kreditkarten-Gruppen
+    - einzelne Bankkonto-/Kreditkartenzeilen
+    - Ginmon-Depotzeilen
+    - VBV-Kontoinformation
+    - Positionsdetails je Quelle
+- GUI-Regel:
+  - iPhone-15-Breite ist eine Pflichtansicht.
+  - Das Dokumenten-Postfach muss auf schmaler Breite ohne horizontales
+    Ausbrechen funktionieren; Aktionsbuttons werden als Touch-taugliches
+    Raster umbrochen.
+  - EquatePlus bleibt vorerst eine manuelle Novartis-Position, aber die Eingabe
+    fuer Anteile und Einstandswert EUR muss auf iPhone einspaltig, lesbar und
+    ohne iOS-Eingabezoom bedienbar sein.
+- Umsetzung:
+  - `app/src/firebase/sourceSummaries.ts` erhaelt
+    `loadUiPreferences()` und `saveUiPreferences()`.
+  - `firestore.rules` erlaubt dem Owner Lese-/Schreibzugriff auf
+    `uiPreferences/portfolio_overview`.
+  - Die alte lokale Source-Card-Collapse-Liste und der neue lokale
+    `finanztool-expanded-sections` Fallback werden beim Laden gelesen.
+  - Firestore ist die fuehrende UI-State-Quelle, sobald die neue Regel
+    deployed ist. Bis dahin bleibt der UI-Zustand lokal stabil und blockiert
+    den Login/Datenload nicht.
+  - Native `details`-Defaultzustaende werden beim ersten Rendern nicht mehr
+    als echte Nutzerentscheidung gespeichert; gespeichert wird nur, wenn sich
+    der Zustand wirklich aendert.
+  - `docs/firestore_data_contract.md` dokumentiert die Regel dauerhaft.
+- Verifikation:
+  - `npm --prefix app run build` erfolgreich.
+  - Chrome-Check 2026-06-27: Google-Login war funktionsfaehig; App zeigte
+    `Firestore-Daten geladen`, keinen Login-Button und keine frischen
+    Console-Fehler nach Reload.
+  - Befund: Vor dem Fallback schrieb die App sofort nach Login nach
+    `uiPreferences/portfolio_overview`; produktive Firestore-Regeln kannten
+    diese Collection noch nicht und meldeten `Missing or insufficient
+    permissions`. Das sah wie ein Loginfehler aus, war aber ein
+    Rechte-/Deploy-Stand fuer die neue UI-State-Collection.

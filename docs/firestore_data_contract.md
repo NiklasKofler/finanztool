@@ -290,6 +290,16 @@ GUI-Regel:
   gemeinsame Status-Kachel dargestellt. Die Warnliste muss auch auf
   iPhone-15-Breite lesbar bleiben und darf nicht in eine zu schmale
   Einzelkachel fallen.
+- Ausklappzustaende der persoenlichen Uebersicht werden in
+  `uiPreferences/portfolio_overview.expandedSections` gespeichert. Das betrifft
+  Depotkarten, Dokumenten-Postfach, Archiv, Bank-/Kreditkartengruppen,
+  einzelne Konto-/Depotzeilen und Positionsdetails. Ein Reload oder
+  Geraetewechsel darf diese UI-Zustaende nicht auf Browser-Defaultwerte
+  zuruecksetzen.
+- Das Dokumenten-Postfach und die EquatePlus-Eingabe muessen auf
+  iPhone-15-Breite ohne horizontales Ausbrechen nutzbar sein. Postfach-Aktionen
+  sollen als volle Touch-Ziele umbrechen; EquatePlus-Eingaben sollen auf
+  schmalen Screens einspaltig und ohne iOS-Zoom-Probleme bedienbar sein.
 - Positionen muessen fuer Analyse sichtbar machen, ob ihr aktueller Wert aus
   Broker/API, Dokument oder externem Kursprovider stammt.
 - `updatedAt` allein darf in der GUI nicht als fachliche Wahrheit angezeigt

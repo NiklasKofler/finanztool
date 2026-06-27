@@ -21,7 +21,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type SyntheticEvent } from "react";
 import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
@@ -34,10 +34,12 @@ import {
   loadSystemHealth,
   loadQuoteSyncCommand,
   loadTradeRepublicPortalCommand,
+  loadUiPreferences,
   markDocumentInboxItemDecision,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
   saveEquatePlusManualInput,
+  saveUiPreferences,
   type AgentStatusDocument,
   type BankLedgerEntryDocument,
   type DocumentInboxItem,
@@ -82,6 +84,40 @@ type EquatePlusDraft = { quantity: string; entryValueEur: string };
 type TradeRepublicDisplayMode = "current" | "broker";
 type AgentUiStatus = "OK" | "WARNUNG" | "FEHLER" | "RUNNING";
 const emptyEquatePlusDraft: EquatePlusDraft = { quantity: "", entryValueEur: "" };
+type UiExpandedSections = Record<string, boolean>;
+type UiSectionToggleHandler = (sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) => void;
+type UiSectionOpenGetter = (sectionKey: string, defaultOpen?: boolean) => boolean;
+const expandedSectionsStorageKey = "finanztool-expanded-sections";
+
+function loadStoredExpandedSections(): UiExpandedSections {
+  if (typeof window === "undefined") return {};
+  const sections: UiExpandedSections = {};
+  try {
+    const currentSaved = JSON.parse(window.localStorage.getItem(expandedSectionsStorageKey) ?? "{}");
+    if (currentSaved && typeof currentSaved === "object" && !Array.isArray(currentSaved)) {
+      for (const [key, value] of Object.entries(currentSaved)) {
+        if (typeof key === "string" && typeof value === "boolean") sections[key] = value;
+      }
+    }
+
+    const saved = JSON.parse(window.localStorage.getItem("finanztool-collapsed-source-cards") ?? "[]");
+    if (Array.isArray(saved)) {
+      for (const sourceId of saved) {
+        if (typeof sourceId === "string" && sections[`source:${sourceId}`] === undefined) {
+          sections[`source:${sourceId}`] = false;
+        }
+      }
+    }
+  } catch {
+    return sections;
+  }
+  return sections;
+}
+
+function saveStoredExpandedSections(sections: UiExpandedSections) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(expandedSectionsStorageKey, JSON.stringify(sections));
+}
 
 const agentStatusIds: Record<string, string | string[]> = {
   flatex: ["flatex", "flatex_documents"],
@@ -928,6 +964,9 @@ function DocumentInbox({
   onOpenDocument,
   pendingDecisionId,
   pendingOpenDocumentId,
+  isOpen,
+  isArchiveOpen,
+  onSectionToggle,
 }: {
   items: DocumentInboxItem[];
   onClassify: (
@@ -938,6 +977,9 @@ function DocumentInbox({
   onOpenDocument: (item: DocumentInboxItem) => void;
   pendingDecisionId: string | null;
   pendingOpenDocumentId: string | null;
+  isOpen: boolean;
+  isArchiveOpen: boolean;
+  onSectionToggle: UiSectionToggleHandler;
 }) {
   const openItems = items.filter(isOpenDocumentInboxItem);
   const processedItems = items.filter(isProcessedDocumentInboxItem);
@@ -945,7 +987,11 @@ function DocumentInbox({
   if (!items.length) return null;
 
   return (
-    <details className="document-inbox" open>
+    <details
+      className="document-inbox"
+      open={isOpen}
+      onToggle={(event) => onSectionToggle("documentInbox:open", event.currentTarget.open, true)}
+    >
       <summary>
         <span>Offene Dokumentfälle</span>
         <strong>{numberFormatter.format(openItems.length)}</strong>
@@ -1066,7 +1112,14 @@ function DocumentInbox({
         })}
       </div>
       {processedItems.length ? (
-        <details className="document-inbox document-inbox--archive">
+        <details
+          className="document-inbox document-inbox--archive"
+          open={isArchiveOpen}
+          onToggle={(event) => {
+            event.stopPropagation();
+            onSectionToggle("documentInbox:archive", event.currentTarget.open, false);
+          }}
+        >
           <summary>
             <span>Verarbeitete Dokumente</span>
             <strong>{numberFormatter.format(processedItems.length)}</strong>
@@ -1145,6 +1198,10 @@ function BankAccountGroup({
   bankLedgerEntries,
   privacyMode,
   accountHeader,
+  groupKey,
+  isOpen,
+  isSectionOpen,
+  onSectionToggle,
 }: {
   title: string;
   accounts: SourceSummaryAccount[];
@@ -1152,6 +1209,10 @@ function BankAccountGroup({
   bankLedgerEntries: BankLedgerEntryDocument[];
   privacyMode: boolean;
   accountHeader: string;
+  groupKey: string;
+  isOpen: boolean;
+  isSectionOpen: UiSectionOpenGetter;
+  onSectionToggle: UiSectionToggleHandler;
 }) {
   if (!accounts.length) return null;
   const groupStatus = getBankAccountsAggregateStatus(accounts, agentStatuses);
@@ -1160,7 +1221,11 @@ function BankAccountGroup({
   ).length;
 
   return (
-    <details className="source-accounts-details source-accounts-details--bank">
+    <details
+      className="source-accounts-details source-accounts-details--bank"
+      open={isOpen}
+      onToggle={(event) => onSectionToggle(groupKey, event.currentTarget.open, false)}
+    >
       <summary>
         <span className="source-accounts-details__summary-title">
           <span>{title}</span>
@@ -1201,8 +1266,17 @@ function BankAccountGroup({
           const accountStatusTone = getBankAccountStatusTone(account, accountAgentStatus);
           const accountUpdatedAt = formatUpdatedAt(getBankAccountUpdatedAt(account));
           const accountIssueMessage = getBankAccountIssueMessage(account, accountAgentStatus);
+          const accountSectionKey = `${groupKey}:account:${accountKey}`;
           return (
-            <details className="source-account-details" key={accountKey}>
+            <details
+              className="source-account-details"
+              key={accountKey}
+              open={isSectionOpen(accountSectionKey, false)}
+              onToggle={(event) => {
+                event.stopPropagation();
+                onSectionToggle(accountSectionKey, event.currentTarget.open, false);
+              }}
+            >
               <summary className="source-account-row source-account-row--bank">
                 <div className="source-account-row__main">
                   <strong>{getAccountLabel(account)}</strong>
@@ -1357,14 +1431,24 @@ function PositionsTable({
 function VbvAccountInformationDetails({
   accountInformation,
   privacyMode,
+  sectionKey,
+  isOpen,
+  onSectionToggle,
 }: {
   accountInformation: SourceSummaryVbvAccountInformation;
   privacyMode: boolean;
+  sectionKey: string;
+  isOpen: boolean;
+  onSectionToggle: UiSectionToggleHandler;
 }) {
   const contracts = accountInformation.contracts ?? [];
   const summaryTone = getPerformanceTone(accountInformation.performanceValue);
   return (
-    <details className="source-accounts-details vbv-account-details">
+    <details
+      className="source-accounts-details vbv-account-details"
+      open={isOpen}
+      onToggle={(event) => onSectionToggle(sectionKey, event.currentTarget.open, false)}
+    >
       <summary>
         <span>Kontoinformation</span>
         <strong>{numberFormatter.format(contracts.length)}</strong>
@@ -1571,15 +1655,7 @@ function App() {
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
   const [privacyMode, setPrivacyMode] = useState(false);
-  const [collapsedSourceCards, setCollapsedSourceCards] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const saved = JSON.parse(window.localStorage.getItem("finanztool-collapsed-source-cards") ?? "[]");
-      return new Set(Array.isArray(saved) ? saved.filter((item) => typeof item === "string") : []);
-    } catch {
-      return new Set();
-    }
-  });
+  const [expandedSections, setExpandedSections] = useState<UiExpandedSections>(() => loadStoredExpandedSections());
   const [tradeRepublicDisplayMode, setTradeRepublicDisplayMode] =
     useState<TradeRepublicDisplayMode>(() => {
       if (typeof window === "undefined") return "current";
@@ -1590,13 +1666,6 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem("finanztool-traderepublic-display-mode", tradeRepublicDisplayMode);
   }, [tradeRepublicDisplayMode]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      "finanztool-collapsed-source-cards",
-      JSON.stringify([...collapsedSourceCards]),
-    );
-  }, [collapsedSourceCards]);
 
   useEffect(() => {
     const services = getFirebaseServices();
@@ -1615,6 +1684,7 @@ function App() {
         setEquatePlusManualInput(null);
         setEquatePlusDraft(emptyEquatePlusDraft);
         setSystemHealth(null);
+        setExpandedSections(loadStoredExpandedSections());
         setDataStatus("auth-required");
       } else {
         setDataStatus("loading");
@@ -1637,6 +1707,7 @@ function App() {
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
       loadSystemHealth(services.db),
+      loadUiPreferences(services.db),
     ])
       .then(([
         summaries,
@@ -1646,6 +1717,7 @@ function App() {
         loadedDocumentInboxItems,
         loadedEquatePlusManualInput,
         health,
+        uiPreferences,
       ]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
@@ -1656,6 +1728,10 @@ function App() {
         setEquatePlusManualInput(loadedEquatePlusManualInput);
         setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
         setSystemHealth(health);
+        setExpandedSections((current) => ({
+          ...current,
+          ...(uiPreferences?.expandedSections ?? {}),
+        }));
         setDataStatus("live");
       })
       .catch(() => {
@@ -1688,16 +1764,38 @@ function App() {
     await signOut(services.auth);
   }
 
-  function toggleSourceCard(sourceId: string) {
-    setCollapsedSourceCards((current) => {
-      const next = new Set(current);
-      if (next.has(sourceId)) {
-        next.delete(sourceId);
-      } else {
-        next.add(sourceId);
+  function persistExpandedSections(next: UiExpandedSections) {
+    saveStoredExpandedSections(next);
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+    void saveUiPreferences(services.db, { expandedSections: next }, authUser.email).catch((error) => {
+      console.warn("UI-Zustand wurde lokal gespeichert; Firestore-Sync wartet auf passende Regeln.", error);
+    });
+  }
+
+  function setUiSectionOpen(sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) {
+    setExpandedSections((current) => {
+      if (current[sectionKey] === isExpanded) return current;
+      if (current[sectionKey] === undefined && defaultOpen !== undefined && isExpanded === defaultOpen) {
+        return current;
       }
+      const next = { ...current, [sectionKey]: isExpanded };
+      persistExpandedSections(next);
       return next;
     });
+  }
+
+  function getUiSectionOpen(sectionKey: string, defaultOpen = false) {
+    return expandedSections[sectionKey] ?? defaultOpen;
+  }
+
+  function handleDetailsToggle(sectionKey: string, event: SyntheticEvent<HTMLDetailsElement>, defaultOpen = false) {
+    setUiSectionOpen(sectionKey, event.currentTarget.open, defaultOpen);
+  }
+
+  function toggleSourceCard(sourceId: string) {
+    const sectionKey = `source:${sourceId}`;
+    setUiSectionOpen(sectionKey, !getUiSectionOpen(sectionKey, true));
   }
 
   async function refreshPortfolioData() {
@@ -1711,6 +1809,7 @@ function App() {
       loadedDocumentInboxItems,
       loadedEquatePlusManualInput,
       health,
+      uiPreferences,
     ] = await Promise.all([
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
@@ -1719,6 +1818,7 @@ function App() {
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
       loadSystemHealth(services.db),
+      loadUiPreferences(services.db),
     ]);
     setSourceSummaries(summaries);
     setAgentStatuses(loadedAgentStatuses);
@@ -1728,6 +1828,10 @@ function App() {
     setEquatePlusManualInput(loadedEquatePlusManualInput);
     setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
     setSystemHealth(health);
+    setExpandedSections((current) => ({
+      ...current,
+      ...(uiPreferences?.expandedSections ?? {}),
+    }));
   }
 
   function handleEquatePlusDraftChange(field: keyof EquatePlusDraft, value: string) {
@@ -2274,6 +2378,9 @@ function App() {
               pendingOpenDocumentId={pendingDocumentOpenId}
               onOpenDocument={handleOpenDocument}
               onClassify={handleDocumentDecision}
+              isOpen={getUiSectionOpen("documentInbox:open", true)}
+              isArchiveOpen={getUiSectionOpen("documentInbox:archive", false)}
+              onSectionToggle={setUiSectionOpen}
             />
           ) : (
             <div className="document-inbox-panel__empty">
@@ -2381,7 +2488,8 @@ function App() {
                 tradeRepublicPortalRequestStatus,
                 agentStatuses.traderepublic_portal,
               );
-              const isSourceCollapsed = collapsedSourceCards.has(source.id);
+              const sourceSectionKey = `source:${source.id}`;
+              const isSourceCollapsed = !getUiSectionOpen(sourceSectionKey, true);
 
               return (
                 <article
@@ -2744,6 +2852,10 @@ function App() {
                           bankLedgerEntries={bankLedgerEntries}
                           privacyMode={privacyMode}
                           accountHeader="Konto"
+                          groupKey="source:bank_accounts:group:checking"
+                          isOpen={getUiSectionOpen("source:bank_accounts:group:checking", false)}
+                          isSectionOpen={getUiSectionOpen}
+                          onSectionToggle={setUiSectionOpen}
                         />
                         <BankAccountGroup
                           title="Kreditkarten"
@@ -2752,10 +2864,18 @@ function App() {
                           bankLedgerEntries={bankLedgerEntries}
                           privacyMode={privacyMode}
                           accountHeader="Kreditkarte"
+                          groupKey="source:bank_accounts:group:credit_cards"
+                          isOpen={getUiSectionOpen("source:bank_accounts:group:credit_cards", false)}
+                          isSectionOpen={getUiSectionOpen}
+                          onSectionToggle={setUiSectionOpen}
                         />
                       </>
                     ) : ginmonAccounts.length ? (
-                      <details className="source-accounts-details">
+                      <details
+                        className="source-accounts-details"
+                        open={getUiSectionOpen(`${sourceSectionKey}:ginmon_accounts`, false)}
+                        onToggle={(event) => handleDetailsToggle(`${sourceSectionKey}:ginmon_accounts`, event, false)}
+                      >
                         <summary>
                           <span>Ginmon-Depots</span>
                           <strong>{numberFormatter.format(ginmonAccounts.length)}</strong>
@@ -2779,7 +2899,15 @@ function App() {
                             );
                           });
                           return (
-                            <details className="source-account-details" key={accountKey}>
+                            <details
+                              className="source-account-details"
+                              key={accountKey}
+                              open={getUiSectionOpen(`${sourceSectionKey}:account:${accountKey}`, false)}
+                              onToggle={(event) => {
+                                event.stopPropagation();
+                                handleDetailsToggle(`${sourceSectionKey}:account:${accountKey}`, event, false);
+                              }}
+                            >
                               <summary className="source-account-row">
                                 <div className="source-account-row__main">
                                   <strong>{getAccountLabel(account)}</strong>
@@ -2808,9 +2936,16 @@ function App() {
                       <VbvAccountInformationDetails
                         accountInformation={vbvAccountInformation}
                         privacyMode={privacyMode}
+                        sectionKey={`${sourceSectionKey}:vbv_account_information`}
+                        isOpen={getUiSectionOpen(`${sourceSectionKey}:vbv_account_information`, false)}
+                        onSectionToggle={setUiSectionOpen}
                       />
                     ) : sourcePositionsForCard.length ? (
-                      <details className="source-positions-details">
+                      <details
+                        className="source-positions-details"
+                        open={getUiSectionOpen(`${sourceSectionKey}:positions`, false)}
+                        onToggle={(event) => handleDetailsToggle(`${sourceSectionKey}:positions`, event, false)}
+                      >
                         <summary>
                           <span>Positionen anzeigen</span>
                           <strong>{numberFormatter.format(sourcePositionsForCard.length)}</strong>

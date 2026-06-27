@@ -84,6 +84,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /uiPreferences/{preferenceId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && preferenceId == "portfolio_overview"
+        && request.resource.data.keys().hasOnly([
+          "expandedSections",
+          "updatedBy",
+          "updatedAt"
+        ])
+        && request.resource.data.expandedSections is map
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read: if isOwner();
       allow write: if false;

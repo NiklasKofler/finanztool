@@ -233,6 +233,13 @@ export interface EquatePlusManualInputDocument {
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
+export interface UiPreferencesDocument {
+  id: string;
+  expandedSections?: Record<string, boolean>;
+  updatedBy?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
 export type DocumentInboxDecision = "covered" | "not_relevant" | "needs_parser" | "deferred";
 export type DocumentInboxDecisionScope = "item" | "document_type";
 
@@ -556,6 +563,41 @@ export async function saveEquatePlusManualInput(
     updatedBy: updatedBy ?? null,
     updatedAt: serverTimestamp(),
   });
+}
+
+function normalizeExpandedSections(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key, isExpanded]) => typeof key === "string" && typeof isExpanded === "boolean"),
+  ) as Record<string, boolean>;
+}
+
+export async function loadUiPreferences(db: Firestore): Promise<UiPreferencesDocument | null> {
+  const snapshot = await getDoc(doc(db, "uiPreferences", "portfolio_overview"));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() as Omit<UiPreferencesDocument, "id">;
+  return {
+    id: snapshot.id,
+    ...data,
+    expandedSections: normalizeExpandedSections(data.expandedSections),
+  };
+}
+
+export async function saveUiPreferences(
+  db: Firestore,
+  input: { expandedSections: Record<string, boolean> },
+  updatedBy?: string | null,
+) {
+  await setDoc(
+    doc(db, "uiPreferences", "portfolio_overview"),
+    {
+      expandedSections: input.expandedSections,
+      updatedBy: updatedBy ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 function parseDateMillis(value: BankLedgerEntryDocument["date"]) {
