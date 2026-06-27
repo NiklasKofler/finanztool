@@ -23,7 +23,7 @@
     <key>RunAtLoad</key>
     <true/>
     <key>StartInterval</key>
-    <integer>3600</integer>
+    <integer>10800</integer>
     <key>StandardOutPath</key>
     <string>/tmp/finanztool-tfbank.out.log</string>
     <key>StandardErrorPath</key>

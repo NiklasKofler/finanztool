@@ -482,6 +482,33 @@ function getPositionDisplayUpdatedAt(position: PortfolioPosition) {
   return position.quoteAsOf ?? position.valuationDate ?? position.updatedAt;
 }
 
+function getPositionStatusMeta(position: PortfolioPosition) {
+  const quoteStatus = position.quoteStatus?.toUpperCase() ?? "";
+  const freshness = position.quoteFreshness?.toLowerCase() ?? "";
+
+  if (
+    quoteStatus.includes("ERROR") ||
+    quoteStatus.includes("FEHLER") ||
+    quoteStatus.includes("WARN") ||
+    freshness === "stale" ||
+    freshness === "missing"
+  ) {
+    return { tone: "warn", label: "Pruefen" };
+  }
+
+  if (
+    freshness === "current" ||
+    typeof position.quotePrice === "number" ||
+    typeof position.quotePriceEur === "number" ||
+    Boolean(position.quoteText?.trim()) ||
+    typeof position.currentValue === "number"
+  ) {
+    return { tone: "good", label: "Aktuell" };
+  }
+
+  return { tone: "neutral", label: "Offen" };
+}
+
 function getTrackedTotal(sources: SourceOverview[]) {
   return sources.reduce((sum, source) => sum + (getSourceDisplayValue(source) ?? 0), 0);
 }
@@ -1015,7 +1042,6 @@ function DocumentInbox({
                 <div className="document-inbox__meta">
                   <span>{getSourceDisplayName(item.source)}</span>
                   <span>{formatUpdatedAt(item.date)}</span>
-                  {item.label ? <span>{item.label}</span> : null}
                   {item.sourceChannel ? <span>{item.sourceChannel}</span> : null}
                 </div>
                 {item.reviewDecision?.reason ? (
@@ -1141,7 +1167,6 @@ function DocumentInbox({
                     <div className="document-inbox__meta">
                       <span>{getSourceDisplayName(item.source)}</span>
                       <span>{formatUpdatedAt(item.date)}</span>
-                      {item.label ? <span>{item.label}</span> : null}
                       {item.sourceChannel ? <span>{item.sourceChannel}</span> : null}
                     </div>
                   </div>
@@ -1242,8 +1267,8 @@ function BankAccountGroup({
         <div className="source-account-list__header">
           <span>{accountHeader}</span>
           <span>Geldstand</span>
-          <span>Verfügbar</span>
           <span>Kreditlinie</span>
+          <span>Verfügbar</span>
         </div>
         {accounts.map((account) => {
           const accountKey =
@@ -1307,13 +1332,54 @@ function BankAccountGroup({
                 <div className="source-account-row__value" data-label="Geldstand">
                   <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
                 </div>
-                <div className="source-account-row__value" data-label="Verfügbar">
-                  <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
-                </div>
                 <div className="source-account-row__value" data-label="Kreditlinie">
                   <strong>{privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}</strong>
                 </div>
+                <div className="source-account-row__value" data-label="Verfügbar">
+                  <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
+                </div>
               </summary>
+              <div className="source-account-row__mobile-details">
+                <span>
+                  <em>Agent</em>
+                  <strong>
+                    {getBankAccountAgentLabel(accountAgentId)}{" "}
+                    <AgentStatusBadge status={accountAgentStatus?.status} emptyLabel="Kein Status" />
+                  </strong>
+                </span>
+                <span>
+                  <em>Update</em>
+                  <strong>{accountUpdatedAt || "Noch offen"}</strong>
+                </span>
+                <span>
+                  <em>Agent-Lauf</em>
+                  <strong>{accountAgentRunText || "Noch offen"}</strong>
+                </span>
+                {showAccountAgentSuccess ? (
+                  <span>
+                    <em>Agent-Erfolg</em>
+                    <strong>{accountAgentSuccessText}</strong>
+                  </span>
+                ) : null}
+                <span>
+                  <em>Umsätze</em>
+                  <strong>
+                    {typeof account.transactionCount === "number"
+                      ? numberFormatter.format(account.transactionCount)
+                      : "—"}
+                  </strong>
+                </span>
+                <span>
+                  <em>Letzter Umsatz</em>
+                  <strong>{account.latestTransactionDate ? formatUpdatedAt(account.latestTransactionDate) : "—"}</strong>
+                </span>
+                {account.accountNumber ? (
+                  <span>
+                    <em>Konto</em>
+                    <strong>{account.accountNumber}</strong>
+                  </span>
+                ) : null}
+              </div>
               {accountLedgerEntries.length ? (
                 <div className="bank-ledger-list">
                   {accountLedgerEntries.map((entry) => {
@@ -1352,79 +1418,184 @@ function BankAccountGroup({
 function PositionsTable({
   positions,
   privacyMode,
+  sectionKey,
+  isSectionOpen,
+  onSectionToggle,
 }: {
   positions: PortfolioPosition[];
   privacyMode: boolean;
+  sectionKey?: string;
+  isSectionOpen?: UiSectionOpenGetter;
+  onSectionToggle?: UiSectionToggleHandler;
 }) {
   return (
-    <div className="positions-table-wrap positions-table-wrap--embedded">
-      <table className="positions-table positions-table--embedded">
-        <thead>
-          <tr>
-            <th>Position</th>
-            <th className="numeric">Wert</th>
-            <th className="numeric">G/V</th>
-            <th className="numeric">Perf.</th>
-            <th className="numeric">Heute</th>
-            <th className="numeric">Heute %</th>
-            <th>Menge</th>
-            <th>Kurs</th>
-            <th className="numeric">Einstand</th>
-            <th>Kategorie</th>
-            <th>Aktualisiert</th>
-          </tr>
-        </thead>
-        <tbody>
-          {positions.length ? positions.map((position) => {
-            const positionPerformance = getPositionPerformance(position);
-            const performanceTone = getPerformanceTone(positionPerformance.performance);
-            const dayChange = getPositionDayChange(position);
+    <>
+      <div className="mobile-positions-list">
+        {positions.length ? positions.map((position) => {
+          const positionPerformance = getPositionPerformance(position);
+          const performanceTone = getPerformanceTone(positionPerformance.performance);
+          const dayChange = getPositionDayChange(position);
+          const dayTone = getPerformanceTone(dayChange.value);
+          const statusMeta = getPositionStatusMeta(position);
+          const itemKey = `${sectionKey ?? "positions"}:position:${position.id}`;
+          const positionCode = [position.isin, position.wkn].filter(Boolean).join(" / ");
 
-            return (
-              <tr key={position.id}>
-                <td className="position-name-cell">
+          return (
+            <details
+              className="mobile-position-card"
+              key={position.id}
+              open={isSectionOpen?.(itemKey, false) ?? false}
+              onToggle={(event) => {
+                event.stopPropagation();
+                onSectionToggle?.(itemKey, event.currentTarget.open, false);
+              }}
+            >
+              <summary>
+                <span
+                  className={`mobile-position-card__status mobile-position-card__status--${statusMeta.tone}`}
+                  title={statusMeta.label}
+                />
+                <span className="mobile-position-card__main">
                   <strong>{position.name}</strong>
+                  <span>{positionCode || formatOptionalText(position.category)}</span>
+                </span>
+                <span className="mobile-position-card__value">
+                  {privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}
+                </span>
+                <span className="mobile-position-card__metrics">
                   <span>
-                    {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
+                    <em>G/V</em>
+                    <strong className={`performance-cell--${performanceTone}`}>
+                      {privacyMode
+                        ? maskSignedMoney(positionPerformance.performance)
+                        : formatSignedMoney(positionPerformance.performance, positionPerformance.currency)}
+                    </strong>
+                    <small className={`performance-cell--${performanceTone}`}>
+                      {formatSignedPercent(positionPerformance.percentage)}
+                    </small>
                   </span>
-                </td>
-                <td className="numeric">{privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}</td>
-                <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                  {privacyMode
-                    ? maskSignedMoney(positionPerformance.performance)
-                    : formatSignedMoney(
-                      positionPerformance.performance,
-                      positionPerformance.currency,
-                    )}
-                </td>
-                <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
-                  {formatSignedPercent(positionPerformance.percentage)}
-                </td>
-                <td className="numeric">
-                  {privacyMode ? maskSignedMoney(dayChange.value) : formatSignedMoney(dayChange.value)}
-                </td>
-                <td className="numeric">{formatSignedPercent(dayChange.percentage)}</td>
-                <td>{formatQuantity(position)}</td>
-                <td>{formatQuoteText(position)}</td>
-                <td className="numeric">
-                  {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
-                </td>
-                <td>{formatOptionalText(position.category)}</td>
-                <td className="positions-table__updated-at">
-                  {formatUpdatedAt(getPositionDisplayUpdatedAt(position))}
+                  <span>
+                    <em>Heute</em>
+                    <strong className={`performance-cell--${dayTone}`}>
+                      {privacyMode ? maskSignedMoney(dayChange.value) : formatSignedMoney(dayChange.value)}
+                    </strong>
+                    <small className={`performance-cell--${dayTone}`}>
+                      {formatSignedPercent(dayChange.percentage)}
+                    </small>
+                  </span>
+                  <span className="mobile-position-card__quote">
+                    <em>Kurs</em>
+                    <strong>{formatQuoteText(position)}</strong>
+                  </span>
+                </span>
+              </summary>
+              <div className="mobile-position-card__details">
+                <span>
+                  <em>Menge</em>
+                  <strong>{formatQuantity(position)}</strong>
+                </span>
+                <span>
+                  <em>Kursdatum</em>
+                  <strong>{formatUpdatedAt(getPositionDisplayUpdatedAt(position))}</strong>
+                </span>
+                <span>
+                  <em>Einstand</em>
+                  <strong>
+                    {privacyMode
+                      ? maskMoney(positionPerformance.cost)
+                      : formatMoney(positionPerformance.cost, positionPerformance.currency)}
+                  </strong>
+                </span>
+                <span>
+                  <em>Kategorie</em>
+                  <strong>{formatOptionalText(position.category)}</strong>
+                </span>
+                <span>
+                  <em>Status</em>
+                  <strong>{statusMeta.label}</strong>
+                </span>
+                <span>
+                  <em>Quelle</em>
+                  <strong>{getQuoteProviderLabel(position) ?? "—"}</strong>
+                </span>
+              </div>
+            </details>
+          );
+        }) : (
+          <div className="mobile-position-card mobile-position-card--empty">
+            Keine Positionen geladen.
+          </div>
+        )}
+      </div>
+      <div className="positions-table-wrap positions-table-wrap--embedded">
+        <table className="positions-table positions-table--embedded">
+          <thead>
+            <tr>
+              <th>Position</th>
+              <th className="numeric">Wert</th>
+              <th className="numeric">G/V</th>
+              <th className="numeric">Perf.</th>
+              <th className="numeric">Heute</th>
+              <th className="numeric">Heute %</th>
+              <th>Menge</th>
+              <th>Kurs</th>
+              <th className="numeric">Einstand</th>
+              <th>Kategorie</th>
+              <th>Aktualisiert</th>
+            </tr>
+          </thead>
+          <tbody>
+            {positions.length ? positions.map((position) => {
+              const positionPerformance = getPositionPerformance(position);
+              const performanceTone = getPerformanceTone(positionPerformance.performance);
+              const dayChange = getPositionDayChange(position);
+
+              return (
+                <tr key={position.id}>
+                  <td className="position-name-cell">
+                    <strong>{position.name}</strong>
+                    <span>
+                      {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
+                    </span>
+                  </td>
+                  <td className="numeric">{privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}</td>
+                  <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                    {privacyMode
+                      ? maskSignedMoney(positionPerformance.performance)
+                      : formatSignedMoney(
+                        positionPerformance.performance,
+                        positionPerformance.currency,
+                      )}
+                  </td>
+                  <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
+                    {formatSignedPercent(positionPerformance.percentage)}
+                  </td>
+                  <td className="numeric">
+                    {privacyMode ? maskSignedMoney(dayChange.value) : formatSignedMoney(dayChange.value)}
+                  </td>
+                  <td className="numeric">{formatSignedPercent(dayChange.percentage)}</td>
+                  <td>{formatQuantity(position)}</td>
+                  <td>{formatQuoteText(position)}</td>
+                  <td className="numeric">
+                    {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
+                  </td>
+                  <td>{formatOptionalText(position.category)}</td>
+                  <td className="positions-table__updated-at">
+                    {formatUpdatedAt(getPositionDisplayUpdatedAt(position))}
+                  </td>
+                </tr>
+              );
+            }) : (
+              <tr>
+                <td className="empty-position-row" colSpan={11}>
+                  Keine Positionen geladen.
                 </td>
               </tr>
-            );
-          }) : (
-            <tr>
-              <td className="empty-position-row" colSpan={11}>
-                Keine Positionen geladen.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -2631,12 +2802,12 @@ function App() {
                             <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
                           </div>
                           <div>
-                            <dt>Verfügbar</dt>
-                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
-                          </div>
-                          <div>
                             <dt>Kreditlinie</dt>
                             <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                          </div>
+                          <div>
+                            <dt>Verfügbar</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
                           </div>
                           <div>
                             <dt>{sourcePrimaryTimestamp.label}</dt>
@@ -2660,12 +2831,12 @@ function App() {
                             <dd>{privacyMode ? maskMoney(source.currentValue) : formatCurrency(source.currentValue)}</dd>
                           </div>
                           <div>
-                            <dt>Verfügbar</dt>
-                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
-                          </div>
-                          <div>
                             <dt>Kreditlimit</dt>
                             <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                          </div>
+                          <div>
+                            <dt>Verfügbar</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
                           </div>
                           <div>
                             <dt>{sourcePrimaryTimestamp.label}</dt>
@@ -2926,7 +3097,13 @@ function App() {
                                   </span>
                                 </div>
                               </summary>
-                              <PositionsTable positions={accountPositions} privacyMode={privacyMode} />
+                              <PositionsTable
+                                positions={accountPositions}
+                                privacyMode={privacyMode}
+                                sectionKey={`${sourceSectionKey}:account:${accountKey}:positions`}
+                                isSectionOpen={getUiSectionOpen}
+                                onSectionToggle={setUiSectionOpen}
+                              />
                             </details>
                           );
                         })}
@@ -2950,7 +3127,13 @@ function App() {
                           <span>Positionen anzeigen</span>
                           <strong>{numberFormatter.format(sourcePositionsForCard.length)}</strong>
                         </summary>
-                        <PositionsTable positions={sourcePositionsForCard} privacyMode={privacyMode} />
+                        <PositionsTable
+                          positions={sourcePositionsForCard}
+                          privacyMode={privacyMode}
+                          sectionKey={`${sourceSectionKey}:positions`}
+                          isSectionOpen={getUiSectionOpen}
+                          onSectionToggle={setUiSectionOpen}
+                        />
                       </details>
                     ) : null}
                       </>

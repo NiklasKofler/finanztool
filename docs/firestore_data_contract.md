@@ -300,6 +300,16 @@ GUI-Regel:
   iPhone-15-Breite ohne horizontales Ausbrechen nutzbar sein. Postfach-Aktionen
   sollen als volle Touch-Ziele umbrechen; EquatePlus-Eingaben sollen auf
   schmalen Screens einspaltig und ohne iOS-Zoom-Probleme bedienbar sein.
+- Bankkonten und Kreditkarten werden auf iPhone-15-Breite nicht als breite
+  Tabelle dargestellt. Die geschlossene Zeile zeigt Konto, Status, Geldstand,
+  Kreditlinie und Verfuegbar. Agentenlauf, Update-Zeit, letzter Umsatz,
+  Kontonummer und weitere technische Details gehoeren in den aufgeklappten
+  Bereich.
+- Positionslisten muessen auf iPhone-15-Breite als kompakte Karten statt als
+  horizontale Tabelle erscheinen. Sichtbar bleiben Name, Wert, G/V, Heute und
+  aktueller Kurs. Kursdatum, Menge, Einstand, Quelle und Status gehoeren in den
+  aufgeklappten Detailbereich. Der Aufklappzustand je Position ist Teil von
+  `uiPreferences/portfolio_overview.expandedSections`.
 - Positionen muessen fuer Analyse sichtbar machen, ob ihr aktueller Wert aus
   Broker/API, Dokument oder externem Kursprovider stammt.
 - `updatedAt` allein darf in der GUI nicht als fachliche Wahrheit angezeigt
@@ -535,7 +545,8 @@ technisch abgedeckt sind:
   `availableWithCredit` gespeichert werden. Die Differenz wird als
   `creditLineEstimate` gefuehrt und zaehlt nicht als Vermoegen.
 - Bank99 darf durch den Finanztool-Agenten maximal viermal pro Kalendertag
-  abgerufen werden. Das Limit wird lokal im Agenten erzwungen.
+  abgerufen werden. Erlaubte Standardzeiten sind 07:00, 12:00, 17:00 und
+  22:00 Uhr Europe/Vienna. Das Limit wird lokal im Agenten erzwungen.
 - Der Initialbestand ist vorhanden. Der normale Sync liest Transaktionen
   inkrementell je Konto ab `latestTransactionDate - 2 Tage`.
 - Historische Nachpflege laeuft getrennt mit

@@ -9,7 +9,9 @@ bleiben.
 - App-Build: `npm --prefix app run build` erfolgreich.
 - Health: `npm --prefix automation run sync:health` erfolgreich. Aktuell
   Status `WARNUNG`, 0 Fehler, 3 Warnungen:
-  - Capital.com API-Key ungueltig, Quelle derzeit inaktiv/zurueckgestellt.
+  - Capital.com wegen Wartungsarbeiten/Portalzustand derzeit
+    inaktiv/zurueckgestellt; API vermutlich weiterhin passend, erneute
+    Pruefung nach Wartung.
   - Flatex-Portal meldete Wartungsseite; Datenmodell nicht betroffen.
   - 9 Ginmon-Informations-/Rechtsdokumente stehen bewusst im Postfach.
 - Node-Syntaxchecks fuer geaenderte Agent-Dateien erfolgreich.
@@ -24,7 +26,8 @@ bleiben.
   - Ginmon API alle 5 Minuten.
   - Ginmon Dokumente taeglich 02:00.
   - Intergold taeglich 08:20.
-  - Bankkonten 07:00, 12:00, 17:30, 21:30.
+  - Bankkonten Sparkasse/Revolut stuendlich.
+  - bank99 07:00, 12:00, 17:00, 22:00.
   - VBV woechentlich Montag 06:45.
   - Quote-History taeglich 22:00.
   - Health alle 30 Minuten.
@@ -161,7 +164,8 @@ gemacht werden.
 - Health-Check aktuell `WARNUNG`, aber 0 Fehler:
   - Bankkonten: 1 Bank ohne Abruf, trotzdem 2 Konten und 2141,64 EUR
     Geldstand gelesen.
-  - Capital.com: API-Key ungueltig, Quelle derzeit zurueckgestellt.
+  - Capital.com: Wartungsarbeiten/Portalzustand, Quelle derzeit
+    zurueckgestellt; API-Key erst nach Wartung final bewerten.
   - Flatex: Portal zeigte Wartungsseite; vorhandene Datenbasis nicht
     betroffen.
   - Ginmon: 9 Informations-/Rechtsdokumente warten bewusst auf User-

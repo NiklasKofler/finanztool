@@ -442,6 +442,10 @@
   border-radius: 8px;
 }
 
+.mobile-positions-list {
+  display: none;
+}
+
 .positions-table {
   width: 100%;
   min-width: 1320px;
@@ -1384,6 +1388,10 @@
   line-height: 1;
 }
 
+.source-account-row__mobile-details {
+  display: none;
+}
+
 .source-account-row__main .source-account-row__warning {
   color: #8a4a00;
   font-weight: 800;
@@ -2261,6 +2269,154 @@
     justify-content: start;
   }
 
+  .positions-table-wrap--embedded {
+    display: none;
+  }
+
+  .mobile-positions-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .mobile-position-card {
+    border: 1px solid #d9e1df;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .mobile-position-card--empty {
+    padding: 10px;
+    color: #66716e;
+    font-size: 0.74rem;
+    text-align: center;
+  }
+
+  .mobile-position-card > summary {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) auto;
+    gap: 5px 7px;
+    align-items: start;
+    min-height: 44px;
+    padding: 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .mobile-position-card > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-position-card__status {
+    width: 8px;
+    height: 8px;
+    margin-top: 5px;
+    border-radius: 999px;
+    background: #c5d2cd;
+    box-shadow: 0 0 0 3px #eef5f2;
+  }
+
+  .mobile-position-card__status--good {
+    background: #0e6a4e;
+  }
+
+  .mobile-position-card__status--warn {
+    background: #a66d00;
+    box-shadow: 0 0 0 3px #fff4cf;
+  }
+
+  .mobile-position-card__status--neutral {
+    background: #82908c;
+  }
+
+  .mobile-position-card__main {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .mobile-position-card__main strong {
+    color: #17201f;
+    font-size: 0.76rem;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-position-card__main span {
+    color: #73807c;
+    font-size: 0.6rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-position-card__value {
+    color: #17201f;
+    font-size: 0.74rem;
+    font-weight: 900;
+    line-height: 1.1;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  .mobile-position-card__metrics {
+    grid-column: 2 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .mobile-position-card__metrics > span,
+  .mobile-position-card__details > span {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .mobile-position-card em,
+  .mobile-position-card__details em {
+    color: #73807c;
+    font-size: 0.52rem;
+    font-style: normal;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .mobile-position-card__metrics strong {
+    font-size: 0.66rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-position-card__metrics small {
+    font-size: 0.6rem;
+    font-weight: 900;
+    line-height: 1.1;
+  }
+
+  .mobile-position-card__quote strong {
+    color: #17201f;
+  }
+
+  .mobile-position-card__details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 10px;
+    border-top: 1px solid #e7ecea;
+    background: #fbfdfc;
+    padding: 8px 9px 9px 24px;
+  }
+
+  .mobile-position-card__details strong {
+    color: #26302e;
+    font-size: 0.66rem;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
   .positions-table {
     min-width: 1080px;
   }
@@ -2314,7 +2470,8 @@
   }
 
   .source-account-details > summary.source-account-row--bank {
-    grid-template-columns: 14px minmax(0, 1fr) minmax(82px, 0.78fr);
+    grid-template-columns: 12px minmax(0, 1fr) auto;
+    align-items: start;
   }
 
   .source-account-details > summary::before {
@@ -2333,14 +2490,51 @@
     grid-column: 2;
   }
 
+  .source-account-details > summary.source-account-row--bank .source-account-row__meta {
+    gap: 4px;
+  }
+
+  .source-account-details > summary.source-account-row--bank .source-account-row__meta > span {
+    display: none;
+  }
+
+  .source-account-details > summary.source-account-row--bank .source-account-row__meta > .source-account-row__status,
+  .source-account-details > summary.source-account-row--bank .source-account-row__meta > span:nth-child(2) {
+    display: inline-flex;
+  }
+
+  .source-account-details > summary.source-account-row--bank .source-account-row__meta > span::after {
+    content: "";
+    margin-left: 0;
+  }
+
+  .source-account-details > summary.source-account-row--bank .source-account-row__warning {
+    grid-column: 2 / -1;
+    font-size: 0.62rem;
+    line-height: 1.2;
+  }
+
   .source-account-row__value,
   .source-account-row__numbers {
     justify-items: end;
     text-align: right;
   }
 
-  .source-account-row--bank .source-account-row__value {
+  .source-account-row--bank .source-account-row__value[data-label="Geldstand"] {
     grid-column: 3;
+    grid-row: 1;
+  }
+
+  .source-account-row--bank .source-account-row__value[data-label="Kreditlinie"] {
+    grid-column: 2;
+    grid-row: 2;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .source-account-row--bank .source-account-row__value[data-label="Verfügbar"] {
+    grid-column: 3;
+    grid-row: 2;
   }
 
   .source-account-row__value[data-label]::before {
@@ -2364,6 +2558,45 @@
   .source-account-row__numbers .performance-value {
     justify-content: end;
     font-size: 0.76rem;
+  }
+
+  .source-account-row__mobile-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 10px;
+    margin: -3px 0 5px 22px;
+    border: 1px solid #e2e9e6;
+    border-radius: 8px;
+    background: #fbfdfc;
+    padding: 8px;
+  }
+
+  .source-account-row__mobile-details span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .source-account-row__mobile-details em {
+    color: #73807c;
+    font-size: 0.52rem;
+    font-style: normal;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .source-account-row__mobile-details strong {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    color: #26302e;
+    font-size: 0.65rem;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
   }
 
   .source-account-transactions-placeholder {

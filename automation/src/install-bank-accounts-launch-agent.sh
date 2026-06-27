@@ -33,4 +33,4 @@ launchctl bootstrap "gui/$UID" "$bank_accounts_plist_path"
 launchctl bootstrap "gui/$UID" "$bank99_plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.bank-accounts"
 
-echo "[ok] Sparkasse/Revolut laufen stuendlich; bank99 laeuft limitiert um 07:15, 12:15, 17:45, 21:45."
+echo "[ok] Sparkasse/Revolut laufen stuendlich; bank99 laeuft limitiert um 07:00, 12:00, 17:00, 22:00."

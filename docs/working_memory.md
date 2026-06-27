@@ -304,11 +304,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-27 15:46 CEST
+- Stand: 2026-06-27 17:32 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `084a79c`
-- Handoff-Commit: `987edf5`
-- Firebase Deploy: 2026-06-27 15:46 CEST erfolgreich
+- Ausgangscommit: `00cdbfa`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -2070,9 +2070,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `com.niklas.finanztool.vbv-sync` laeuft nur noch woechentlich montags um
     06:45 headless.
 - Bankkonten:
-  - neuer LaunchAgent `com.niklas.finanztool.bank-accounts` laeuft
-    07:00, 12:00, 17:30 und 21:30 und bleibt damit bei maximal 4 Abrufen/Tag
-    fuer bank99.
+  - `com.niklas.finanztool.bank-accounts` laeuft stuendlich nur fuer
+    Erste/Sparkasse und Revolut.
+  - `com.niklas.finanztool.bank99` laeuft separat exakt um 07:00, 12:00,
+    17:00 und 22:00 und bleibt damit bei maximal 4 Abrufen/Tag.
 - Kurs-/Health-Agenten:
   - `sync-quotes-local.mjs` defaultet jetzt auf `QUOTE_SOURCES=traderepublic`;
     Flatex/Ginmon/Bitget/EquatePlus nutzen ihre eigenen Quellen.
@@ -2307,9 +2308,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Agent-Regel:
   - Sparkasse/George und Revolut duerfen stuendlich laufen.
   - `bank99` hat wegen Enable-Banking-/Provider-Limit einen eigenen Agenten
-    und laeuft nur 4x pro Tag.
+    und laeuft nur 4x pro Tag: 07:00, 12:00, 17:00 und 22:00.
   - Kreditkarten sind eigene Agenten:
-    `amazon_visa` und `tfbank`, jeweils stuendlich.
+    `amazon_visa` laeuft stuendlich, `tfbank` wegen SMS-TAN/Portal-Login nur
+    alle 3 Stunden.
   - Der normale Bankkonten-Agent darf nur `erste,revolut` lesen und darf
     `bank99` nicht als fehlend oder veraltet markieren.
   - Der `bank99`-Agent schreibt seinen eigenen Agentstatus
@@ -2336,12 +2338,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `com.niklas.finanztool.bank-accounts`:
     stuendlich, `--banks=erste,revolut`.
   - `com.niklas.finanztool.bank99`:
-    07:15, 12:15, 17:45, 21:45, `--banks=bank99`.
+    07:00, 12:00, 17:00, 22:00, `--banks=bank99`.
     Kein `RunAtLoad` und kein Installer-Kickstart, damit kein zusaetzlicher
     Abruf das Tageslimit verbraucht.
-  - `com.niklas.finanztool.amazon-visa` und
-    `com.niklas.finanztool.tfbank`:
+  - `com.niklas.finanztool.amazon-visa`:
     stuendlich.
+  - `com.niklas.finanztool.tfbank`:
+    alle 3 Stunden (`StartInterval=10800`).
 
 ## 2026-06-27 TF Bank TAN-Fix
 
@@ -2378,6 +2381,26 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Saldo `-256,39 EUR`, Kreditlinie `6.000,00 EUR`, verfuegbar
     `5.743,61 EUR`.
   - Letzter verifizierter Import: `portal_tfbank_20260627124259`.
+- Update 2026-06-27:
+  - TF-Bank-Intervall von 1h auf 3h geaendert, um unnoetige SMS-TAN-Laeufe zu
+    reduzieren.
+  - Aktiver LaunchAgent auf dem Mac Studio neu geladen:
+    `run interval = 10800 seconds`.
+  - Login-Robustheit verbessert: Nach Login/TAN wartet der Agent laenger auf
+    echten Portal-/Dashboardtext und faellt bei kurz leerem Portalzustand nicht
+    sofort mit `Sichtbarer Zustand: ` aus.
+  - Verifizierter Lauf nach Reload:
+    `portal_tfbank_20260627144047`, Saldo `-256,39 EUR`, Kreditlinie
+    `6.000,00 EUR`, verfuegbar `5.743,61 EUR`, Logout `OK`.
+- Update 2026-06-27, TAN-Retry-Regel:
+  - Wenn TF Bank beim Login aus TAN-Gruenden scheitert, startet
+    `sync-tfbank-local.mjs` den kompletten Browser-/Login-Lauf neu.
+  - TAN-Gruende sind z. B. fehlende, abgelaufene, ungueltige oder vom Portal
+    nicht bestaetigte SMS-TANs sowie haengende Einmalpasswort-Schritte.
+  - Standard: maximal 5 komplette TAN-Login-Versuche, danach erst
+    `TAN_LOGIN_FAILED` und Agentstatus `FEHLER`.
+  - Konfiguration: `TFBANK_TAN_LOGIN_ATTEMPTS` oder
+    `--tan-login-attempts=5`.
 
 ## 2026-06-27 Bankkonten Kartenstatus und bank99 Label
 
@@ -2449,6 +2472,17 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - EquatePlus bleibt vorerst eine manuelle Novartis-Position, aber die Eingabe
     fuer Anteile und Einstandswert EUR muss auf iPhone einspaltig, lesbar und
     ohne iOS-Eingabezoom bedienbar sein.
+  - Bankkonten/Kreditkarten duerfen auf iPhone nicht wie eine breite Tabelle
+    wirken. Die geschlossene Zeile zeigt Konto, Status, Geldstand,
+    Kreditlinie und Verfuegbar; Agentenlauf, Update, letzter Umsatz und
+    Kontonummer liegen im aufgeklappten Detailbereich.
+  - Positionslisten werden auf iPhone nicht mehr als breite Tabelle
+    dargestellt, sondern als kompakte ausklappbare Positionskarten.
+  - Die geschlossene mobile Positionszeile zeigt Name, Wert, G/V, Heute und
+    den aktuellen Kurs. Das Kursdatum steht bewusst nur im aufgeklappten
+    Detailbereich, weil der Statuspunkt der Zeile die Kursguete signalisiert.
+  - Aufgeklappte mobile Positionsdetails werden ebenfalls ueber
+    `uiPreferences/portfolio_overview.expandedSections` gespeichert.
 - Umsetzung:
   - `app/src/firebase/sourceSummaries.ts` erhaelt
     `loadUiPreferences()` und `saveUiPreferences()`.
@@ -2473,3 +2507,15 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     diese Collection noch nicht und meldeten `Missing or insufficient
     permissions`. Das sah wie ein Loginfehler aus, war aber ein
     Rechte-/Deploy-Stand fuer die neue UI-State-Collection.
+
+## 2026-06-27 Capital.com Wartungsstand
+
+- Capital.com bleibt vorerst zurueckgestellt.
+- Aktueller Befund: Der Login/API-Test war vermutlich durch Wartungsarbeiten
+  bzw. einen instabilen Portalzustand blockiert.
+- Wichtig: Die API-Integration gilt deshalb nicht als fachlich defekt. Beim
+  naechsten Capital.com-Versuch zuerst Wartungsende/Portalzustand pruefen und
+  erst danach API-Key/Secrets als Fehlerursache bewerten.
+- Falls nach der Wartung weiterhin reproduzierbar `401 error.invalid.api.key`
+  kommt, dann neuen Capital.com-API-Key erzeugen und mit
+  `npm --prefix automation run setup:capitalcom` lokal speichern.

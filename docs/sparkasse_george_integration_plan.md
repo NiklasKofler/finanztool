@@ -130,14 +130,18 @@ Aufgaben:
    `sourceSummaries/bank_accounts` schreiben.
 5. Health-Warnung schreiben, wenn Consent abgelaufen ist oder ein Konto fehlt.
 6. bank99 maximal 4-mal pro Kalendertag abrufen.
+   Geplanter Standardrhythmus: 07:00, 12:00, 17:00 und 22:00
+   Europe/Vienna.
 
 Geplanter Rhythmus:
 
-- taeglich morgens, z. B. 06:20
+- Erste/Sparkasse und Revolut stuendlich
+- bank99 viermal taeglich: 07:00, 12:00, 17:00 und 22:00
 - zusaetzlich ueber `Alles aktualisieren`
 
 Kein 5-Minuten-Polling. Bankdaten brauchen keine Hochfrequenz und Consent/API
-sollen nicht unnoetig belastet werden.
+sollen nicht unnoetig belastet werden. `Alles aktualisieren` darf bank99 nicht
+am lokalen Tageslimit vorbei abrufen.
 
 ## GUI-Regeln
 

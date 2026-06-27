@@ -31,4 +31,4 @@ install_agent() {
 install_agent "com.niklas.finanztool.amazon-visa" "com.niklas.finanztool.amazon-visa.plist.template"
 install_agent "com.niklas.finanztool.tfbank" "com.niklas.finanztool.tfbank.plist.template"
 
-echo "[ok] Kreditkarten-Agenten laufen stuendlich: Amazon Visa und TF Bank."
+echo "[ok] Kreditkarten-Agenten installiert: Amazon Visa stuendlich, TF Bank alle 3 Stunden."

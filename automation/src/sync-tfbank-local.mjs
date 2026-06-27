@@ -26,6 +26,10 @@ const keepBrowserOpen = process.argv.includes("--keep-open");
 const logoutAfter = !process.argv.includes("--no-logout") && process.env.TFBANK_LOGOUT_AFTER !== "0";
 const tanFromStdin = process.argv.includes("--tan-stdin");
 const messagesTanEnabled = !process.argv.includes("--no-messages-tan") && process.env.TFBANK_MESSAGES_TAN !== "0";
+const maxTanLoginAttempts = Math.max(
+  1,
+  Number.parseInt(readArg("--tan-login-attempts") ?? process.env.TFBANK_TAN_LOGIN_ATTEMPTS ?? "5", 10) || 5,
+);
 const loginUrl = "https://meine.tfbank.at/login";
 const homeUrl = "https://meine.tfbank.at/";
 const defaultTanFilePath = path.join(os.homedir(), ".finanztool", "tfbank-tan.txt");
@@ -53,6 +57,27 @@ async function readTanFromStdin() {
 function normalizeTan(value) {
   const tan = String(value ?? "").replace(/\D/g, "").slice(0, 12);
   return tan.length >= 4 ? tan : null;
+}
+
+function isTanRelatedText(text) {
+  return /tan|sms|einmalpasswort|otp|code|ungueltig|ungültig|falsch|abgelaufen|fehlgeschlagen|verbraucht/i.test(
+    String(text ?? ""),
+  );
+}
+
+function createTanLoginRetryError(message, { cause, stateText } = {}) {
+  const error = new Error(message);
+  error.code = "TAN_LOGIN_RETRYABLE";
+  error.retryableTan = true;
+  error.stateText = stateText ?? "";
+  if (cause) error.cause = cause;
+  return error;
+}
+
+function isTanRetryableError(error) {
+  if (!error) return false;
+  if (error.retryableTan || error.code === "WAITING_TAN" || error.code === "TAN_LOGIN_RETRYABLE") return true;
+  return isTanRelatedText(error.message) || isTanRelatedText(error.stateText);
 }
 
 async function readTanFromFile(tanFilePath) {
@@ -176,8 +201,45 @@ async function clearAndType(locator, value) {
 }
 
 async function isTfBankLoggedIn(page) {
-  const text = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
+  const text = await readPageText(page, { timeout: 10000 });
   return /saldo|kreditrahmen|kreditlimit|ums[aä]tz|rechnung|verf[uü]gbar/i.test(text) && !/Geburtsdatum|Einmalpasswort aus SMS/i.test(text);
+}
+
+async function readPageText(page, { timeout = 10000 } = {}) {
+  return await page.locator("body").innerText({ timeout }).catch(() => "");
+}
+
+async function waitForNonEmptyPageText(
+  page,
+  { timeoutMs = 30000, pollMs = 1000, reloadAfterMs = 0 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  let reloaded = false;
+  while (Date.now() < deadline) {
+    const text = await readPageText(page, { timeout: Math.min(pollMs, 5000) });
+    if (text.replace(/\s+/g, "").length > 0) return text;
+    const shouldReload = reloadAfterMs > 0 && !reloaded && Date.now() > deadline - timeoutMs + reloadAfterMs;
+    if (shouldReload) {
+      reloaded = true;
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+    }
+    await page.waitForTimeout(pollMs);
+  }
+  return await readPageText(page, { timeout: 5000 });
+}
+
+async function waitForTfBankDashboard(page, { timeoutMs = 60000, pollMs = 1500 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = "";
+  while (Date.now() < deadline) {
+    lastText = await readPageText(page, { timeout: 5000 });
+    if (await isTfBankLoggedIn(page)) return { ok: true, text: lastText };
+    if (/falsche|ungueltig|ungültig|abgelaufen|fehlgeschlagen|gesperrt/i.test(lastText)) {
+      return { ok: false, text: lastText };
+    }
+    await page.waitForTimeout(pollMs);
+  }
+  return { ok: false, text: lastText || (await readPageText(page, { timeout: 5000 })) };
 }
 
 async function clickVisibleByRole(page, role, pattern, timeout = 1200) {
@@ -263,7 +325,7 @@ async function logoutTfBank(page) {
 
 async function ensureTfBankLogin(page) {
   await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  await waitForNonEmptyPageText(page, { timeoutMs: 25000, reloadAfterMs: 8000 });
   if (await isTfBankLoggedIn(page)) return { mode: "existing-session" };
 
   const [customerNumber, birthdate] = await Promise.all([
@@ -271,7 +333,7 @@ async function ensureTfBankLogin(page) {
     requireLocalSecret("TFBANK_BIRTHDATE", "finanztool-tfbank-birthdate"),
   ]);
   await page.goto(loginUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
+  await waitForNonEmptyPageText(page, { timeoutMs: 25000, reloadAfterMs: 8000 });
   await clearAndType(page.locator('input[name="customerId"], #customerId').first(), customerNumber);
   const inputs = page.locator("input");
   if ((await inputs.count()) < 2) throw new Error("TF Bank Geburtsdatum-Feld wurde nicht gefunden.");
@@ -279,8 +341,9 @@ async function ensureTfBankLogin(page) {
   const previousMessagesTan = await readTanFromMessages();
   await page.getByRole("button", { name: /Einloggen/i }).click({ timeout: 10000 });
   await page.waitForTimeout(3000);
+  await waitForNonEmptyPageText(page, { timeoutMs: 30000 });
 
-  const text = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
+  const text = await readPageText(page, { timeout: 10000 });
   const otpInput = page.locator('input[name="otp"], #otp, input[placeholder*="SMS" i], input[placeholder*="Einmal" i]').first();
   const waitingForTan = /Einmalpasswort aus SMS|SMS|otp/i.test(text) || (await otpInput.isVisible({ timeout: 1000 }).catch(() => false));
   if (waitingForTan) {
@@ -298,12 +361,23 @@ async function ensureTfBankLogin(page) {
       const fallbackButton = page.locator("button").last();
       await fallbackButton.evaluate((button) => button.click());
     });
-    await page.waitForTimeout(8000);
+    const afterTanDashboard = await waitForTfBankDashboard(page, { timeoutMs: 60000 });
+    if (!afterTanDashboard.ok) {
+      const stateText = (afterTanDashboard.text || (await readPageText(page, { timeout: 10000 }))).replace(/\s+/g, " ");
+      throw createTanLoginRetryError(
+        `TF Bank TAN-Login wurde vom Portal nicht bestaetigt. Sichtbarer Zustand: ${stateText.slice(0, 500)}`,
+        { stateText },
+      );
+    }
   }
 
-  if (!(await isTfBankLoggedIn(page))) {
-    const stateText = await page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
+  const dashboard = await waitForTfBankDashboard(page, { timeoutMs: 45000 });
+  if (!dashboard.ok) {
+    const stateText = dashboard.text || (await readPageText(page, { timeout: 10000 }));
     const trimmed = stateText.replace(/\s+/g, " ").slice(0, 500);
+    if (isTanRelatedText(trimmed)) {
+      throw createTanLoginRetryError(`TF Bank TAN-Login fehlgeschlagen. Sichtbarer Zustand: ${trimmed}`, { stateText });
+    }
     throw new Error(`TF Bank Login fehlgeschlagen oder Dashboard nicht erkannt. Sichtbarer Zustand: ${trimmed}`);
   }
   return { mode: "keychain" };
@@ -311,23 +385,61 @@ async function ensureTfBankLogin(page) {
 
 async function readTfBankSnapshot() {
   const now = new Date();
-  const { context, page } = await launchCreditCardBrowser("tfbank", { headless });
-  try {
-    const login = await ensureTfBankLogin(page);
-    await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2500);
-    const text = await page.locator("body").innerText({ timeout: 10000 });
+  const attemptErrors = [];
+  for (let attempt = 1; attempt <= maxTanLoginAttempts; attempt += 1) {
+    const { context, page } = await launchCreditCardBrowser("tfbank", { headless });
     try {
-      const snapshot = parseTfBankDashboardText(text, now);
-      const logout = await logoutTfBank(page);
-      return { snapshot, login, logout };
+      const login = await ensureTfBankLogin(page);
+      await page.goto(homeUrl, { waitUntil: "domcontentloaded" });
+      const text = await waitForNonEmptyPageText(page, { timeoutMs: 30000, reloadAfterMs: 8000 });
+      try {
+        const snapshot = parseTfBankDashboardText(text, now);
+        const logout = await logoutTfBank(page);
+        return {
+          snapshot,
+          login: { ...login, attempts: attempt, maxAttempts: maxTanLoginAttempts },
+          logout,
+        };
+      } catch (error) {
+        const visibleState = text.replace(/\s+/g, " ").slice(0, 1500);
+        throw new Error(`${error instanceof Error ? error.message : String(error)} Sichtbarer Zustand: ${visibleState}`);
+      }
     } catch (error) {
-      const visibleState = text.replace(/\s+/g, " ").slice(0, 1500);
-      throw new Error(`${error instanceof Error ? error.message : String(error)} Sichtbarer Zustand: ${visibleState}`);
+      const retryableTan = isTanRetryableError(error);
+      attemptErrors.push(error instanceof Error ? error.message : String(error));
+      if (!retryableTan || attempt >= maxTanLoginAttempts) {
+        if (retryableTan) {
+          const finalError = new Error(
+            `TF Bank TAN-Login nach ${attempt}/${maxTanLoginAttempts} Versuchen fehlgeschlagen. Letzter Grund: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          finalError.code = "TAN_LOGIN_FAILED";
+          finalError.attempts = attempt;
+          finalError.attemptErrors = attemptErrors;
+          throw finalError;
+        }
+        throw error;
+      }
+      console.warn(
+        JSON.stringify(
+          {
+            status: "TFBANK_TAN_RETRY",
+            source,
+            attempt,
+            maxAttempts: maxTanLoginAttempts,
+            message: `${error instanceof Error ? error.message : String(error)} Neuer Login-Versuch wird gestartet.`,
+          },
+          null,
+          2,
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } finally {
+      if (!keepBrowserOpen) await context.close().catch(() => {});
     }
-  } finally {
-    if (!keepBrowserOpen) await context.close().catch(() => {});
   }
+  throw new Error("TF Bank Login wurde ohne Ergebnis beendet.");
 }
 
 async function loadPreviousAgentSuccess(firestore) {
@@ -405,6 +517,7 @@ try {
         source,
         mode: writeEnabled ? "write" : "dry-run",
         login: login.mode,
+        loginAttempts: login.attempts,
         currentValue: snapshot.currentValue,
         debtValue: snapshot.debtValue,
         availableWithCredit: snapshot.availableWithCredit,
@@ -423,6 +536,7 @@ try {
     accessToken: await getFirebaseCliAccessToken(),
   });
   const waitingTan = error?.code === "WAITING_TAN";
+  const tanLoginFailed = error?.code === "TAN_LOGIN_FAILED";
   if (writeEnabled || waitingTan) {
     const previousSuccess = await loadPreviousAgentSuccess(firestore);
     await firestore.setDocument("agentStatus", source, {
@@ -430,7 +544,9 @@ try {
       status: waitingTan ? "WARNUNG" : "FEHLER",
       message: waitingTan
         ? `${error instanceof Error ? error.message : String(error)} Letzter erfolgreicher Stand bleibt sichtbar.`
-        : error instanceof Error ? error.message : String(error),
+        : tanLoginFailed
+          ? `${error instanceof Error ? error.message : String(error)} Letzter erfolgreicher Stand bleibt sichtbar.`
+          : error instanceof Error ? error.message : String(error),
       ...previousSuccess,
       lastAgentRunAt: now,
       updatedAt: now,

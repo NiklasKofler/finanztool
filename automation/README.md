@@ -321,11 +321,22 @@ cd /Users/niklaskofler/Documents/finanztool
 npm --prefix automation run sync:tfbank
 ```
 
+Der produktive LaunchAgent laeuft nur alle 3 Stunden, weil TF Bank fuer einen
+frischen Login regelmaessig eine SMS-TAN verlangt. Amazon Visa bleibt davon
+unabhaengig stuendlich.
+
 Wenn das Portal eine SMS-TAN verlangt, wartet der Agent standardmaessig bis zu
 300 Sekunden auf eine neue TAN. Primaer versucht er, die neue TF-Bank-SMS aus
 der lokalen macOS-Nachrichten-App zu lesen. Dafuer nutzt er den lokalen Swift-
 Helper `automation/src/read-messages-tan.swift` und akzeptiert nur einen Code,
 der neuer ist als der zuletzt sichtbare Code vor dem Login.
+
+Wenn der Login aus TAN-Gruenden nicht abgeschlossen werden kann, z. B. weil
+der Code ablaeuft, vom Portal abgelehnt wird oder der TAN-Schritt haengen
+bleibt, bricht der Agent den Browserlauf ab und startet den kompletten Login
+neu. Erst nach 5 solchen TAN-Login-Versuchen schreibt er eine Fehlermeldung.
+Die Anzahl kann lokal mit `TFBANK_TAN_LOGIN_ATTEMPTS` oder
+`--tan-login-attempts=5` angepasst werden.
 
 Voraussetzungen fuer die automatische TAN-Erkennung:
 

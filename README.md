@@ -215,10 +215,13 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
   - History-Transaktionen und Activity
   - `ledgerEntries`, `sourceDocumentFacts`, `costEvents`, `incomeEvents`
   - `rawDocuments/api_capitalcom_latest` als nachvollziehbarer API-Snapshot
-- Pruefung 2026-06-27: Der gespeicherte API-Key wird von Capital.com mit
-  `401 error.invalid.api.key` abgelehnt. Vor Nutzung muss in Capital.com ein
-  neuer API-Key erzeugt und mit `npm --prefix automation run setup:capitalcom`
-  im Schluesselbund gespeichert werden.
+- Pruefung 2026-06-27: Capital.com war wegen Wartungsarbeiten/Portalzustand
+  nicht verlaesslich pruefbar. Die API-Anbindung gilt vorerst nicht als
+  fachlich kaputt; der gespeicherte API-Key wird erst nach Ende der Wartung
+  erneut bewertet. Bei weiterhin reproduzierbarem `401 error.invalid.api.key`
+  muss ein neuer API-Key erzeugt und mit
+  `npm --prefix automation run setup:capitalcom` im Schluesselbund gespeichert
+  werden.
 - Der produktive LaunchAgent bleibt pausiert, bis Capital.com wirklich wieder
   genutzt wird.
 
@@ -239,8 +242,8 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 - Verfuegbar inkl. Kredit wird separat gespeichert und nicht als Vermoegen
   gezaehlt.
 - Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden.
-- Der Bankkonto-Agent laeuft maximal viermal taeglich:
-  07:00, 12:00, 17:30 und 21:30.
+- Der bank99-Agent laeuft maximal viermal taeglich:
+  07:00, 12:00, 17:00 und 22:00.
 - Umsaetze werden per Enable Banking idempotent in `ledgerEntries`
   gespeichert.
 - Initialbestand ist vorhanden. Der normale Sync liest ab jetzt inkrementell:
@@ -265,6 +268,10 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
     `agentStatus/amazon_visa`
 - TF Bank Portal-Agent ist aktiv:
   - Script: `npm --prefix automation run sync:tfbank`
+  - LaunchAgent-Intervall: alle 3 Stunden, weil fuer jeden frischen Login
+    eine SMS-TAN erforderlich sein kann.
+  - TAN-bezogene Loginfehler starten den kompletten Login neu; erst nach 5
+    Versuchen schreibt der Agent einen Fehler.
   - bei SMS-TAN kann derselbe Lauf mit
     `node automation/src/sync-tfbank-local.mjs --write --tan-stdin`
     fortgesetzt werden
