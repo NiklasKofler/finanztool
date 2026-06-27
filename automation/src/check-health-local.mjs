@@ -37,6 +37,8 @@ const staleHoursByAgent = {
   equateplus: 26,
   bank_accounts: 26,
   bank99: 26,
+  amazon_visa: 4,
+  tfbank: 4,
 };
 const obsoleteAgentStatusIds = new Set([
   "traderepublic_mail",
@@ -106,6 +108,32 @@ function sanitizeId(value) {
     .replace(/[^\w.-]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+function normalizeId(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function accountAgentStatusId(account, fallbackSource) {
+  const configuredAgent = normalizeId(account.agentStatusId);
+  if (configuredAgent) return configuredAgent;
+
+  for (const candidate of [account.providerSource, account.bankKey]) {
+    const normalized = normalizeId(candidate);
+    if (normalized && staleHoursByAgent[normalized]) return normalized;
+  }
+
+  return fallbackSource;
+}
+
+function accountHealthLabel(account) {
+  return (
+    account.label ??
+    account.bankName ??
+    account.accountId ??
+    account.providerAccountId ??
+    "Konto"
+  );
 }
 
 function activeReviewDecisions(decisions) {
@@ -353,12 +381,12 @@ for (const status of statuses) {
     status.status === "WARNUNG" &&
     unresolvedPortalFailures.length === 0 &&
     (status.portalDocumentUnresolvedFailureCount ?? 0) > 0;
-  if (status.status && status.status !== "OK" && !reviewedTradeRepublicPortalWarning) {
+  if (status.status && status.status !== "OK" && status.status !== "RUNNING" && !reviewedTradeRepublicPortalWarning) {
     alerts.push(
       alert(
         `agent_status_${agentId}`,
-        status.status === "WARNUNG" ? "warning" : "error",
-        `Agent ${agentId}: ${status.status}`,
+        "error",
+        `Agent ${agentId}: FEHLER`,
         status.message ?? "Agent meldet keinen OK-Status.",
         status.source ?? agentId,
         status.warnings ?? null,
@@ -373,7 +401,7 @@ for (const status of statuses) {
       alerts.push(
         alert(
           `stale_agent_${agentId}`,
-          "warning",
+          "error",
           `Agent seit ${Math.round(ageHours)} h nicht aktualisiert`,
           `${agentId} sollte spaetestens nach ${maxAgeHours} Stunden neue Daten liefern.`,
           status.source ?? agentId,
@@ -386,7 +414,33 @@ for (const status of statuses) {
 for (const source of expectedSources) {
   const matchingStatus = [...statusById.values()].find((status) => status.source === source || status.id === source);
   if (!matchingStatus && source !== "traderepublic") {
-    alerts.push(alert(`missing_agent_${source}`, "warning", "Agentstatus fehlt", `Fuer ${source} gibt es keinen Agentstatus.`, source));
+    alerts.push(alert(`missing_agent_${source}`, "error", "Agentstatus fehlt", `Fuer ${source} gibt es keinen Agentstatus.`, source));
+  }
+}
+
+const bankAccountsSummary = summaryById.get("bank_accounts");
+for (const account of bankAccountsSummary?.accounts ?? []) {
+  const agentId = accountAgentStatusId(account, "bank_accounts");
+  const agentStatus = statusById.get(agentId);
+  if (!agentStatus) {
+    const label = accountHealthLabel(account);
+    alerts.push(
+      alert(
+        `missing_account_agent_${sanitizeId(agentId)}_${sanitizeId(account.accountId ?? account.providerAccountId ?? label)}`,
+        "error",
+        "Konto-Agentstatus fehlt",
+        `${label}: ${agentId} hat keinen Agentstatus.`,
+        "bank_accounts",
+        {
+          accountId: account.accountId ?? null,
+          providerAccountId: account.providerAccountId ?? null,
+          label,
+          bankKey: account.bankKey ?? null,
+          providerSource: account.providerSource ?? null,
+          agentStatusId: agentId,
+        },
+      ),
+    );
   }
 }
 
@@ -564,95 +618,9 @@ if (flatexSummary) {
   }
 }
 
-const unclassifiedGinmonDocuments = sourceDocuments.filter(
-  (document) =>
-    document.source === "ginmon" &&
-    !isIssueResolvedByDecision(document, activeDecisions) &&
-    (document.documentType === "unknown" ||
-      document.parseStatus === "UNKNOWN" ||
-      document.parseStatus === "UNPARSED"),
-);
-
-if (unclassifiedGinmonDocuments.length) {
-  alerts.push(
-    alert(
-      "ginmon_unclassified_documents",
-      "warning",
-      "Ginmon-Dokument im Postfach offen",
-      `${unclassifiedGinmonDocuments.length} Ginmon-Dokument(e) warten auf deine Entscheidung oder einen spaeteren Parser.`,
-      "ginmon",
-      unclassifiedGinmonDocuments.slice(0, 10).map((document) => ({
-        id: document.id,
-        fileName: document.fileName,
-        documentType: document.documentType,
-        parseStatus: document.parseStatus,
-        customerId: document.customerId ?? null,
-      })),
-    ),
-  );
-}
-
-const unclassifiedFlatexDocuments = sourceDocuments.filter(
-  (document) =>
-    document.source === "flatex" &&
-    !isIssueResolvedByDecision(document, activeDecisions) &&
-    (document.documentType === "unknown" ||
-      document.parseStatus === "UNKNOWN" ||
-      document.parseStatus === "UNPARSED"),
-);
-
-if (unclassifiedFlatexDocuments.length) {
-  alerts.push(
-    alert(
-      "flatex_unclassified_documents",
-      "warning",
-      "Flatex-Dokument nicht klassifiziert",
-      `${unclassifiedFlatexDocuments.length} Flatex-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
-      "flatex",
-      unclassifiedFlatexDocuments.slice(0, 10).map((document) => ({
-        id: document.id,
-        fileName: document.fileName,
-        documentType: document.documentType,
-        parseStatus: document.parseStatus,
-        accountNumber: document.accountNumber ?? null,
-        depotNumber: document.depotNumber ?? null,
-      })),
-    ),
-  );
-}
-
-const unclassifiedTradeRepublicDocuments = sourceDocuments.filter(
-  (document) =>
-    document.source === "traderepublic" &&
-    !isIssueResolvedByDecision(document, activeDecisions) &&
-    (document.documentType === "unknown" ||
-      document.parseStatus === "UNKNOWN" ||
-      document.parseStatus === "UNPARSED"),
-);
-
-if (unclassifiedTradeRepublicDocuments.length) {
-  alerts.push(
-    alert(
-      "traderepublic_unclassified_documents",
-      "warning",
-      "Trade-Republic-Dokument nicht klassifiziert",
-      `${unclassifiedTradeRepublicDocuments.length} Trade-Republic-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
-      "traderepublic",
-      unclassifiedTradeRepublicDocuments.slice(0, 10).map((document) => ({
-        id: document.id,
-        fileName: document.fileName,
-        documentType: document.documentType,
-        parseStatus: document.parseStatus,
-        baselineId: document.baselineId ?? null,
-      })),
-    ),
-  );
-}
-
-const genericUnclassifiedDocuments = sourceDocuments.filter(
+const unclassifiedDocuments = sourceDocuments.filter(
   (document) =>
     expectedSources.includes(document.source) &&
-    !["ginmon", "flatex", "traderepublic"].includes(document.source) &&
     !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.documentType === "unknown_portal_document" ||
@@ -660,27 +628,24 @@ const genericUnclassifiedDocuments = sourceDocuments.filter(
       document.parseStatus === "UNPARSED"),
 );
 
-if (genericUnclassifiedDocuments.length) {
-  const bySource = genericUnclassifiedDocuments.reduce((groups, document) => {
-    const source = document.source ?? "unknown";
-    groups[source] = (groups[source] ?? 0) + 1;
-    return groups;
-  }, {});
+if (unclassifiedDocuments.length) {
   alerts.push(
     alert(
-      "generic_unclassified_documents",
+      "unclassified_documents",
       "warning",
-      "Unbekannte Dokumente erkannt",
-      Object.entries(bySource)
-        .map(([source, count]) => `${source}: ${count}`)
-        .join(", "),
+      "Unbekannte Dokumente im Postfach",
+      `${unclassifiedDocuments.length} unbekannte Dokumente im Postfach.`,
       null,
-      genericUnclassifiedDocuments.slice(0, 12).map((document) => ({
+      unclassifiedDocuments.slice(0, 12).map((document) => ({
         id: document.id,
         source: document.source,
         fileName: document.fileName,
         documentType: document.documentType,
         parseStatus: document.parseStatus,
+        customerId: document.customerId ?? null,
+        accountNumber: document.accountNumber ?? null,
+        depotNumber: document.depotNumber ?? null,
+        baselineId: document.baselineId ?? null,
       })),
     ),
   );

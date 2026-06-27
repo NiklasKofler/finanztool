@@ -304,11 +304,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-27 17:32 CEST
+- Stand: 2026-06-27 21:18 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `00cdbfa`
-- Handoff-Commit: `324fe58`
-- Firebase Deploy: 2026-06-27 17:32 CEST erfolgreich
+- Ausgangscommit: `ac18567`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -2236,7 +2236,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 - Depotkarten in der Uebersicht sind einklappbar.
 - Eingeklappt zeigen sie nur die Kernwerte:
-  Depotwert, G/V, Heute, Fehler-/Agentstatus und letztes Update.
+  Depotwert, G/V, Heute und letztes Update.
+- Im eingeklappten Zustand liegen Titel und Kernwerte in der oberen
+  Kartenzeile. Der Beschreibungstext ist dort nachrangig und wird ausgeblendet,
+  damit die Karten auf Desktop und iPhone kompakt bleiben.
 - Der Klappzustand wird lokal im Browser gespeichert, damit die Uebersicht
   beim Arbeiten kompakt bleiben kann.
 - Ausgeklappt bleiben alle Detailbereiche erhalten: Refresh-Buttons,
@@ -2519,3 +2522,77 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Falls nach der Wartung weiterhin reproduzierbar `401 error.invalid.api.key`
   kommt, dann neuen Capital.com-API-Key erzeugen und mit
   `npm --prefix automation run setup:capitalcom` lokal speichern.
+
+## 2026-06-27 GUI-Regel zentrale Warnungen
+
+- Die zentrale Kachel `Warnungen` zeigt den vollen Health-Stand aus
+  `systemHealth/current`.
+- Wenn Agenten, Portale oder APIs nicht funktionieren, ist das operativ
+  relevant und muss oben als Fehler sichtbar bleiben. Das gilt auch bei
+  Wartung, z. B. Capital.com.
+- Health-Regel: Agentstatus ungleich `OK` ist ein Fehler, ausser `RUNNING`
+  als laufender Zwischenzustand. Fehlende oder ueberfaellige Agentstatus sind
+  ebenfalls Fehler.
+- `RUNNING` darf in der zentralen Health-Kachel nicht als Warnung gezaehlt
+  werden. Der laufende Zustand gehoert in die jeweilige Agent-/Quellenkarte;
+  oben zaehlen nur echte Fehler und fachliche Warnungen.
+- Karten-Regel: Diese Health-Regel muss auch in den Depot-, Bankkonto-,
+  Kreditkarten- und Agentenkarten gelten. Ein operatives Agent/API-Problem darf
+  in der Karte nicht als `Warnung` erscheinen, wenn es oben als `Fehler`
+  gezaehlt wird.
+- Bankkonto-/Kreditkarten-Unterquellen bekommen ein generisches Feld
+  `agentStatusId`. Health und GUI muessen zuerst dieses Feld verwenden. Dadurch
+  werden fehlende oder fehlerhafte Unterquellen-Agenten dynamisch erkannt, z. B.
+  `bank99 Konto: bank99 hat keinen Agentstatus`, statt als hart codierte
+  Sonderwarnung in der Karte zu entstehen.
+- Nicht klassifizierte Dokumente sind ebenfalls Warnungen. Oben reicht eine
+  aggregierte Warnung, die Detailbearbeitung liegt im Dokumenten-Postfach.
+- `Aktive Quellen` zaehlt Bankkonten und Kreditkarten als eigene Quellen, nicht
+  nur die Sammelkarte `bank_accounts`.
+- Aktiv bedeutet: Die Quelle traegt aktuell wirklich zur Finanzlage bei
+  (Wert ungleich 0, Positionen oder Umsaetze). Dadurch sind aktuell 11/13
+  Quellen aktiv: Capital.com ist 0/zurueckgestellt, Amazon Visa hat aktuell
+  0 Saldo und keine Umsaetze, bleibt aber konfigurierte Quelle.
+- Dokumentwarnungen im Health-Header muessen knapp bleiben, z. B.
+  `9 unbekannte Dokumente im Postfach.`. Die konkrete Liste und Details
+  gehoeren ins Dokumenten-Postfach.
+- Die Systemstatus-Kachel zeigt alle zentralen Health-Alerts und verwendet
+  dafuer einen internen Scrollbereich, damit mehrere Fehler/Warnungen nicht
+  abgeschnitten werden.
+- Eingeklappte Depotkarten zeigen den Status nur einmal rechts oben. Es gibt
+  keine eigene kompakte `Fehler`-Spalte; Detailmeldungen gehoeren in den
+  ausgeklappten Kartenbereich und in die zentrale Systemstatus-Kachel.
+- Eingeklappte Depotkarten platzieren die Kernzahlen direkt in der
+  Kopfzeile neben dem Depotnamen; lange Beschreibungen bleiben dort
+  ausgeblendet.
+- In eingeklappten Depotkarten muss der Depotname lesbar bleiben. Die
+  Kennzahlenzeile startet deshalb erst nach einer ausreichend breiten
+  Namensspalte; `Depotwert` und `G/V` duerfen moderat nach rechts ruecken,
+  ohne wieder grosse Leerflaechen bis zum Statusbereich zu erzeugen.
+- GUI-Pruefregel: Layout-, Portal- und Login-Checks immer in Google Chrome mit
+  dem echten Nutzerprofil pruefen, nicht im eingebauten Codex-Browser, ausser
+  der Nutzer fordert den eingebauten Browser ausdruecklich an.
+- Die Desktop-Spalten der eingeklappten Depotkarten sind feste gemeinsame
+  Tracks. Der Statusbereich rechts reserviert immer dieselbe Breite, damit
+  `OK` und `Fehler` die `Update`-Spalte nicht verschieben. `Heute` bleibt
+  bewusst schmal; `Update` steht direkt daneben.
+- Die kompakten Kennzahlen in eingeklappten Depotkarten sollen die verfuegbare
+  Breite angemessen nutzen: kein grosser leerer Bereich zwischen `Update` und
+  Status, aber `Depotwert` darf nicht wieder zu weit nach rechts rutschen.
+- In den kompakten Metriken `G/V` und `Heute` steht der Prozentwert klein
+  direkt neben dem Label; darunter steht nur der absolute Euro-Betrag. Dadurch
+  bleiben die Werte ruhiger und schmaler.
+- Auf iPhone-/Mobile-Breite werden die Kernzahlen zweispaltig angeordnet:
+  oben `Depotwert` und `G/V`, darunter `Heute` und `Update`.
+- Neben `Depotuebersicht` gibt es eine Suche. Sie filtert die Quellen nicht
+  weg, sondern hebt passende Depotkarten und Positionszeilen hervor. Ist eine
+  Depotkarte eingeklappt, zeigt sie eine Trefferzahl, damit Treffer in
+  verborgenen Positionen sichtbar bleiben.
+- Die Depot-Reihenfolge ist im Bearbeitungsmodus per Hoch-/Runter-Buttons
+  veraenderbar. Die Reihenfolge wird lokal und in
+  `uiPreferences/portfolio_overview.sourceOrder` gespeichert, damit Mac Studio
+  und MacBook denselben GUI-Stand sehen.
+- Positionslisten muessen sortierbare Tabellenkoepfe haben. Die Sortierung
+  gilt fuer Desktop-Tabellen und mobile Positionskarten gleichermassen.
+- Dokumenten-Postfach und sonstige GUI-Struktur bleiben fuer den
+  Dashboard-Start unveraendert.

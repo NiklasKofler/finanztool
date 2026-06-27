@@ -38,6 +38,7 @@ function accountSummaryFromAccount(account, position) {
     bankName: account.bankName ?? position?.bankName ?? null,
     providerSource,
     label,
+    agentStatusId: account.agentStatusId ?? position?.agentStatusId ?? null,
     accountType: account.accountType ?? position?.category ?? null,
     accountNumber: account.ibanMasked ?? account.accountNumber ?? null,
     providerAccountId: account.providerAccountId ?? position?.providerAccountId ?? null,

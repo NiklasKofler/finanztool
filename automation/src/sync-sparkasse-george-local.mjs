@@ -108,6 +108,11 @@ function agentStatusIdForBanks(banks) {
   return source;
 }
 
+function agentStatusIdForAccount(account) {
+  const bank = bankConfigs.find((item) => item.key === account.bankKey);
+  return bank?.maxReadsPerDay ? bank.key : source;
+}
+
 function sessionService(bank) {
   return `finanztool.enablebanking.sessionId.${bank.key}`;
 }
@@ -972,6 +977,7 @@ async function main() {
     accounts: allAccountSnapshots.map((account) => ({
       bank: account.bankName,
       label: account.label,
+      agentStatusId: agentStatusIdForAccount(account),
       ibanMasked: account.ibanMasked,
       accountType: account.accountType,
       currency: account.currency,
@@ -1107,6 +1113,7 @@ async function main() {
       source,
       accountId: account.accountId,
       providerAccountId: account.providerAccountId,
+      agentStatusId: agentStatusIdForAccount(account),
       bankKey: account.bankKey,
       bankName: account.bankName,
       label: account.label,
@@ -1138,6 +1145,7 @@ async function main() {
       source,
       accountId: account.accountId,
       providerAccountId: account.providerAccountId,
+      agentStatusId: agentStatusIdForAccount(account),
       bankKey: account.bankKey,
       bankName: account.bankName,
       name: `${account.bankName}: ${account.label}`,

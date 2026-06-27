@@ -10,6 +10,9 @@ import {
   Activity,
   AlertTriangle,
   Archive,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronDown,
   CheckCircle2,
   Cloud,
@@ -17,7 +20,10 @@ import {
   Database,
   Eye,
   EyeOff,
+  GripVertical,
+  Pencil,
   RefreshCcw,
+  Search,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -83,11 +89,27 @@ type EquatePlusSaveStatus = "idle" | "saving" | "saved" | "error";
 type EquatePlusDraft = { quantity: string; entryValueEur: string };
 type TradeRepublicDisplayMode = "current" | "broker";
 type AgentUiStatus = "OK" | "WARNUNG" | "FEHLER" | "RUNNING";
+type AgentStatusTone = "good" | "warn" | "error" | "neutral" | "info";
 const emptyEquatePlusDraft: EquatePlusDraft = { quantity: "", entryValueEur: "" };
 type UiExpandedSections = Record<string, boolean>;
 type UiSectionToggleHandler = (sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) => void;
 type UiSectionOpenGetter = (sectionKey: string, defaultOpen?: boolean) => boolean;
+type PositionSortKey =
+  | "position"
+  | "value"
+  | "performance"
+  | "performancePct"
+  | "today"
+  | "todayPct"
+  | "quantity"
+  | "quote"
+  | "cost"
+  | "category"
+  | "updatedAt";
+type PositionSortDirection = "asc" | "desc";
+type PositionSortState = { key: PositionSortKey; direction: PositionSortDirection };
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
+const sourceOrderStorageKey = "finanztool-source-order";
 
 function loadStoredExpandedSections(): UiExpandedSections {
   if (typeof window === "undefined") return {};
@@ -119,6 +141,41 @@ function saveStoredExpandedSections(sections: UiExpandedSections) {
   window.localStorage.setItem(expandedSectionsStorageKey, JSON.stringify(sections));
 }
 
+function normalizeSourceOrder(order: unknown, sourceIds = sourceSortOrder): string[] {
+  const allowed = new Set(sourceIds);
+  const normalized = Array.isArray(order)
+    ? order.filter((sourceId): sourceId is string => typeof sourceId === "string" && allowed.has(sourceId))
+    : [];
+  return [
+    ...normalized.filter((sourceId, index) => normalized.indexOf(sourceId) === index),
+    ...sourceIds.filter((sourceId) => !normalized.includes(sourceId)),
+  ];
+}
+
+function loadStoredSourceOrder(): string[] {
+  if (typeof window === "undefined") return sourceSortOrder;
+  try {
+    return normalizeSourceOrder(JSON.parse(window.localStorage.getItem(sourceOrderStorageKey) ?? "[]"));
+  } catch {
+    return sourceSortOrder;
+  }
+}
+
+function saveStoredSourceOrder(order: string[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(sourceOrderStorageKey, JSON.stringify(normalizeSourceOrder(order)));
+}
+
+function sortSourcesByOrder(sources: SourceOverview[], order: string[]) {
+  const normalizedOrder = normalizeSourceOrder(order, sources.map((source) => source.id));
+  const rank = new Map(normalizedOrder.map((sourceId, index) => [sourceId, index]));
+  return [...sources].sort((left, right) => {
+    const rankDelta = (rank.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.id) ?? Number.MAX_SAFE_INTEGER);
+    if (rankDelta !== 0) return rankDelta;
+    return left.name.localeCompare(right.name);
+  });
+}
+
 const agentStatusIds: Record<string, string | string[]> = {
   flatex: ["flatex", "flatex_documents"],
   traderepublic: "traderepublic_portal",
@@ -133,11 +190,11 @@ const agentStatusIds: Record<string, string | string[]> = {
 
 const agentStatusMeta: Record<
   string,
-  { label: string; tone: "good" | "warn" | "neutral" | "info" }
+  { label: string; tone: AgentStatusTone }
 > = {
   OK: { label: "OK", tone: "good" },
   WARNUNG: { label: "Warnung", tone: "warn" },
-  FEHLER: { label: "Fehler", tone: "warn" },
+  FEHLER: { label: "Fehler", tone: "error" },
   RUNNING: { label: "Läuft", tone: "info" },
 };
 
@@ -521,6 +578,17 @@ function getSourceDisplayValue(source: SourceOverview) {
   return source.currentValue;
 }
 
+function isTrackedSourceActive(source: SourceOverview) {
+  return Math.abs(getSourceDisplayValue(source) ?? 0) >= 0.005 || (source.positionCount ?? 0) > 0;
+}
+
+function isBankAccountSourceUnitActive(account: SourceSummaryAccount) {
+  return (
+    Math.abs(account.currentValue ?? 0) >= 0.005 ||
+    (account.transactionCount ?? 0) > 0
+  );
+}
+
 function getUsedCreditValue(source: SourceOverview) {
   if (source.id !== "flatex" || typeof source.cashValue !== "number" || source.cashValue >= 0) return null;
   return Math.abs(source.cashValue);
@@ -636,6 +704,9 @@ function getAccountLabel(account: SourceSummaryAccount) {
 }
 
 function getBankAccountAgentId(account: SourceSummaryAccount) {
+  const configuredAgentId = account.agentStatusId?.trim();
+  if (configuredAgentId) return configuredAgentId;
+
   const provider = String(account.providerSource ?? "").trim().toLowerCase();
   if (provider === "amazon_visa" || provider === "tfbank") return provider;
 
@@ -658,22 +729,31 @@ function bankAccountAgentHasIssue(agentStatus?: AgentStatusDocument) {
   return Boolean(agentStatus?.status && agentStatus.status !== "OK");
 }
 
+function getAgentDisplayStatus(agentStatus?: AgentStatusDocument | null): AgentUiStatus | undefined {
+  if (!agentStatus?.status) return undefined;
+  if (agentStatus.status === "OK") return "OK";
+  if (agentStatus.status === "RUNNING") return "RUNNING";
+  return "FEHLER";
+}
+
 function getBankAccountStatusTone(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
-  if (!agentStatus) return "warn";
-  if (agentStatus?.status === "FEHLER") return "error";
-  if (agentStatus?.status === "WARNUNG" || agentStatus?.status === "RUNNING") return "warn";
+  const displayStatus = getAgentDisplayStatus(agentStatus);
+  if (!agentStatus) return "error";
+  if (displayStatus === "FEHLER") return "error";
+  if (displayStatus === "RUNNING") return "warn";
   if (account.status === "STALE") return "warn";
   if (account.status === "MISSING" || account.status === "FEHLER" || account.status === "ERROR") return "error";
   return "good";
 }
 
 function getBankAccountStatusLabel(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
+  const displayStatus = getAgentDisplayStatus(agentStatus);
   if (!agentStatus) return "Kein Status";
-  if (agentStatus?.status && agentStatus.status !== "OK") {
+  if (displayStatus && displayStatus !== "OK") {
     const message = `${agentStatus.message ?? ""}`.toLowerCase();
     if (message.includes("tan")) return "Wartet TAN";
-    if (agentStatus.status === "FEHLER") return "Fehler";
-    if (agentStatus.status === "RUNNING") return "Läuft";
+    if (displayStatus === "FEHLER") return "Fehler";
+    if (displayStatus === "RUNNING") return "Läuft";
     return "Warnung";
   }
   if (account.status === "STALE") return "Letzter Stand";
@@ -802,9 +882,124 @@ function getBankLedgerTone(entry: BankLedgerEntryDocument) {
   return "neutral";
 }
 
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function dateToMillis(value?: string | Date | { toDate: () => Date } | { seconds: number } | null) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "object" && "toDate" in value) return value.toDate().getTime();
+  if (typeof value === "object" && "seconds" in value) return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getPositionSearchText(position: PortfolioPosition) {
+  return [
+    position.name,
+    position.isin,
+    position.wkn,
+    position.category,
+    position.source,
+    position.accountId,
+    position.accountNumber,
+    position.customerId,
+    position.portfolioId,
+    position.portfolioLabel,
+    position.quoteText,
+    position.quoteProvider,
+    position.quoteVenue,
+    position.priceSource,
+  ].filter(Boolean).join(" ");
+}
+
+function positionMatchesSearch(position: PortfolioPosition, normalizedQuery: string) {
+  if (!normalizedQuery) return false;
+  return normalizeSearchText(getPositionSearchText(position)).includes(normalizedQuery);
+}
+
+function sourceMatchesDirectSearch(
+  source: SourceOverview,
+  summary: SourceSummaryDocument | undefined,
+  normalizedQuery: string,
+) {
+  if (!normalizedQuery) return false;
+  const accountText = (summary?.accounts ?? [])
+    .map((account) => [account.label, account.strategy, account.bankName, account.accountNumber, account.customerId].filter(Boolean).join(" "))
+    .join(" ");
+  const sourceText = [
+    source.name,
+    source.purpose,
+    source.kind,
+    source.status,
+    source.agentStatus,
+    source.agentMessage,
+    source.sourceDataProvider,
+    source.quoteDataProvider,
+    source.externalQuoteDataProvider,
+    accountText,
+  ].filter(Boolean).join(" ");
+  return normalizeSearchText(sourceText).includes(normalizedQuery);
+}
+
 function getPositionSortValue(position: PortfolioPosition) {
   const sourceIndex = sourceSortOrder.indexOf(position.source);
   return sourceIndex === -1 ? Number.MAX_SAFE_INTEGER : sourceIndex;
+}
+
+function getPositionTableSortValue(position: PortfolioPosition, key: PositionSortKey): number | string {
+  const performance = getPositionPerformance(position);
+  const dayChange = getPositionDayChange(position);
+  switch (key) {
+    case "position":
+      return normalizeSearchText(position.name);
+    case "value":
+      return position.currentValue ?? 0;
+    case "performance":
+      return performance.performance ?? 0;
+    case "performancePct":
+      return performance.percentage ?? 0;
+    case "today":
+      return dayChange.value ?? 0;
+    case "todayPct":
+      return dayChange.percentage ?? 0;
+    case "quantity":
+      return position.quantity ?? 0;
+    case "quote":
+      return position.quotePriceEur ?? position.quotePrice ?? 0;
+    case "cost":
+      return performance.cost ?? 0;
+    case "category":
+      return normalizeSearchText(position.category);
+    case "updatedAt":
+      return dateToMillis(getPositionDisplayUpdatedAt(position));
+    default:
+      return normalizeSearchText(position.name);
+  }
+}
+
+function sortPositionsByTableState(positions: PortfolioPosition[], sortState: PositionSortState) {
+  const directionFactor = sortState.direction === "asc" ? 1 : -1;
+  return positions
+    .map((position, index) => ({ position, index }))
+    .sort((left, right) => {
+      const leftValue = getPositionTableSortValue(left.position, sortState.key);
+      const rightValue = getPositionTableSortValue(right.position, sortState.key);
+      let valueDelta = 0;
+      if (typeof leftValue === "number" && typeof rightValue === "number") {
+        valueDelta = leftValue - rightValue;
+      } else {
+        valueDelta = String(leftValue).localeCompare(String(rightValue), "de-AT", { numeric: true });
+      }
+      if (valueDelta !== 0) return valueDelta * directionFactor;
+      return left.index - right.index;
+    })
+    .map(({ position }) => position);
 }
 
 function isCashPosition(position: PortfolioPosition) {
@@ -973,7 +1168,7 @@ function getDocumentInboxDecisionTone(item: DocumentInboxItem) {
   if (item.rawStatus === "PARSED") return "info";
   if (item.reviewDecision?.decision === "covered" || item.reviewDecision?.decision === "not_relevant") return "good";
   if (item.reviewDecision?.decision === "needs_parser" || item.reviewDecision?.decision === "deferred") return "info";
-  return item.severity === "error" ? "warn" : "warn";
+  return item.severity === "error" ? "error" : "warn";
 }
 
 function isOpenDocumentInboxItem(item: DocumentInboxItem) {
@@ -1284,6 +1479,7 @@ function BankAccountGroup({
             .slice(0, 8);
           const accountAgentId = getBankAccountAgentId(account);
           const accountAgentStatus = agentStatuses[accountAgentId];
+          const accountAgentDisplayStatus = getAgentDisplayStatus(accountAgentStatus);
           const accountAgentRunText = formatUpdatedAt(getAgentRunTimestamp(accountAgentStatus));
           const accountAgentSuccessText = formatUpdatedAt(getAgentSuccessTimestamp(accountAgentStatus));
           const showAccountAgentSuccess =
@@ -1312,7 +1508,7 @@ function BankAccountGroup({
                     <span>{account.bankName ?? accountHeader}</span>
                     <span className="source-account-row__agent">
                       Agent {getBankAccountAgentLabel(accountAgentId)}{" "}
-                      <AgentStatusBadge status={accountAgentStatus?.status} emptyLabel="Kein Status" />
+                      <AgentStatusBadge status={accountAgentDisplayStatus} emptyLabel="Kein Status" />
                     </span>
                     {account.accountNumber ? <span>{account.accountNumber}</span> : null}
                     <span>Update {accountUpdatedAt || "Noch offen"}</span>
@@ -1344,7 +1540,7 @@ function BankAccountGroup({
                   <em>Agent</em>
                   <strong>
                     {getBankAccountAgentLabel(accountAgentId)}{" "}
-                    <AgentStatusBadge status={accountAgentStatus?.status} emptyLabel="Kein Status" />
+                    <AgentStatusBadge status={accountAgentDisplayStatus} emptyLabel="Kein Status" />
                   </strong>
                 </span>
                 <span>
@@ -1421,17 +1617,51 @@ function PositionsTable({
   sectionKey,
   isSectionOpen,
   onSectionToggle,
+  searchQuery = "",
 }: {
   positions: PortfolioPosition[];
   privacyMode: boolean;
   sectionKey?: string;
   isSectionOpen?: UiSectionOpenGetter;
   onSectionToggle?: UiSectionToggleHandler;
+  searchQuery?: string;
 }) {
+  const [sortState, setSortState] = useState<PositionSortState>({ key: "position", direction: "asc" });
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+  const sortedPositions = useMemo(
+    () => sortPositionsByTableState(positions, sortState),
+    [positions, sortState],
+  );
+
+  function togglePositionSort(key: PositionSortKey) {
+    setSortState((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  function renderSortHeader(label: string, key: PositionSortKey, className?: string) {
+    const isActive = sortState.key === key;
+    const Icon = !isActive ? ArrowUpDown : sortState.direction === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <th className={className}>
+        <button
+          type="button"
+          className={`positions-table__sort-button${isActive ? " is-active" : ""}`}
+          onClick={() => togglePositionSort(key)}
+          aria-sort={isActive ? (sortState.direction === "asc" ? "ascending" : "descending") : "none"}
+        >
+          <span>{label}</span>
+          <Icon aria-hidden="true" />
+        </button>
+      </th>
+    );
+  }
+
   return (
     <>
       <div className="mobile-positions-list">
-        {positions.length ? positions.map((position) => {
+        {sortedPositions.length ? sortedPositions.map((position) => {
           const positionPerformance = getPositionPerformance(position);
           const performanceTone = getPerformanceTone(positionPerformance.performance);
           const dayChange = getPositionDayChange(position);
@@ -1439,10 +1669,11 @@ function PositionsTable({
           const statusMeta = getPositionStatusMeta(position);
           const itemKey = `${sectionKey ?? "positions"}:position:${position.id}`;
           const positionCode = [position.isin, position.wkn].filter(Boolean).join(" / ");
+          const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
 
           return (
             <details
-              className="mobile-position-card"
+              className={`mobile-position-card${isSearchMatch ? " mobile-position-card--search-match" : ""}`}
               key={position.id}
               open={isSectionOpen?.(itemKey, false) ?? false}
               onToggle={(event) => {
@@ -1531,27 +1762,28 @@ function PositionsTable({
         <table className="positions-table positions-table--embedded">
           <thead>
             <tr>
-              <th>Position</th>
-              <th className="numeric">Wert</th>
-              <th className="numeric">G/V</th>
-              <th className="numeric">Perf.</th>
-              <th className="numeric">Heute</th>
-              <th className="numeric">Heute %</th>
-              <th>Menge</th>
-              <th>Kurs</th>
-              <th className="numeric">Einstand</th>
-              <th>Kategorie</th>
-              <th>Aktualisiert</th>
+              {renderSortHeader("Position", "position")}
+              {renderSortHeader("Wert", "value", "numeric")}
+              {renderSortHeader("G/V", "performance", "numeric")}
+              {renderSortHeader("Perf.", "performancePct", "numeric")}
+              {renderSortHeader("Heute", "today", "numeric")}
+              {renderSortHeader("Heute %", "todayPct", "numeric")}
+              {renderSortHeader("Menge", "quantity")}
+              {renderSortHeader("Kurs", "quote")}
+              {renderSortHeader("Einstand", "cost", "numeric")}
+              {renderSortHeader("Kategorie", "category")}
+              {renderSortHeader("Aktualisiert", "updatedAt")}
             </tr>
           </thead>
           <tbody>
-            {positions.length ? positions.map((position) => {
+            {sortedPositions.length ? sortedPositions.map((position) => {
               const positionPerformance = getPositionPerformance(position);
               const performanceTone = getPerformanceTone(positionPerformance.performance);
               const dayChange = getPositionDayChange(position);
+              const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
 
               return (
-                <tr key={position.id}>
+                <tr className={isSearchMatch ? "positions-table__row--search-match" : undefined} key={position.id}>
                   <td className="position-name-cell">
                     <strong>{position.name}</strong>
                     <span>
@@ -1827,6 +2059,9 @@ function App() {
   >("auth-required");
   const [privacyMode, setPrivacyMode] = useState(false);
   const [expandedSections, setExpandedSections] = useState<UiExpandedSections>(() => loadStoredExpandedSections());
+  const [sourceOrder, setSourceOrder] = useState<string[]>(() => loadStoredSourceOrder());
+  const [depotSearchQuery, setDepotSearchQuery] = useState("");
+  const [isDepotEditMode, setIsDepotEditMode] = useState(false);
   const [tradeRepublicDisplayMode, setTradeRepublicDisplayMode] =
     useState<TradeRepublicDisplayMode>(() => {
       if (typeof window === "undefined") return "current";
@@ -1856,6 +2091,7 @@ function App() {
         setEquatePlusDraft(emptyEquatePlusDraft);
         setSystemHealth(null);
         setExpandedSections(loadStoredExpandedSections());
+        setSourceOrder(loadStoredSourceOrder());
         setDataStatus("auth-required");
       } else {
         setDataStatus("loading");
@@ -1903,6 +2139,11 @@ function App() {
           ...current,
           ...(uiPreferences?.expandedSections ?? {}),
         }));
+        if (uiPreferences?.sourceOrder?.length) {
+          const nextSourceOrder = normalizeSourceOrder(uiPreferences.sourceOrder);
+          setSourceOrder(nextSourceOrder);
+          saveStoredSourceOrder(nextSourceOrder);
+        }
         setDataStatus("live");
       })
       .catch(() => {
@@ -1944,6 +2185,16 @@ function App() {
     });
   }
 
+  function persistSourceOrder(next: string[]) {
+    const normalized = normalizeSourceOrder(next);
+    saveStoredSourceOrder(normalized);
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+    void saveUiPreferences(services.db, { sourceOrder: normalized }, authUser.email).catch((error) => {
+      console.warn("Depot-Reihenfolge wurde lokal gespeichert; Firestore-Sync wartet auf passende Regeln.", error);
+    });
+  }
+
   function setUiSectionOpen(sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) {
     setExpandedSections((current) => {
       if (current[sectionKey] === isExpanded) return current;
@@ -1967,6 +2218,19 @@ function App() {
   function toggleSourceCard(sourceId: string) {
     const sectionKey = `source:${sourceId}`;
     setUiSectionOpen(sectionKey, !getUiSectionOpen(sectionKey, true));
+  }
+
+  function moveSourceCard(sourceId: string, direction: -1 | 1) {
+    setSourceOrder((current) => {
+      const normalized = normalizeSourceOrder(current);
+      const currentIndex = normalized.indexOf(sourceId);
+      const nextIndex = currentIndex + direction;
+      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= normalized.length) return current;
+      const next = [...normalized];
+      [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
+      persistSourceOrder(next);
+      return next;
+    });
   }
 
   async function refreshPortfolioData() {
@@ -2003,6 +2267,11 @@ function App() {
       ...current,
       ...(uiPreferences?.expandedSections ?? {}),
     }));
+    if (uiPreferences?.sourceOrder?.length) {
+      const nextSourceOrder = normalizeSourceOrder(uiPreferences.sourceOrder);
+      setSourceOrder(nextSourceOrder);
+      saveStoredSourceOrder(nextSourceOrder);
+    }
   }
 
   function handleEquatePlusDraftChange(field: keyof EquatePlusDraft, value: string) {
@@ -2241,15 +2510,16 @@ function App() {
       sourceOverviews.map((source) => {
         const summary = valuationSummaries[source.summaryId ?? source.id];
         const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
+        const agentDisplayStatus = getAgentDisplayStatus(agentStatus);
         const bankAccounts = source.id === "bank_accounts" ? (summary?.accounts ?? []) : [];
         const bankAccountStatus = getBankAccountsAggregateStatus(bankAccounts, agentStatuses);
         const bankAccountMessage =
           bankAccountStatus && bankAccountStatus !== "OK"
             ? getBankAccountsAggregateMessage(bankAccounts, agentStatuses)
             : null;
-        const combinedAgentStatus = getWorseStatus(agentStatus?.status, bankAccountStatus);
+        const combinedAgentStatus = getWorseStatus(agentDisplayStatus, bankAccountStatus);
         const combinedAgentMessage =
-          bankAccountMessage && getStatusRank(bankAccountStatus) >= getStatusRank(agentStatus?.status)
+          bankAccountMessage && getStatusRank(bankAccountStatus) >= getStatusRank(agentDisplayStatus)
             ? bankAccountMessage
             : agentStatus?.message ?? bankAccountMessage;
         const positionStats = positionStatsBySource[source.id];
@@ -2367,17 +2637,25 @@ function App() {
   const portfolioDayChangePct =
     portfolioPreviousValue && portfolioDayChange ? portfolioDayChange / portfolioPreviousValue : null;
   const portfolioPerformanceTone = getPerformanceTone(portfolioPerformance);
-  const activeSources = sources.filter(
-    (source) =>
-      typeof getSourceDisplayValue(source) === "number" ||
-      (source.positionCount ?? 0) > 0,
-  ).length;
-  const displaySources = sources.filter(
-    (source) =>
-      source.status !== "blocked" ||
-      typeof getSourceDisplayValue(source) === "number" ||
-      (source.positionCount ?? 0) > 0,
+  const bankAccountSourceUnits = valuationSummaries.bank_accounts?.accounts ?? [];
+  const regularSourceUnits = sources.filter((source) => source.id !== "bank_accounts");
+  const activeSourceUnits =
+    regularSourceUnits.filter(isTrackedSourceActive).length +
+    bankAccountSourceUnits.filter(isBankAccountSourceUnitActive).length;
+  const totalSourceUnits = regularSourceUnits.length + Math.max(bankAccountSourceUnits.length, 1);
+  const displaySources = useMemo(
+    () =>
+      sortSourcesByOrder(
+        sources.filter(
+          (source) =>
+            source.status !== "blocked" ||
+            isTrackedSourceActive(source),
+        ),
+        sourceOrder,
+      ),
+    [sources, sourceOrder],
   );
+  const normalizedDepotSearchQuery = normalizeSearchText(depotSearchQuery);
   const displayedPositions = useMemo(
     () =>
       valuationPositions
@@ -2401,7 +2679,7 @@ function App() {
     }
     return grouped;
   }, [displayedPositions]);
-  const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
+  const visibleAlerts = systemHealth?.alerts ?? [];
   const healthTone =
     systemHealth?.status === "ERROR"
       ? "error"
@@ -2492,14 +2770,17 @@ function App() {
                 <Database aria-hidden="true" />
               </div>
               <p>Aktive Quellen</p>
-              <strong>{numberFormatter.format(activeSources)}</strong>
+              <strong>
+                {numberFormatter.format(activeSourceUnits)}
+                <small>/{numberFormatter.format(totalSourceUnits)}</small>
+              </strong>
               <span>{numberFormatter.format(displayedPositions.length)} Einzelpositionen sichtbar</span>
             </div>
             <div className="metric-card__system-item">
               <div className="metric-card__icon">
                 {healthTone === "good" ? <CheckCircle2 aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}
               </div>
-              <p>Warnungen</p>
+              <p>Systemstatus</p>
               <strong className={`health-status health-status--${healthTone}`}>
                 {systemHealth ? systemHealth.alertCount : dataStatus === "live" ? 0 : "—"}
               </strong>
@@ -2598,15 +2879,40 @@ function App() {
               <p className="eyebrow">Depots</p>
               <h2>Depotübersicht</h2>
             </div>
-            <RefreshCcw aria-hidden="true" />
+            <div className="depot-overview__toolbar">
+              <label className="depot-search">
+                <Search aria-hidden="true" />
+                <input
+                  value={depotSearchQuery}
+                  onChange={(event) => setDepotSearchQuery(event.target.value)}
+                  placeholder="Depot oder Position suchen"
+                  aria-label="Depot oder Position suchen"
+                />
+              </label>
+              <button
+                type="button"
+                className={`depot-edit-toggle${isDepotEditMode ? " is-active" : ""}`}
+                onClick={() => setIsDepotEditMode((current) => !current)}
+                aria-pressed={isDepotEditMode}
+              >
+                {isDepotEditMode ? <CheckCircle2 aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+                <span>{isDepotEditMode ? "Fertig" : "Bearbeiten"}</span>
+              </button>
+            </div>
           </div>
 
           <div className="source-list">
-            {displaySources.map((source) => {
+            {displaySources.map((source, sourceIndex) => {
               const sourceSummary = valuationSummaries[source.summaryId ?? source.id];
               const rawSourceSummary = sourceSummaries[source.summaryId ?? source.id];
               const performanceTone = getPerformanceTone(sourceSummary?.performanceValue);
               const sourcePositionsForCard = displayedPositionsBySource[source.id] ?? [];
+              const matchingSourcePositions = normalizedDepotSearchQuery
+                ? sourcePositionsForCard.filter((position) => positionMatchesSearch(position, normalizedDepotSearchQuery))
+                : [];
+              const sourceHasDirectSearchMatch = sourceMatchesDirectSearch(source, sourceSummary, normalizedDepotSearchQuery);
+              const sourceHasSearchMatch =
+                Boolean(normalizedDepotSearchQuery) && (sourceHasDirectSearchMatch || matchingSourcePositions.length > 0);
               const usedCreditValue = getUsedCreditValue(source);
               const sourcePrimaryTimestamp = getSourcePrimaryTimestamp(source);
               const isTradeRepublicSource = source.id === "traderepublic";
@@ -2641,6 +2947,7 @@ function App() {
                   : null;
               const sourceDayChangePct =
                 sourcePreviousValue && sourceDayChange ? sourceDayChange / sourcePreviousValue : null;
+              const sourceDayChangeTone = getPerformanceTone(sourceDayChange);
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
               const isBankAccountsSource = source.id === "bank_accounts";
@@ -2664,7 +2971,9 @@ function App() {
 
               return (
                 <article
-                  className={`source-card${isSourceCollapsed ? " source-card--collapsed" : ""}`}
+                  className={`source-card${isSourceCollapsed ? " source-card--collapsed" : ""}${
+                    sourceHasSearchMatch ? " source-card--search-match" : ""
+                  }${isDepotEditMode ? " source-card--editing" : ""}`}
                   key={source.id}
                 >
                   <div className="source-card__icon">
@@ -2672,11 +2981,80 @@ function App() {
                   </div>
                   <div className="source-card__body">
                     <div className="source-card__header">
-                      <div>
+                      <div className="source-card__identity">
                         <h3>{source.name}</h3>
+                        {isSourceCollapsed && sourceHasSearchMatch ? (
+                          <span className="source-card__search-badge">
+                            {matchingSourcePositions.length
+                              ? `${numberFormatter.format(matchingSourcePositions.length)} Treffer`
+                              : "Depot"}
+                          </span>
+                        ) : null}
                         <p>{source.purpose}</p>
                       </div>
+                      {isSourceCollapsed ? (
+                        <dl
+                          className="source-card__compact-metrics"
+                          aria-label={`${source.name} Kurzüberblick`}
+                        >
+                          <div className="source-card__compact-metric source-card__compact-metric--value">
+                            <dt>Depotwert</dt>
+                            <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
+                          </div>
+                          <div className="source-card__compact-metric source-card__compact-metric--performance">
+                            <dt>
+                              <span>G/V</span>
+                              <span className={`source-card__compact-label-percent performance-value--${performanceTone}`}>
+                                {formatSignedPercent(sourceSummary?.performancePct)}
+                              </span>
+                            </dt>
+                            <dd className={`performance-value performance-value--${performanceTone}`}>
+                              {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
+                            </dd>
+                          </div>
+                          <div className="source-card__compact-metric source-card__compact-metric--today">
+                            <dt>
+                              <span>Heute</span>
+                              <span className={`source-card__compact-label-percent performance-value--${sourceDayChangeTone}`}>
+                                {formatSignedPercent(sourceDayChangePct)}
+                              </span>
+                            </dt>
+                            <dd className={`performance-value performance-value--${sourceDayChangeTone}`}>
+                              {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
+                            </dd>
+                          </div>
+                          <div className="source-card__compact-metric source-card__compact-metric--update">
+                            <dt>Update</dt>
+                            <dd>
+                              <span className="source-card__timestamp-inline">
+                                {formatUpdatedAt(sourcePrimaryTimestamp.value) || "Noch offen"}
+                              </span>
+                            </dd>
+                          </div>
+                        </dl>
+                      ) : null}
                       <div className="source-card__header-actions">
+                        {isDepotEditMode ? (
+                          <div className="source-card__reorder-controls" aria-label={`${source.name} verschieben`}>
+                            <GripVertical aria-hidden="true" />
+                            <button
+                              type="button"
+                              onClick={() => moveSourceCard(source.id, -1)}
+                              disabled={sourceIndex === 0}
+                              aria-label={`${source.name} nach oben verschieben`}
+                            >
+                              <ArrowUp aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveSourceCard(source.id, 1)}
+                              disabled={sourceIndex === displaySources.length - 1}
+                              aria-label={`${source.name} nach unten verschieben`}
+                            >
+                              <ArrowDown aria-hidden="true" />
+                            </button>
+                          </div>
+                        ) : null}
                         <AgentStatusBadge status={source.agentStatus} />
                         <button
                           type="button"
@@ -2695,40 +3073,7 @@ function App() {
                     </div>
 
                     {isSourceCollapsed ? (
-                      <dl className="source-card__compact-metrics" aria-label={`${source.name} Kurzüberblick`}>
-                        <div>
-                          <dt>Depotwert</dt>
-                          <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
-                        </div>
-                        <div>
-                          <dt>G/V</dt>
-                          <dd className={`performance-value performance-value--${performanceTone}`}>
-                            {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
-                            <span>{formatSignedPercent(sourceSummary?.performancePct)}</span>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Heute</dt>
-                          <dd>
-                            {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
-                            <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Fehler</dt>
-                          <dd>
-                            <AgentStatusBadge status={source.agentStatus} emptyLabel="—" />
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Update</dt>
-                          <dd>
-                            <span className="source-card__timestamp-inline">
-                              {formatUpdatedAt(sourcePrimaryTimestamp.value) || "Noch offen"}
-                            </span>
-                          </dd>
-                        </div>
-                      </dl>
+                      null
                     ) : (
                       <>
                     {isTradeRepublicSource ? (
@@ -2968,6 +3313,7 @@ function App() {
                         <div className="source-card__agent-panel-title">Agenten</div>
                         <div className="source-card__agent-list">
                           {sourceAgentRuns.map((entry) => {
+                            const entryDisplayStatus = getAgentDisplayStatus(entry.status);
                             const runTimestamp = getAgentRunTimestamp(entry.status);
                             const successTimestamp = getAgentSuccessTimestamp(entry.status);
                             const runText = formatUpdatedAt(runTimestamp);
@@ -2978,7 +3324,7 @@ function App() {
                               <div className="source-card__agent-row" key={entry.id}>
                                 <div className="source-card__agent-head">
                                   <strong>{entry.label}</strong>
-                                  <AgentStatusBadge status={entry.status?.status} emptyLabel="Kein Status" />
+                                  <AgentStatusBadge status={entryDisplayStatus} emptyLabel="Kein Status" />
                                 </div>
                                 <div className="source-card__agent-task">{entry.responsibility}</div>
                                 <div className="source-card__agent-meta">
@@ -2997,7 +3343,7 @@ function App() {
                                     </span>
                                   ) : null}
                                 </div>
-                                {entry.status?.message && entry.status.status !== "OK" ? (
+                                {entry.status?.message && entryDisplayStatus !== "OK" ? (
                                   <div className="source-card__agent-message">{entry.status.message}</div>
                                 ) : null}
                                 {detailLines.length ? (
@@ -3100,6 +3446,7 @@ function App() {
                               <PositionsTable
                                 positions={accountPositions}
                                 privacyMode={privacyMode}
+                                searchQuery={depotSearchQuery}
                                 sectionKey={`${sourceSectionKey}:account:${accountKey}:positions`}
                                 isSectionOpen={getUiSectionOpen}
                                 onSectionToggle={setUiSectionOpen}
@@ -3130,6 +3477,7 @@ function App() {
                         <PositionsTable
                           positions={sourcePositionsForCard}
                           privacyMode={privacyMode}
+                          searchQuery={depotSearchQuery}
                           sectionKey={`${sourceSectionKey}:positions`}
                           isSectionOpen={getUiSectionOpen}
                           onSectionToggle={setUiSectionOpen}

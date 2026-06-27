@@ -79,6 +79,7 @@ export interface SourceSummaryAccount {
   customerId?: string | null;
   label?: string | null;
   strategy?: string | null;
+  agentStatusId?: string | null;
   status?: string | null;
   staleReason?: string | null;
   staleIssueType?: string | null;
@@ -236,6 +237,7 @@ export interface EquatePlusManualInputDocument {
 export interface UiPreferencesDocument {
   id: string;
   expandedSections?: Record<string, boolean>;
+  sourceOrder?: string[];
   updatedBy?: string | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
@@ -573,6 +575,11 @@ function normalizeExpandedSections(value: unknown): Record<string, boolean> {
   ) as Record<string, boolean>;
 }
 
+function normalizeSourceOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((sourceId): sourceId is string => typeof sourceId === "string" && sourceId.trim().length > 0);
+}
+
 export async function loadUiPreferences(db: Firestore): Promise<UiPreferencesDocument | null> {
   const snapshot = await getDoc(doc(db, "uiPreferences", "portfolio_overview"));
   if (!snapshot.exists()) return null;
@@ -581,21 +588,25 @@ export async function loadUiPreferences(db: Firestore): Promise<UiPreferencesDoc
     id: snapshot.id,
     ...data,
     expandedSections: normalizeExpandedSections(data.expandedSections),
+    sourceOrder: normalizeSourceOrder(data.sourceOrder),
   };
 }
 
 export async function saveUiPreferences(
   db: Firestore,
-  input: { expandedSections: Record<string, boolean> },
+  input: { expandedSections?: Record<string, boolean>; sourceOrder?: string[] },
   updatedBy?: string | null,
 ) {
+  const payload: Record<string, unknown> = {
+    updatedBy: updatedBy ?? null,
+    updatedAt: serverTimestamp(),
+  };
+  if (input.expandedSections) payload.expandedSections = input.expandedSections;
+  if (input.sourceOrder) payload.sourceOrder = input.sourceOrder;
+
   await setDoc(
     doc(db, "uiPreferences", "portfolio_overview"),
-    {
-      expandedSections: input.expandedSections,
-      updatedBy: updatedBy ?? null,
-      updatedAt: serverTimestamp(),
-    },
+    payload,
     { merge: true },
   );
 }
