@@ -56,6 +56,15 @@ export const sourceOverviews: SourceOverview[] = [
     nextStep: "API-Key erzeugen und lokal im Schluesselbund hinterlegen",
   },
   {
+    id: "trading212",
+    name: "Trading 212",
+    kind: "broker",
+    purpose: "Aktien, ETFs, Cash, Dividenden",
+    status: "planned",
+    importMethod: "Read-only Trading-212 Public API",
+    nextStep: "API-Key und Secret erzeugen, lokal speichern und Agent aktivieren",
+  },
+  {
     id: "vbv",
     name: "VBV Vorsorgekasse",
     kind: "pension",

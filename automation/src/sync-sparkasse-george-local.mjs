@@ -20,6 +20,7 @@ const writeEnabled = process.argv.includes("--write");
 const startAuth = process.argv.includes("--start-auth");
 const openAuth = process.argv.includes("--open");
 const includeTransactions = process.argv.includes("--transactions");
+const allowLimitedBankRead = process.argv.includes("--allow-limited-bank-read");
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
 const importId = `api_bank_accounts_${runId}`;
 const rateLimitPath = path.resolve(__dirname, "../runtime/enable-banking-rate-limits.json");
@@ -50,7 +51,22 @@ const bankConfigs = [
     aspspName: "bank99",
     country: "AT",
     displayName: "bank99",
-    maxReadsPerDay: 4,
+    maxReadsPerDay: 2,
+    requiresExplicitLimitedRead: true,
+  },
+  {
+    key: "n26",
+    aspspName: "N26",
+    country: "AT",
+    displayName: "N26",
+    maxReadsPerDay: 2,
+    requiresExplicitLimitedRead: true,
+  },
+  {
+    key: "paypal",
+    aspspName: "PayPal",
+    country: "AT",
+    displayName: "PayPal",
   },
 ];
 
@@ -105,6 +121,7 @@ function selectedBankConfigs() {
 function agentStatusIdForBanks(banks) {
   const keys = banks.map((bank) => bank.key).sort();
   if (keys.length === 1 && keys[0] === "bank99") return "bank99";
+  if (keys.length === 1 && keys[0] === "n26") return "n26";
   return source;
 }
 
@@ -211,6 +228,10 @@ function isoDateDaysAgo(days) {
 
 function todayIsoDate() {
   return viennaDateKey();
+}
+
+function apiSafeDateToIsoDate() {
+  return new Date(Date.now() - 5 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function isoDateShift(dateValue, days) {
@@ -450,7 +471,7 @@ function summarizeExistingTransactionsByAccount(ledgerEntries) {
 
 function transactionDateRangeForAccount(accountId, existingTransactionStatsByAccount) {
   const explicitDateFrom = readArg("--date-from") ?? process.env.ENABLE_BANKING_TRANSACTION_DATE_FROM ?? null;
-  const dateTo = readArg("--date-to") ?? process.env.ENABLE_BANKING_TRANSACTION_DATE_TO ?? todayIsoDate();
+  const dateTo = readArg("--date-to") ?? process.env.ENABLE_BANKING_TRANSACTION_DATE_TO ?? apiSafeDateToIsoDate();
   if (explicitDateFrom) {
     return {
       mode: "explicit_date_range",
@@ -602,6 +623,12 @@ function activeExistingAccountsForBank(existingAccounts, bank) {
 
 function preserveExistingAccountIdentity(snapshot, bank, existingAccounts, currentAccountCount) {
   const candidates = activeExistingAccountsForBank(existingAccounts, bank);
+  const existingLedgerStableKey = (account) =>
+    account.ledgerStableKey ??
+    account.identificationHash ??
+    account.providerAccountId ??
+    snapshot.providerAccountId ??
+    account.accountId;
   const exact = candidates.find(
     (account) =>
       account.accountId === snapshot.accountId ||
@@ -614,7 +641,7 @@ function preserveExistingAccountIdentity(snapshot, bank, existingAccounts, curre
     return {
       ...snapshot,
       accountId: exact.accountId,
-      ledgerStableKey: exact.providerAccountId ?? snapshot.providerAccountId ?? exact.accountId,
+      ledgerStableKey: existingLedgerStableKey(exact),
     };
   }
 
@@ -623,7 +650,7 @@ function preserveExistingAccountIdentity(snapshot, bank, existingAccounts, curre
     return {
       ...snapshot,
       accountId: existing.accountId,
-      ledgerStableKey: existing.providerAccountId ?? snapshot.providerAccountId ?? existing.accountId,
+      ledgerStableKey: existingLedgerStableKey(existing),
       previousProviderAccountId: existing.providerAccountId ?? null,
     };
   }
@@ -771,6 +798,19 @@ async function readBankSnapshots(
   bank,
   { existingAccounts = [], existingTransactionStatsByAccount = new Map() } = {},
 ) {
+  if (bank.requiresExplicitLimitedRead && !allowLimitedBankRead) {
+    return {
+      accountSnapshots: [],
+      transactionStats: [],
+      ledgerEntries: [],
+      skippedBank: {
+        bank: bank.key,
+        label: bank.displayName,
+        reason: `${bank.displayName}: limitierter Abruf gesperrt; nur geplanter Agent darf diese Quelle lesen`,
+      },
+    };
+  }
+
   const sessionId = await readBankSessionId(bank);
   if (!sessionId) {
     return {
@@ -958,7 +998,7 @@ async function main() {
     validAccounts.reduce((sum, account) => sum + (account.creditLineEstimate ?? 0), 0),
   );
   const sourceDataUpdatedAt = newestDate(validAccounts.map((account) => account.sourceDataUpdatedAt)) ?? now.toISOString();
-  const status = bankErrors.length || skippedBanks.length ? "WARNUNG" : "OK";
+  const status = bankErrors.length || skippedBanks.length ? "FEHLER" : "OK";
   const result = {
     mode: writeEnabled ? "write" : "dry-run",
     source,
@@ -1136,6 +1176,7 @@ async function main() {
       latestTransactionDate: historicalTransactionStats?.latestTransactionDate ?? transactionWriteStats?.latestTransactionDate ?? transactionFetchStats?.latestTransactionDate ?? null,
       sourceDataProvider: "enable_banking",
       sourceDataUpdatedAt: account.sourceDataUpdatedAt,
+      lastDataSuccessAt: now,
       lastSeenAt: now,
       updatedAt: now,
       importId,
@@ -1164,6 +1205,7 @@ async function main() {
       accountValueIncluded: true,
       sourceDataProvider: "enable_banking",
       sourceDataUpdatedAt: account.sourceDataUpdatedAt,
+      lastDataSuccessAt: now,
       valuationDate: account.sourceDataUpdatedAt,
       valuationMethod: "enable_banking_balances_v1",
       status: "ACTIVE",

@@ -4,7 +4,7 @@ import { FirestoreRest } from "./firestore-rest.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 
-const expectedSources = [
+const baseExpectedSources = [
   "flatex",
   "traderepublic",
   "ginmon",
@@ -15,7 +15,9 @@ const expectedSources = [
   "equateplus",
   "bank_accounts",
 ];
-const sourcesWithoutPositions = new Set(["capitalcom", "vbv"]);
+const optionalSources = ["trading212"];
+let expectedSources = [...baseExpectedSources];
+const sourcesWithoutPositions = new Set(["capitalcom", "trading212", "vbv"]);
 const documentValuedInstruments = {
   traderepublic: {
     LU3176111881: {
@@ -32,11 +34,13 @@ const staleHoursByAgent = {
   bitget: 6,
   bitget_ledger: 26,
   capitalcom: 6,
+  trading212: 6,
   quotes: 2,
   vbv: 100 * 24,
   equateplus: 26,
   bank_accounts: 26,
   bank99: 26,
+  n26: 26,
   amazon_visa: 4,
   tfbank: 4,
 };
@@ -115,6 +119,9 @@ function normalizeId(value) {
 }
 
 function accountAgentStatusId(account, fallbackSource) {
+  const bankKey = normalizeId(account.bankKey);
+  if (bankKey === "bank99" || bankKey === "n26") return bankKey;
+
   const configuredAgent = normalizeId(account.agentStatusId);
   if (configuredAgent) return configuredAgent;
 
@@ -293,6 +300,16 @@ const [positions, summaries, statuses, mappings, imports, sourceAccounts, source
   firestore.listDocuments("sourceDocumentFacts"),
   firestore.listDocuments("documentReviewDecisions"),
 ]);
+
+const optionalSourceHasData = (source) =>
+  positions.some((position) => position.source === source) ||
+  summaries.some((summary) => summary.source === source || summary.id === source) ||
+  statuses.some((status) => status.source === source || status.id === source) ||
+  imports.some((entry) => entry.source === source);
+expectedSources = [
+  ...baseExpectedSources,
+  ...optionalSources.filter(optionalSourceHasData),
+];
 
 const alerts = [];
 const statusById = new Map(statuses.map((status) => [status.id, status]));

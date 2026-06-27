@@ -1,6 +1,6 @@
 # Import Masterplan
 
-Stand: 2026-06-27
+Stand: 2026-06-28
 
 ## Hauptziel
 
@@ -45,12 +45,12 @@ Wichtig:
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
 | Krypto | Bitget | aktiv | hoch | alle 5 Minuten | API | CSV/Datei nur Notfall | produktiv auf Mac Studio |
 | Mitarbeiteraktien | EquatePlus | zurueckgestellt | mittel | vorerst nur Kurs per Kurs-Sync, Eingabe bei Aenderung | manuelle Novartis-Anteile/Einstandswert EUR + SIX-Kurs | spaeter Dokumentparser falls Mehrdaten | im Datenbasis-Cleanup geparkt |
-| Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99 max. 4/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse, Revolut und bank99 produktiv angebunden; Revolut-Datenstand beobachten |
+| Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99/N26 max. 2/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse, Revolut, PayPal, N26 und bank99 angebunden; N26/bank99 strikt limitiert |
 | Kreditkarte | Amazon Visa | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent/Abrechnung | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
 | Kreditkarte | George Visa | zurueckgestellt | mittel | spaeter pruefen | Portal/PDF/CSV falls verfuegbar | manueller Export | pausiert; Erste/George-PSD2 liefert aktuell keine Kreditkarte |
 | Kreditkarte | TF Bank Kreditkarte | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent mit SMS-TAN | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
 | Bank | Revolut | aktiv | mittel | wenige Abrufe pro Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Session aktiv, Saldo importiert, API liefert aktuell keine Umsaetze |
-| Broker | Trading 212 | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | offen |
+| Broker | Trading 212 | wird angebunden | mittel | Snapshot alle 5 Minuten, History stuendlich | read-only Trading-212 Public API | CSV-Report-API spaeter fuer Interest-/Kontrollreports | Agent vorbereitet; API-Key/Secret noch lokal hinterlegen |
 | Trading | Capital.com | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | LaunchAgent pausiert |
 | Vorsorge | Betriebliche Altersvorsorge | passiv | niedrig | monatlich bis quartalsweise | manueller Eintrag in der App | manueller Belegimport | entschieden |
 
@@ -191,8 +191,8 @@ Wichtig:
 ### 7. Bankkonten ueber Enable Banking
 
 - Ziel: Bankguthaben und Zahlungsstrukturen im Gesamtbild
-- Realistisch: wenige Abrufe pro Tag ausreichend; bank99 maximal 4 Abrufe pro
-  Tag
+- Realistisch: wenige Abrufe pro Tag ausreichend; bank99 und N26 maximal
+  2 Abrufe pro Tag
 - Methode:
   - read-only `API` ueber Enable Banking
   - nicht selbst als regulierter Kontoinformationsdienst auftreten
@@ -201,6 +201,12 @@ Wichtig:
   - Balance-Import schreibt `sourceSummaries`, `sourcePositions`,
     `sourceAccounts`, `imports` und `agentStatus`
   - Quelle ist generisch `bank_accounts`
+  - stuendlicher Standard-Agent: Erste/Sparkasse, Revolut und PayPal
+  - N26 und bank99 bleiben wegen Abruflimit separate Agenten um 06:00 und
+    16:00
+  - N26/bank99 duerfen nur mit `--allow-limited-bank-read` gelesen werden,
+    damit `sync:all`, GUI-Button und Testlaeufe sie nicht versehentlich
+    ausloesen
   - echte Kontostaende zaehlen als Cash/Netto-Wert und damit zum Vermoegen
   - verfuegbar inkl. Kredit wird separat gespeichert und nicht als Vermoegen
     gezaehlt
@@ -270,9 +276,45 @@ Wichtig:
 
 ### 12. Trading 212
 
-- Ziel: nur bei spaeterer Reaktivierung relevant
+- Ziel: aktuelle Trading-212-Positionen, Cash, Einstandswerte, Dividenden,
+  Orders, Steuern/Gebuehren und Cash-Bewegungen in derselben Datenbasis wie
+  die anderen Broker speichern.
 - Methode:
-  - spaeter `API` oder Export
+  - offizielle read-only Trading-212 Public API
+  - Secrets lokal im macOS-Schluesselbund:
+    `finanztool-trading212-api-key` und
+    `finanztool-trading212-api-secret`
+  - Snapshot-Agent: `sync-trading212-local.mjs --write --snapshot-only`
+    alle 5 Minuten fuer aktuelle Positionen, Kurse, Cash und Performance
+  - History-Agent: `sync-trading212-local.mjs --write` stuendlich fuer Orders,
+    Dividenden, Transaktionen, Steuern und Gebuehren
+  - CSV-Report-Endpunkte sind im Client vorbereitet, damit spaeter
+    Interest-/Kontrollreports mit `includeInterest` angebunden werden koennen
+- Speicherung:
+  - `sourceSummaries/trading212`: Gesamtstand inkl. Cash
+  - `sourcePositions/trading212_*`: aktuelle Positionen; geschlossene
+    Positionen werden aus der aktuellen Ansicht entfernt
+  - `ledgerEntries`: Orders, Dividenden und Cash-Bewegungen
+  - `costEvents`: Order-Steuern/Gebuehren und `FEE`-Transaktionen
+  - `incomeEvents`: Dividenden
+  - `rawDocuments/api_trading212_latest`: letzter API-Rohstand zur Kontrolle
+  - `agentStatus/trading212`: letzter Lauf, Fehler, Rate-Limit-Infos
+- Effizienz:
+  - aktuelle Positionen werden voll ersetzt, damit neue/geschlossene
+    Positionen automatisch erkannt werden
+  - History-Sync nutzt den letzten erfolgreichen History-Zeitpunkt mit
+    kleinem Overlap, damit keine alten Daten unnoetig neu verarbeitet werden
+  - Dedupe erfolgt ueber stabile Trading-212-IDs beziehungsweise Hashes
+- Stand:
+  - API-Key und Secret sind im macOS-Schluesselbund gespeichert
+  - API-Direkttest und Agent-Dry-Run erfolgreich
+  - Firestore-Schreibtest erfolgreich: aktuell 10 EUR Cash, 0 offene
+    Positionen, 1 Cash-Transaktion
+  - LaunchAgents installiert:
+    `com.niklas.finanztool.trading212-sync` und
+    `com.niklas.finanztool.trading212-history`
+  - `sync:all`/`Alles aktualisieren` laeuft Trading 212 automatisch mit,
+    solange die lokalen Secrets vorhanden sind
 
 ### 13. Capital.com
 

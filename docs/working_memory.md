@@ -275,11 +275,13 @@ Update 2026-06-27:
   - Sparkasse/George
   - Revolut
   - bank99
+  - N26
+  - PayPal
   - Amazon Visa
   - TF Bank Kreditkarte
 - Bankkonten/Kreditkarten, noch offen:
   - George Visa
-- Trading 212, derzeit inaktiv/offen
+- Trading 212, technisch vorbereitet; API-Key/Secret noch lokal hinterlegen
 
 ## Aktueller Produktivstand
 
@@ -304,11 +306,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-27 21:18 CEST
+- Stand: 2026-06-28 01:51 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `ac18567`
-- Handoff-Commit: `b85640b`
-- Firebase Deploy: 2026-06-27 21:18 CEST erfolgreich
+- Ausgangscommit: `6b5c596`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -591,9 +593,9 @@ Update 2026-06-27:
   `5df43790-b2b4-4920-987e-df41f7393250`
 - Service ist `Account Information` und auf eigene verlinkte Konten
   eingeschraenkt (`Restricted`)
-- Im Control Panel verlinkt sind Erste Bank/Sparkasse, Revolut und bank99.
-  Fuer alle drei Banken ist auf dem Mac Studio eine Enable-Banking-Session im
-  macOS-Schluesselbund gespeichert.
+- Im Control Panel verlinkt sind Erste Bank/Sparkasse, Revolut, bank99, N26
+  und PayPal. Fuer alle fuenf Quellen ist auf dem Mac Studio eine
+  Enable-Banking-Session im macOS-Schluesselbund gespeichert.
 - Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden; das
   Limit wird lokal in `automation/runtime/enable-banking-rate-limits.json`
   erzwungen.
@@ -666,6 +668,27 @@ Update 2026-06-27:
   Bankkonten anwenden.
 - Offener Schritt: George Visa bleibt pausiert; Revolut Datenstand beobachten,
   weil die API aktuell keine Umsaetze geliefert hat.
+- Gepruefter Stand 2026-06-27 22:34 lokal:
+  - N26-Session erzeugt und im Schluesselbund gespeichert
+  - PayPal-Session erzeugt und im Schluesselbund gespeichert
+  - N26: `3.51 EUR`, aktuell keine Umsaetze im Initialfenster geliefert
+  - PayPal: `0.00 EUR`, `14` initiale Umsaetze gespeichert, letzter Umsatz
+    `2026-06-24`
+  - `sourceSummaries/bank_accounts`: `7` Unterquellen, Geldstand
+    `1930.27 EUR`
+  - Korrektur 2026-06-28: Der normale Bankkonten-Agent liest stuendlich nur
+    `erste,revolut,paypal`.
+  - N26 und bank99 bleiben separate, lokal rate-limitierte Agenten und werden
+    nicht durch `sync:bank-accounts` oder `sync:all` mitgelesen.
+  - PayPal-Dedupe-Fix: Bestehende Bankkonto-Ledger-Schluessel muessen den
+    bisherigen `identificationHash` weiterverwenden, wenn dieser beim ersten
+    Import genutzt wurde. Sonst schreibt PayPal denselben Umsatz nach einem
+    Folgelauf mit Provider-ID ein zweites Mal. Der doppelte PayPal-Umsatz vom
+    Testlauf wurde entfernt; PayPal steht wieder bei `14` Ledger-Umsaetzen,
+    `0` Duplikatgruppen.
+  - N26 hat nach mehreren schnellen Testabrufen einen Enable-Banking-429
+    (`Too many requests`) geliefert. Letzter Wert `3.51 EUR` bleibt erhalten;
+    der naechste normale Stundenlauf sollte den Status wieder aktualisieren.
 - Detailplan liegt in
   [Sparkasse George Integration](/Users/niklaskofler/Documents/finanztool/docs/sparkasse_george_integration_plan.md)
 
@@ -872,10 +895,13 @@ Update 2026-06-27:
     - `costEvents/capitalcom_*`
     - `incomeEvents/capitalcom_*`
     - `rawDocuments/api_capitalcom_latest`
-  - History laeuft inkrementell:
-    - Standard-Backfill `CAPITALCOM_HISTORY_DAYS=30`
-    - danach letztes `lastHistorySyncEndAt` minus
-      `CAPITALCOM_HISTORY_OVERLAP_DAYS=2`
+  - History laeuft ab dem Schnitt 2026-06-27 inkrementell neu:
+    - Capital.com wird bewusst bei aktuellem Stand `0,00 EUR` neu begonnen;
+      historische Transaktionen vor dem Schnitt, z. B. Maerz 2026, werden
+      nicht mehr als Backfill-Ziel behandelt.
+    - Standard-Initialfenster `CAPITALCOM_HISTORY_DAYS=1`
+    - danach letztes `lastHistorySyncEndAt` ohne Overlap
+      (`CAPITALCOM_HISTORY_OVERLAP_DAYS=0`)
     - Force-Lauf per `--backfill`, `--full` oder
       `CAPITALCOM_FORCE_HISTORY_BACKFILL=true`
   - API-Ausfaelle loeschen keine gueltigen Positions-/Summary-Daten.
@@ -977,8 +1003,8 @@ npm run sync:health
 2. Mac-Studio-Agents mit `npm run install:all-agents` installieren
 3. Kreditkarten-Umsaetze/Abrechnungen fuer Amazon Visa und TF Bank ergaenzen;
    George Visa bleibt pausiert, bis ein Portal-/PDF-/CSV-Weg verfuegbar ist
-4. Trading 212 als eigene Quelle ergaenzen, sobald wieder relevant oder Daten
-   vorliegen
+4. Trading 212 API-Key/Secret erzeugen und lokal speichern; Agent ist
+   vorbereitet, aber ohne Secrets noch nicht installiert
 5. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
    Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind
 6. Flatex nach einigen automatischen Exportlaeufen gegen Broker pruefen
@@ -2038,6 +2064,14 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       GUI im Postfach eine konkrete Fehlermeldung an.
     - Health und Trade-Republic-Portal-Agent ignorieren nur entschiedene
       Faelle; neue unbekannte oder nicht abrufbare Dokumente bleiben offen.
+    - Korrektur 2026-06-27: Das Postfach zeigt vorerst nur offene
+      Dokumentfaelle. Als `Nicht relevant`, `Abgedeckt` oder `Wichtig`
+      entschiedene Dokumente verschwinden aus dem Postfach und erzeugen keine
+      zentrale Dokumentwarnung. Der fruehere Bereich `Verarbeitete Dokumente`
+      wurde aus der GUI entfernt, bis ein echtes Dokumentarchiv gebaut wird.
+      Falls `systemHealth/current` noch eine alte Dokumentwarnung enthaelt,
+      blendet die GUI diese aus, sobald das Postfach keine offenen Faelle mehr
+      hat.
     - Verifizierter Stand:
       - `agentStatus/traderepublic_portal.status=OK`
       - `portalDocumentUnresolvedFailureCount=0`
@@ -2071,9 +2105,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     06:45 headless.
 - Bankkonten:
   - `com.niklas.finanztool.bank-accounts` laeuft stuendlich nur fuer
-    Erste/Sparkasse und Revolut.
-  - `com.niklas.finanztool.bank99` laeuft separat exakt um 07:00, 12:00,
-    17:00 und 22:00 und bleibt damit bei maximal 4 Abrufen/Tag.
+    Erste/Sparkasse, Revolut und PayPal.
+  - `com.niklas.finanztool.bank99` und `com.niklas.finanztool.n26` laufen
+    separat exakt um 06:00 und 16:00 und bleiben damit bei maximal
+    2 Abrufen/Tag.
 - Kurs-/Health-Agenten:
   - `sync-quotes-local.mjs` defaultet jetzt auf `QUOTE_SOURCES=traderepublic`;
     Flatex/Ginmon/Bitget/EquatePlus nutzen ihre eigenen Quellen.
@@ -2309,19 +2344,19 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 ## 2026-06-27 Bankkonten/Kreditkarten Agent-Trennung
 
 - Agent-Regel:
-  - Sparkasse/George und Revolut duerfen stuendlich laufen.
-  - `bank99` hat wegen Enable-Banking-/Provider-Limit einen eigenen Agenten
-    und laeuft nur 4x pro Tag: 07:00, 12:00, 17:00 und 22:00.
+  - Sparkasse/George, Revolut und PayPal duerfen stuendlich laufen.
+  - `bank99` und `n26` haben wegen Enable-Banking-/Provider-Limit eigene
+    Agenten und laufen nur 2x pro Tag: 06:00 und 16:00.
   - Kreditkarten sind eigene Agenten:
     `amazon_visa` laeuft stuendlich, `tfbank` wegen SMS-TAN/Portal-Login nur
     alle 3 Stunden.
-  - Der normale Bankkonten-Agent darf nur `erste,revolut` lesen und darf
-    `bank99` nicht als fehlend oder veraltet markieren.
-  - Der `bank99`-Agent schreibt seinen eigenen Agentstatus
-    `agentStatus/bank99`.
+  - Der normale Bankkonten-Agent darf nur `erste,revolut,paypal` lesen und darf
+    `bank99`/`n26` nicht als fehlend oder veraltet markieren.
+  - Die limitierten Agenten schreiben eigene Agentstatus-Dokumente:
+    `agentStatus/bank99` und `agentStatus/n26`.
 - GUI-Regel:
   - Die Karte `Bankkonten` zeigt die Agenten separat:
-    Sparkasse/Revolut, bank99, Amazon Visa, TF Bank.
+    Sparkasse/Revolut, N26, PayPal, bank99, Amazon Visa, TF Bank.
   - Innerhalb der Karte werden `Bankkonten` und `Kreditkarten` getrennt als
     eigene ausklappbare Gruppen dargestellt.
   - Beide Gruppen bleiben Teil des gemeinsamen Finanzwerts, aber jede Zeile
@@ -2339,9 +2374,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Rueckfallwerte.
 - Launchd-Regel:
   - `com.niklas.finanztool.bank-accounts`:
-    stuendlich, `--banks=erste,revolut`.
+    stuendlich, `--banks=erste,revolut,paypal`.
   - `com.niklas.finanztool.bank99`:
-    07:00, 12:00, 17:00, 22:00, `--banks=bank99`.
+    06:00 und 16:00, `--banks=bank99 --allow-limited-bank-read`.
+    Kein `RunAtLoad` und kein Installer-Kickstart, damit kein zusaetzlicher
+    Abruf das Tageslimit verbraucht.
+  - `com.niklas.finanztool.n26`:
+    06:00 und 16:00, `--banks=n26 --allow-limited-bank-read`.
     Kein `RunAtLoad` und kein Installer-Kickstart, damit kein zusaetzlicher
     Abruf das Tageslimit verbraucht.
   - `com.niklas.finanztool.amazon-visa`:
@@ -2522,6 +2561,34 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Falls nach der Wartung weiterhin reproduzierbar `401 error.invalid.api.key`
   kommt, dann neuen Capital.com-API-Key erzeugen und mit
   `npm --prefix automation run setup:capitalcom` lokal speichern.
+- Nachpruefung 2026-06-27 22:07 CEST:
+  - Capital.com ist wieder erreichbar.
+  - `npm --prefix automation run check:capitalcom` liefert `VERIFIED` fuer
+    das Live-Konto `EUR`, 0 EUR Cash und 0 offene Positionen.
+  - `npm --prefix automation run import:capitalcom:local` ist mit
+    `CAPITALCOM_HISTORY_OVERLAP_DAYS=0` erfolgreich und setzt den
+    Capital.com-Agentstatus wieder auf `OK`.
+  - Befund: `/history/activity` akzeptiert bei diesem Konto kein 2-Tage-
+    Fenster (`error.invalid.daterange`). Wenn Capital.com reaktiviert wird,
+    muss der Agent das Activity-Fenster enger halten oder Activity-Warnungen
+    bei 0 Positionen/0 Kontowert anders bewerten.
+  - Umsetzung: Default in `import-capitalcom-local.mjs` auf
+    `CAPITALCOM_HISTORY_DAYS=1` und `CAPITALCOM_HISTORY_OVERLAP_DAYS=0`
+    gesetzt; Import und Health-Sync laufen damit ohne Capital.com-Alert.
+  - Schema-Pruefung alter 2023-Historie:
+    - Read-only Monatsabrufe 2023 lieferten 105 History-Transaktionen.
+    - Inhalt: 104 Gold-Zeilen und 1 Korrektur ohne Instrument.
+    - Typen: 50 `TRADE`, 54 `SWAP`, 1 `TRADE_CORRECTION`.
+    - Capital.com speichert den Geldbetrag in diesen Zeilen im Feld `size`,
+      nicht in `amount`.
+    - `SWAP` mit `note=Overnight fee` wird als Finanzierungskosten-Ereignis
+      modelliert.
+    - `TRADE` mit `note=Trade closed` wird als Ledger-Kategorie
+      `realized_pnl` gespeichert. Positive und negative realisierte
+      Gewinne/Verluste bleiben damit auswertbar, werden aber bewusst nicht als
+      Brokerkosten vermischt.
+    - Instrumente erhalten einen stabilen `instrumentId`, z. B.
+      `capitalcom_gold`.
 
 ## 2026-06-27 GUI-Regel zentrale Warnungen
 
@@ -2596,3 +2663,224 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   gilt fuer Desktop-Tabellen und mobile Positionskarten gleichermassen.
 - Dokumenten-Postfach und sonstige GUI-Struktur bleiben fuer den
   Dashboard-Start unveraendert.
+
+## 2026-06-27 Bankkonten Shared-Agent Fehlerzuordnung
+
+- Fehler/Warnungen eines gemeinsamen Agenten duerfen nicht pauschal auf alle
+  Unterkonten vererbt werden. Beispiel: `agentStatus/bank_accounts` kann
+  gleichzeitig Erste/Sparkasse, Revolut, N26 und PayPal betreffen; ein
+  `N26: 429 Too many requests` darf dann nur in der N26-Zeile erscheinen.
+- Die GUI ordnet bankbezogene Agent-Hinweise ueber `bank`, `bankKey`,
+  `providerSource`, `accountId`, `providerAccountId`, `label` oder
+  `accountLabel` der passenden Unterquelle zu.
+- Dedizierte Agenten wie `bank99`, `amazon_visa` und `tfbank` gelten direkt
+  fuer ihre jeweilige Konto-/Kreditkartenzeile.
+- Aktueller Chrome-Check:
+  - `bank99 Konto`: Fehler `bank99: Tageslimit 4 Abrufe erreicht`
+  - `Erste/Sparkasse Konto`: OK
+  - `N26 Konto`: Fehler `Enable Banking API Fehler 429: Too many requests`
+  - `PayPal Konto`: OK
+  - `Revolut Konto`: OK
+  - `Amazon Visa`: OK
+  - `TF Bank Kreditkarte`: Fehler `TAN-Login nach 5/5 Versuchen fehlgeschlagen`
+- TF Bank haengt aktuell nicht als Prozess. Der LaunchAgent ist beendet
+  (`not running`, letzter Exit-Code `1`) und hat nach den definierten
+  maximal 5 TAN-Login-Versuchen korrekt einen Fehler geschrieben. Der letzte
+  erfolgreiche Stand bleibt sichtbar.
+- Der TAN-Warteblock wurde von 300 Sekunden auf 90 Sekunden pro Versuch
+  reduziert. Bei 5 Versuchen sind das maximal ca. 7,5 Minuten statt 25 Minuten;
+  danach wird ein klarer Fehler gesetzt, statt lange wie ein haengender Agent
+  zu wirken.
+
+## 2026-06-27 TF Bank TAN-Debug und Stabilitaetsbefund
+
+- TF-Bank-SMS-Text ist laut Screenshot stabil:
+  `Ihr TF Bank Bestätigungscode ist 123456`.
+- Debug installiert:
+  - Lauf-Debug: `automation/runtime/tfbank-debug.ndjson`
+  - Lesbarer Befund: `npm --prefix automation run debug:tfbank`
+  - Rohlog: `npm --prefix automation run debug:tfbank:raw`
+  - Messages-UI-Test: `npm --prefix automation run debug:tfbank:messages`
+  - Messages-DB-Test: `npm --prefix automation run debug:tfbank:messages-db`
+- Der lesbare Debug zeigt jetzt ohne Rohlog-Lesen:
+  - letzten Laufstatus
+  - ob Messages-DB blockiert ist
+  - ob Messages-UI eine TAN sieht
+  - ob eine TAN eingetippt wurde
+  - ob das Portal die TAN abgelehnt hat
+  - naechste konkrete Diagnosemassnahme
+- TAN-Codes werden im Debug maskiert, z. B. `****17`; vollstaendige TANs werden
+  nicht dauerhaft ins Debug-Log geschrieben.
+- Der Agent protokolliert jetzt:
+  - Startparameter
+  - ob Messages/DB eine TAN erkannt hat
+  - alte vs. neue TAN
+  - ob der Code eingetippt wurde
+  - Portalantwort, z. B. `Einmalpasswort aus SMS ungültig`
+  - finalen Abbruchgrund
+- Wichtiges Verhalten:
+  - Wenn gar keine neue TAN erkannt wird, startet der Agent nicht mehr 5-mal
+    blind neue Logins/SMS. Er bricht nach dem Wartefenster mit klarem Fehler
+    ab.
+  - 5 TAN-Versuche gelten nur noch fuer den Fall, dass eine TAN erkannt und
+    vom Portal abgelehnt wird.
+- Neuer Browsermodus:
+  - TF Bank nutzt standardmaessig ein frisches Browserprofil pro Versuch, damit
+    alte Cookies/Session-Daten keinen OTP-Flow kaputt machen.
+  - Rueckfall auf altes Profil nur mit `--reuse-browser-profile` oder
+    `TFBANK_REUSE_BROWSER_PROFILE=1`.
+- Aktueller technischer Befund:
+  - Messages-DB-Zugriff funktioniert nach Full-Disk-Access-Freigabe.
+  - Erfolgreicher Testlauf 2026-06-27: TAN aus Messages-DB gelesen,
+    Login mit 1 Versuch, Saldo geschrieben, Logout bestaetigt.
+- Optimierter Betrieb ab 2026-06-27:
+  - Primaerer TAN-Weg ist nur noch `~/Library/Messages/chat.db`.
+  - Messages-UI-Fallback ist standardmaessig aus
+    (`TFBANK_MESSAGES_UI_FALLBACK=0`), damit kein Messages-Fenster im
+    Normalbetrieb stoert.
+  - Optionaler sichtbarer Fallback nur bewusst per
+    `--messages-ui-fallback` oder `TFBANK_MESSAGES_UI_FALLBACK=1`.
+  - TAN-Wartefenster: 60 Sekunden.
+  - TAN-Polling: 1000 ms.
+  - TF-Bank-LaunchAgent hat kein `RunAtLoad` mehr. Installieren oder
+    Neustarten des LaunchAgents erzeugt deshalb keinen sofortigen zusaetzlichen
+    SMS-TAN-Login.
+  - `install-credit-card-launch-agents.sh` kickstartet Amazon Visa weiter,
+    aber TF Bank bewusst nicht.
+  - Wenn Messages-DB durch macOS wieder blockiert waere, wird sie fuer den
+    laufenden Agentlauf deaktiviert und im Debug klar als Full-Disk-Access-
+    Problem gemeldet.
+
+## 2026-06-28 Trading 212 Integration vorbereitet
+
+- Offizielle Trading-212-Public-API ist fuer Invest/Stocks-ISA read-only
+  angebunden.
+- Neuer Client: `automation/src/trading212-client.mjs`
+  - Live-Base-URL `https://live.trading212.com/api/v0`
+  - Demo-Base-URL `https://demo.trading212.com/api/v0`
+  - Auth per API-Key/API-Secret aus macOS-Schluesselbund
+  - Rate-Limit-/Retry-Handling fuer 408/429/5xx
+  - direkte Endpunkte fuer Account Summary, Positionen, Orders, Dividenden und
+    Cash-Transaktionen
+  - CSV-Report-Endpunkte vorbereitet, damit spaeter Interest-/Kontrollreports
+    mit `includeInterest` angebunden werden koennen
+- Neuer Sync: `automation/src/sync-trading212-local.mjs`
+  - `--snapshot-only`: aktuelle Positionen, Cash, Einstand, G/V, Kurse
+  - ohne `--snapshot-only`: zusaetzlich Orders, Dividenden, Cash-Bewegungen,
+    Steuern und Fees in `ledgerEntries`, `incomeEvents`, `costEvents`
+  - geschlossene Positionen werden aus `sourcePositions` geloescht, bleiben
+    historisch aber in Ledger/Event-Collections erhalten
+  - History arbeitet inkrementell ab letztem erfolgreichen Sync mit kleinem
+    Overlap
+- UI-Quelle `trading212` ist angelegt und in der Depotreihenfolge enthalten.
+- Health erwartet Trading 212 als Quelle, sobald echte Trading-212-Daten oder
+  ein Trading-212-Agentstatus vorhanden sind.
+- `sync:all`/`Alles aktualisieren` ueberspringt Trading 212, solange
+  API-Key/Secret lokal fehlen; nach Secret-Einrichtung laeuft Trading 212
+  automatisch in der Gesamtaktualisierung mit.
+- Noch offen:
+  - keine fachlichen Trading-212-Punkte offen, solange dort nur Cash liegt
+  - bei neuen Positionen pruefen, ob Einstand/Kurs/Dividenden sauber in der
+    GUI erscheinen
+
+## 2026-06-28 Trading 212 aktiviert
+
+- Neuer Trading-212-API-Key wurde im Browser erzeugt und lokal im
+  macOS-Schluesselbund gespeichert:
+  - `finanztool-trading212-api-key`
+  - `finanztool-trading212-api-secret`
+- Trading 212 akzeptiert im IP-Feld nur IPv4. Die IPv6-Adresse wurde vom
+  Formular als ungueltig abgelehnt.
+- Direkt-Test:
+  - `/equity/account/summary`: HTTP 200
+  - `/equity/positions`: HTTP 200
+  - `/equity/history/dividends`: HTTP 200
+- Agent-Test:
+  - `npm --prefix automation run check:trading212`: OK
+  - `npm --prefix automation run sync:trading212`: OK
+  - aktueller Stand: `10 EUR` Cash, `0` offene Positionen, `1`
+    Cash-Transaktion
+- LaunchAgents installiert:
+  - `com.niklas.finanztool.trading212-sync`
+  - `com.niklas.finanztool.trading212-history`
+- API-Besonderheit:
+  - `GET /equity/history/transactions` akzeptierte `time` allein nicht und
+    antwortete mit `Both or none of cursorId and time must be provided`.
+  - Agent ruft Transactions deshalb ohne `time` ab und filtert lokal nach
+    Lookback/letztem Sync. Bei `TRADING212_HISTORY_MAX_PAGES=3` bleibt das
+    klein und stabil.
+
+## 2026-06-28 Bankkonten Fehlerlogik korrigiert
+
+- Operative Agent-/API-Probleme sind immer `FEHLER`, nicht `WARNUNG`.
+  Das gilt auch fuer erwartbare Limits wie bank99-Tageslimit oder
+  Enable-Banking-429.
+- Der gemeinsame Bankkonten-Agent schreibt bei `bankErrors` oder
+  `skippedBanks` jetzt `status=FEHLER`.
+- Die GUI zaehlt Bankkonto-Unterquellen dynamisch:
+  - echte Fehler werden als `Fehler` angezeigt
+  - reine Warnungen bleiben `Hinweise`
+  - gemischte Gruppen zeigen beides getrennt
+- PayPal-Fehler `Enable Banking API Fehler 422: The value of a end_time should
+  not be future date` war ein Zeitfensterproblem kurz nach Mitternacht:
+  Wiener Datum war bereits der neue Tag, Enable Banking bewertete den API-
+  Endtag aber noch als Zukunft. Der Transaktions-Endtag wird deshalb fuer die
+  API UTC-sicher mit kleinem Puffer gebildet.
+- Verifizierter Lauf:
+  - `sync:bank-accounts`: `status=FEHLER` nur wegen N26 429
+  - PayPal: 5 Umsaetze geprueft, kein PayPal-Fehler mehr
+  - `sync:health`: 2 Fehler, 0 Warnungen
+  - aktuelle Fehler: N26 `Too many requests`, bank99 `Tageslimit 4 Abrufe
+    erreicht`
+
+## 2026-06-28 Bankkonten Limit-Schutz N26 und bank99
+
+- N26 und bank99 sind jetzt strikt limitierte Bankquellen.
+- Beide duerfen nur noch durch dedizierte LaunchAgents mit dem expliziten
+  Schalter `--allow-limited-bank-read` gelesen werden.
+- Normale Aktualisierungen, `sync:all`, der GUI-Button `Alles aktualisieren`
+  und Standard-Testlaeufe lesen diese beiden Quellen nicht mehr.
+- Zeitplan:
+  - bank99: 06:00 und 16:00
+  - N26: 06:00 und 16:00
+- Tageslimit im Script:
+  - bank99: maximal 2 Abrufe pro Wiener Kalendertag
+  - N26: maximal 2 Abrufe pro Wiener Kalendertag
+- Normale Bankkonten bleiben stuendlich:
+  - Erste/Sparkasse
+  - Revolut
+  - PayPal
+- N26 hat jetzt einen eigenen Agentstatus `agentStatus/n26`; die GUI laedt
+  diesen Status separat wie `bank99`, `amazon_visa` und `tfbank`.
+- Anzeige-Regel:
+  - `Update` soll den letzten echten Bankdatenstand zeigen
+    (`sourceDataUpdatedAt` oder `lastDataSuccessAt`), nicht einen reinen
+    Skip-/Limit-Zeitpunkt.
+  - `Agent-Lauf` zeigt separat, wann der Agent zuletzt gelaufen ist.
+- Verifizierter Stand:
+  - aktive Plists fuer bank99 und N26 enthalten nur `06:00` und `16:00`
+  - beide Plists haben kein `RunAtLoad`
+  - Installer kickstartet nur `bank_accounts`, nicht bank99/N26
+  - Trockentest ohne `--allow-limited-bank-read` sperrt bank99/N26 ohne
+    API-Abruf und ohne Firestore-Schreibzugriff
+  - N26-Agentstatus wurde einmalig ohne API-Abruf initialisiert, damit die
+    GUI/Health den neuen separaten Agenten kennt; der erste echte Datenabruf
+    erfolgt erst beim naechsten 06:00-/16:00-Lauf.
+  - Korrektur nach Screenshot-Pruefung:
+    - `agentStatusIdForBanks()` muss fuer einen einzelnen N26-Lauf
+      `agentStatus/n26` schreiben, nicht `agentStatus/bank_accounts`.
+    - `Agent-Lauf` darf in der GUI nicht auf `updatedAt` zurueckfallen.
+      Sonst sieht ein Setup-/Metadaten-Schreibzeitpunkt wie ein echter
+      Agentlauf aus.
+    - Source-Accounts/Positions erhalten `lastDataSuccessAt`, sobald eine Bank
+      erfolgreich gelesen wurde. Bestehende N26-/bank99-Zeilen wurden ohne
+      API-Abruf bereinigt:
+      - bank99 letzter echter Datenabruf: `2026-06-27T05:05:21.112Z`
+      - N26 letzter echter Datenabruf: `2026-06-27T20:38:05.897Z`
+    - Lokale Runtime-Datei
+      `automation/runtime/enable-banking-rate-limits.json` wurde auf
+      `maxReadsPerDay=2` fuer bank99 bereinigt; der alte Zaehlerstand bleibt
+      absichtlich bestehen, damit kein zusaetzlicher Abruf ausgeloest wird.
+  - `sync:health` danach: 2 Fehler, 0 Warnungen
+    - bank99: Tageslimit erreicht
+    - N26: separater limitierter Agent wartet auf ersten geplanten Lauf

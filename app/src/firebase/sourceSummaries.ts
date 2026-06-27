@@ -84,6 +84,7 @@ export interface SourceSummaryAccount {
   staleReason?: string | null;
   staleIssueType?: string | null;
   lastSkippedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastDataSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   lastSeenAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   sourceDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -397,6 +398,12 @@ function decisionRank(decision?: DocumentReviewDecisionDocument | null) {
   return 1;
 }
 
+function isOpenInboxItem(item: DocumentInboxItem) {
+  if (item.rawStatus === "PARSED") return false;
+  if (!item.reviewDecision) return true;
+  return item.reviewDecision.decision === "needs_parser";
+}
+
 function documentRecordToInboxItem(document: SourceDocumentIssueRecord): DocumentInboxItem {
   const documentType = document.documentType ?? "unknown";
   const storagePath = document.storagePath ?? document.rawStoragePath ?? null;
@@ -679,10 +686,8 @@ export async function loadDocumentInboxItems(
           .filter((decision) => decisionMatchesItem(decision, item))
           .sort((left, right) => decisionRank(right) - decisionRank(left))[0] ?? null,
     }))
+    .filter(isOpenInboxItem)
     .sort((left, right) => {
-      const leftResolved = decisionRank(left.reviewDecision) > 0 ? 1 : 0;
-      const rightResolved = decisionRank(right.reviewDecision) > 0 ? 1 : 0;
-      if (leftResolved !== rightResolved) return leftResolved - rightResolved;
       return String(right.date ?? "").localeCompare(String(left.date ?? ""));
     });
 }

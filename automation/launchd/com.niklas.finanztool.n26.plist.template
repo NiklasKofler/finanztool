@@ -3,12 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.bank99</string>
+    <string>com.niklas.finanztool.n26</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_PATH__</string>
       <string>src/sync-sparkasse-george-local.mjs</string>
-      <string>--banks=bank99</string>
+      <string>--banks=n26</string>
       <string>--allow-limited-bank-read</string>
       <string>--write</string>
       <string>--transactions</string>
@@ -38,8 +38,8 @@
       </dict>
     </array>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-bank99.out.log</string>
+    <string>/tmp/finanztool-n26.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-bank99.err.log</string>
+    <string>/tmp/finanztool-n26.err.log</string>
   </dict>
 </plist>

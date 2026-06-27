@@ -3,15 +3,12 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.bank99</string>
+    <string>com.niklas.finanztool.trading212-history</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_PATH__</string>
-      <string>src/sync-sparkasse-george-local.mjs</string>
-      <string>--banks=bank99</string>
-      <string>--allow-limited-bank-read</string>
+      <string>src/sync-trading212-local.mjs</string>
       <string>--write</string>
-      <string>--transactions</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -21,25 +18,16 @@
       <string>__PATH__</string>
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
+      <key>TRADING212_HISTORY_MAX_PAGES</key>
+      <string>3</string>
+      <key>TRADING212_HISTORY_OVERLAP_DAYS</key>
+      <string>1</string>
     </dict>
-    <key>StartCalendarInterval</key>
-    <array>
-      <dict>
-        <key>Hour</key>
-        <integer>6</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>16</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-bank99.out.log</string>
+    <string>/tmp/finanztool-trading212-history.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-bank99.err.log</string>
+    <string>/tmp/finanztool-trading212-history.err.log</string>
   </dict>
 </plist>

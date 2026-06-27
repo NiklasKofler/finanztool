@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
 import { FirestoreRest } from "./firestore-rest.mjs";
+import { readLocalSecret } from "./local-secret.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
@@ -17,11 +18,24 @@ const steps = [
   { id: "ginmon_documents", label: "Ginmon Dokumente", script: "download-ginmon-local.mjs", args: ["--write-documents-only"] },
   { id: "intergold", label: "Intergold Bestand und Preise", script: "reconcile-intergold-local.mjs", args: ["--write"] },
   { id: "vbv", label: "VBV Vorsorgekasse", script: "sync-vbv-local.mjs", args: ["--write"] },
-  { id: "bank_accounts", label: "Bankkonten", script: "sync-sparkasse-george-local.mjs", args: ["--write", "--transactions"] },
+  { id: "bank_accounts", label: "Bankkonten", script: "sync-sparkasse-george-local.mjs", args: ["--banks=erste,revolut,paypal", "--write", "--transactions"] },
   { id: "quotes", label: "Aktuelle Kurse", script: "run-quote-sync-local.mjs" },
   { id: "event_model", label: "Event-Modell-Normalisierung", script: "backfill-event-model-local.mjs", args: ["--write"] },
   { id: "health", label: "Health-Check", script: "check-health-local.mjs" },
 ];
+
+const [trading212ApiKey, trading212ApiSecret] = await Promise.all([
+  readLocalSecret("TRADING212_API_KEY", "finanztool-trading212-api-key"),
+  readLocalSecret("TRADING212_API_SECRET", "finanztool-trading212-api-secret"),
+]);
+if (trading212ApiKey && trading212ApiSecret) {
+  steps.splice(2, 0, {
+    id: "trading212",
+    label: "Trading 212",
+    script: "sync-trading212-local.mjs",
+    args: ["--write"],
+  });
+}
 
 function runStep(step) {
   const startedAt = new Date();

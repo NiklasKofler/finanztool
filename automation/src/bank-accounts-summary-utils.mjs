@@ -46,6 +46,7 @@ function accountSummaryFromAccount(account, position) {
     staleReason: account.staleReason ?? position?.staleReason ?? null,
     staleIssueType: account.staleIssueType ?? position?.staleIssueType ?? null,
     lastSkippedAt: account.lastSkippedAt ?? position?.lastSkippedAt ?? null,
+    lastDataSuccessAt: account.lastDataSuccessAt ?? position?.lastDataSuccessAt ?? null,
     lastSeenAt: account.lastSeenAt ?? position?.lastSeenAt ?? null,
     updatedAt: account.updatedAt ?? position?.updatedAt ?? null,
     sourceDataUpdatedAt: account.sourceDataUpdatedAt ?? position?.sourceDataUpdatedAt ?? null,

@@ -65,6 +65,58 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-28 01:51 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-28 01:51 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `6b5c596`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M README.md
+  -  M app/src/App.tsx
+  -  M app/src/domain/seedData.ts
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/launchd/com.niklas.finanztool.bank-accounts.plist.template
+  -  M automation/launchd/com.niklas.finanztool.bank99.plist.template
+  -  M automation/launchd/com.niklas.finanztool.tfbank.plist.template
+  -  M automation/package.json
+  -  M automation/src/bank-accounts-summary-utils.mjs
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/import-capitalcom-local.mjs
+  -  M automation/src/install-bank-accounts-launch-agent.sh
+  -  M automation/src/install-credit-card-launch-agents.sh
+  -  M automation/src/read-messages-tan.swift
+  -  M automation/src/run-full-refresh-local.mjs
+  -  M automation/src/sync-sparkasse-george-local.mjs
+  -  M automation/src/sync-tfbank-local.mjs
+  -  M docs/data_basis_audit_2026-06-27.md
+  -  M docs/data_basis_cleanup_plan_2026-06-27.md
+  -  M docs/firestore_data_contract.md
+  -  M docs/import_masterplan.md
+  -  M docs/sparkasse_george_integration_plan.md
+  -  M docs/working_memory.md
+  - ?? automation/launchd/com.niklas.finanztool.n26.plist.template
+  - ?? automation/launchd/com.niklas.finanztool.trading212-history.plist.template
+  - ?? automation/launchd/com.niklas.finanztool.trading212-sync.plist.template
+  - ?? automation/src/debug-tfbank-local.mjs
+  - ?? automation/src/install-trading212-launch-agent.sh
+  - ?? automation/src/setup-trading212-keychain.sh
+  - ?? automation/src/sync-trading212-local.mjs
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-27 21:18 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-27 21:18 CEST

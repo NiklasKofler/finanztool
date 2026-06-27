@@ -26,7 +26,8 @@ bleiben.
   - Ginmon API alle 5 Minuten.
   - Ginmon Dokumente taeglich 02:00.
   - Intergold taeglich 08:20.
-  - Bankkonten Sparkasse/Revolut stuendlich.
+  - Bankkonten Erste/Sparkasse, Revolut, N26 und PayPal stuendlich;
+    bank99 separat limitiert.
   - bank99 07:00, 12:00, 17:00, 22:00.
   - VBV woechentlich Montag 06:45.
   - Quote-History taeglich 22:00.
@@ -175,3 +176,39 @@ Freigabe: Die Datenbasis ist fuer die naechste Phase
 `Dashboards und GUI` ausreichend stabil. Dashboards muessen aber Warnungen,
 Quellenstand und Datenabdeckung sichtbar machen, statt fehlende Quellen still
 zu ueberdecken.
+
+## Nachpruefung Capital.com 2026-06-27 22:07 CEST
+
+- Capital.com ist wieder online und API-seitig erreichbar.
+- `check:capitalcom` liefert:
+  - Live-Konto, nicht Demo
+  - Konto `EUR`
+  - Kontowert/Cash `0,00 EUR`
+  - `0` offene Positionen
+  - Status `VERIFIED`
+- Lokaler Import mit engem History-Fenster erfolgreich:
+  `CAPITALCOM_HISTORY_OVERLAP_DAYS=0 npm --prefix automation run import:capitalcom:local`.
+- Nach erneutem Health-Sync verschwindet Capital.com aus den Health-Alerts.
+- Fachliche Entscheidung: Capital.com bekommt ab 2026-06-27 einen frischen
+  Null-Schnitt. Die letzte relevante Alttransaktion war im Maerz 2026; fuer
+  das aktuelle Tracking wird nicht versucht, diese Historie nachzuziehen.
+- Agent-Default angepasst:
+  - `CAPITALCOM_HISTORY_DAYS=1`
+  - `CAPITALCOM_HISTORY_OVERLAP_DAYS=0`
+- Read-only Schema-Pruefung fuer 2023:
+  - 105 History-Zeilen gefunden.
+  - 104 Zeilen betreffen `Gold`.
+  - Typen: 50 `TRADE`, 54 `SWAP`, 1 `TRADE_CORRECTION`.
+  - Capital.com nutzt `size` als Betrag fuer diese History-Zeilen.
+  - Mapping festgelegt:
+    - `SWAP`/`Overnight fee` -> Finanzierungskosten
+    - `TRADE`/`Trade closed` -> `ledgerEntries.category=realized_pnl`
+    - `WITHDRAWAL`/`DEPOSIT` -> Cash-Transfer
+    - Instrumente wie Gold bekommen stabile IDs, z. B. `capitalcom_gold`
+  - Die 2023-Zeilen werden wegen des Null-Schnitts nicht importiert, dienen
+    aber als Schema-Testfall fuer kuenftige Capital.com-Nutzung.
+- Technischer Befund: Der Capital.com-Endpunkt `/history/activity` akzeptiert
+  beim aktuellen Konto kein 2-Tage-Fenster und meldet
+  `error.invalid.daterange`. Vor einer dauerhaften Reaktivierung muss der
+  Agent das Activity-Fenster enger halten oder diese Activity-Warnung bei
+  inaktivem Konto separat behandeln.

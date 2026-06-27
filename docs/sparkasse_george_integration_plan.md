@@ -129,19 +129,19 @@ Aufgaben:
 4. Firestore `sourceAccounts`, `sourcePositions` und
    `sourceSummaries/bank_accounts` schreiben.
 5. Health-Warnung schreiben, wenn Consent abgelaufen ist oder ein Konto fehlt.
-6. bank99 maximal 4-mal pro Kalendertag abrufen.
-   Geplanter Standardrhythmus: 07:00, 12:00, 17:00 und 22:00
-   Europe/Vienna.
+6. bank99 und N26 maximal 2-mal pro Kalendertag abrufen.
+   Geplanter Standardrhythmus: 06:00 und 16:00 Europe/Vienna.
 
 Geplanter Rhythmus:
 
-- Erste/Sparkasse und Revolut stuendlich
-- bank99 viermal taeglich: 07:00, 12:00, 17:00 und 22:00
-- zusaetzlich ueber `Alles aktualisieren`
+- Erste/Sparkasse, Revolut und PayPal stuendlich
+- bank99 und N26 zweimal taeglich: 06:00 und 16:00
+- bank99 und N26 nicht ueber `Alles aktualisieren`
 
 Kein 5-Minuten-Polling. Bankdaten brauchen keine Hochfrequenz und Consent/API
-sollen nicht unnoetig belastet werden. `Alles aktualisieren` darf bank99 nicht
-am lokalen Tageslimit vorbei abrufen.
+sollen nicht unnoetig belastet werden. `Alles aktualisieren` darf bank99/N26
+nicht am lokalen Tageslimit vorbei abrufen. Limitierte Quellen brauchen im
+Script den expliziten Schalter `--allow-limited-bank-read`.
 
 ## GUI-Regeln
 
@@ -193,7 +193,7 @@ Stand 2026-06-26:
 - Fuer jede Bank braucht der lokale Agent eine eigene gespeicherte
   Enable-Banking-Session. Auf dem Mac Studio sind Sessions fuer
   Erste/Sparkasse, Revolut und bank99 vorhanden.
-- bank99 wird lokal auf maximal 4 Abrufe pro Tag begrenzt.
+- bank99 und N26 werden lokal auf maximal 2 Abrufe pro Tag begrenzt.
 - Redirect URLs:
   - `https://finanzperformance-tool.web.app/open-banking/callback`
   - `https://finanzperformance-tool.firebaseapp.com/open-banking/callback`

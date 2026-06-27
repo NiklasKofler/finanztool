@@ -14,8 +14,8 @@ const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
 const importId = `api_capitalcom_${runId.slice(0, 8)}`;
 const now = new Date();
 const dataProvider = "capitalcom_api";
-const historyLookbackDays = Number.parseInt(process.env.CAPITALCOM_HISTORY_DAYS ?? "30", 10);
-const historyOverlapDays = Number.parseInt(process.env.CAPITALCOM_HISTORY_OVERLAP_DAYS ?? "2", 10);
+const historyLookbackDays = Number.parseInt(process.env.CAPITALCOM_HISTORY_DAYS ?? "1", 10);
+const historyOverlapDays = Number.parseInt(process.env.CAPITALCOM_HISTORY_OVERLAP_DAYS ?? "0", 10);
 const forceHistoryBackfill =
   process.argv.includes("--backfill") ||
   process.argv.includes("--full") ||
@@ -97,6 +97,7 @@ function readRowAmount(row) {
     parseNumber(row.amount) ??
     parseNumber(row.value) ??
     parseNumber(row.cashTransactionAmount) ??
+    parseNumber(row.size) ??
     parseNumber(row.profitAndLoss) ??
     parseNumber(row.pnl) ??
     parseNumber(row.realisedPnl) ??
@@ -121,6 +122,8 @@ function readRowType(row, fallback) {
 }
 
 function readRowDescription(row, fallback) {
+  if (row.note && row.instrumentName) return `${row.note} - ${row.instrumentName}`;
+  if (row.note) return row.note;
   return (
     row.description ??
     row.details ??
@@ -133,7 +136,10 @@ function readRowDescription(row, fallback) {
 }
 
 function isCostLike(row, amount, rawType) {
-  const text = `${rawType ?? ""} ${row.description ?? ""} ${row.details ?? ""}`.toLowerCase();
+  const text = (
+    `${rawType ?? ""} ${row.transactionType ?? ""} ${row.note ?? ""} ` +
+    `${row.description ?? ""} ${row.details ?? ""}`
+  ).toLowerCase();
   return (
     text.includes("fee") ||
     text.includes("commission") ||
@@ -147,7 +153,10 @@ function isCostLike(row, amount, rawType) {
 }
 
 function isIncomeLike(row, amount, rawType) {
-  const text = `${rawType ?? ""} ${row.description ?? ""} ${row.details ?? ""}`.toLowerCase();
+  const text = (
+    `${rawType ?? ""} ${row.transactionType ?? ""} ${row.note ?? ""} ` +
+    `${row.description ?? ""} ${row.details ?? ""}`
+  ).toLowerCase();
   return (
     text.includes("interest") ||
     text.includes("dividend") ||
@@ -155,6 +164,23 @@ function isIncomeLike(row, amount, rawType) {
     text.includes("bonus") ||
     (typeof amount === "number" && amount > 0 && text.includes("adjustment"))
   );
+}
+
+function capitalComInstrumentId(row) {
+  const instrument = row.epic ?? row.market?.epic ?? row.instrumentName ?? row.marketName;
+  return instrument ? `capitalcom_${sanitizeId(instrument).toLowerCase()}` : null;
+}
+
+function capitalComLedgerCategory(row, rawType) {
+  const text = (
+    `${rawType ?? ""} ${row.transactionType ?? ""} ${row.note ?? ""} ` +
+    `${row.description ?? ""} ${row.details ?? ""}`
+  ).toLowerCase();
+  if (text.includes("swap") || text.includes("overnight") || text.includes("financing")) return "financing";
+  if (text.includes("trade") || text.includes("closed")) return "realized_pnl";
+  if (text.includes("deposit") || text.includes("withdrawal")) return "cash_transfer";
+  if (text.includes("correction") || text.includes("adjustment")) return "adjustment";
+  return "account_movement";
 }
 
 function normalizeCapitalComHistoryRow(kind, row) {
@@ -170,6 +196,7 @@ function normalizeCapitalComHistoryRow(kind, row) {
   const amount = readRowAmount(row);
   const date = readRowDate(row);
   const currency = readRowCurrency(row);
+  const category = capitalComLedgerCategory(row, rawType);
   return {
     id,
     source: "capitalcom",
@@ -178,11 +205,15 @@ function normalizeCapitalComHistoryRow(kind, row) {
     date: parseDate(date)?.toISOString() ?? date ?? null,
     bookingDate: parseDate(date)?.toISOString()?.slice(0, 10) ?? null,
     rawType,
-    type: kind,
+    type: String(rawType ?? kind).toLowerCase(),
+    recordKind: kind,
+    category,
+    subcategory: String(rawType ?? kind).toLowerCase(),
     description: readRowDescription(row, rawType),
     amount,
     currency,
     instrumentName: row.marketName ?? row.instrumentName ?? row.epic ?? null,
+    instrumentId: capitalComInstrumentId(row),
     epic: row.epic ?? row.market?.epic ?? null,
     dealId: row.dealId ?? row.position?.dealId ?? null,
     importId,
@@ -200,12 +231,16 @@ function costEventFromCapitalComLedgerEntry(entry) {
     id: `${entry.id}_cost`,
     source: "capitalcom",
     sourceLedgerEntryId: entry.id,
+    sourceAccountId: entry.sourceAccountId ?? null,
     date: entry.date,
     category: "trading_cost",
     subcategory: String(entry.rawType ?? "capitalcom_cost").toLowerCase(),
     amount,
     currency: entry.currency,
     description: entry.description,
+    instrumentName: entry.instrumentName ?? null,
+    instrumentId: entry.instrumentId ?? null,
+    epic: entry.epic ?? null,
     importId,
     updatedAt: now,
   };
@@ -218,12 +253,16 @@ function incomeEventFromCapitalComLedgerEntry(entry) {
     id: `${entry.id}_income`,
     source: "capitalcom",
     sourceLedgerEntryId: entry.id,
+    sourceAccountId: entry.sourceAccountId ?? null,
     date: entry.date,
     category: "trading_income",
     subcategory: String(entry.rawType ?? "capitalcom_income").toLowerCase(),
     amount,
     currency: entry.currency,
     description: entry.description,
+    instrumentName: entry.instrumentName ?? null,
+    instrumentId: entry.instrumentId ?? null,
+    epic: entry.epic ?? null,
     importId,
     updatedAt: now,
   };

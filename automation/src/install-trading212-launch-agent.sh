@@ -14,7 +14,6 @@ mkdir -p "$HOME/Library/LaunchAgents"
 install_agent() {
   local label="$1"
   local template="$2"
-  local kickstart="${3:-1}"
   local plist_path="$HOME/Library/LaunchAgents/$label.plist"
 
   sed \
@@ -26,12 +25,10 @@ install_agent() {
 
   launchctl bootout "gui/$UID/$label" 2>/dev/null || true
   launchctl bootstrap "gui/$UID" "$plist_path"
-  if [[ "$kickstart" == "1" ]]; then
-    launchctl kickstart -k "gui/$UID/$label"
-  fi
 }
 
-install_agent "com.niklas.finanztool.amazon-visa" "com.niklas.finanztool.amazon-visa.plist.template" "1"
-install_agent "com.niklas.finanztool.tfbank" "com.niklas.finanztool.tfbank.plist.template" "0"
+install_agent "com.niklas.finanztool.trading212-sync" "com.niklas.finanztool.trading212-sync.plist.template"
+install_agent "com.niklas.finanztool.trading212-history" "com.niklas.finanztool.trading212-history.plist.template"
 
-echo "[ok] Kreditkarten-Agenten installiert: Amazon Visa stuendlich, TF Bank alle 3 Stunden."
+echo "[ok] Trading-212-Agenten installiert: Snapshot alle 5 Minuten, History stuendlich."
+echo "[hinweis] Kein Kickstart: erster Lauf erfolgt automatisch nach dem Intervall oder manuell per npm run sync:trading212."

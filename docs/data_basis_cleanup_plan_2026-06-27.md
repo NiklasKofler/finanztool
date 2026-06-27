@@ -390,8 +390,13 @@ Automatisierungsziel:
     (`401 error.invalid.api.key`).
   - Vor produktiver Nutzung neuen API-Key anlegen, Schluesselbund aktualisieren
     und `check:capitalcom` ausfuehren.
-- Trading 212 bleibt inaktiv beziehungsweise offen, solange dort kein
-  relevanter Bestand gepflegt werden muss.
+- Trading 212 ist ab 2026-06-28 technisch vorbereitet:
+  - API-Key/Secret muessen noch lokal im Schluesselbund hinterlegt werden.
+  - Snapshot-Agent schreibt aktuelle Positionen, Cash, Einstand und Bewertung.
+  - History-Agent schreibt Orders, Dividenden, Cash-Bewegungen, Steuern und
+    Fees in die kanonischen Event-Collections.
+  - Vor produktiver Nutzung `setup:trading212`, `check:trading212` und
+    `sync:trading212` ausfuehren.
 
 ## Empfohlene Reihenfolge
 

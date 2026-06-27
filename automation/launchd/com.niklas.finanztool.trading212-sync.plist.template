@@ -3,15 +3,13 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.bank99</string>
+    <string>com.niklas.finanztool.trading212-sync</string>
     <key>ProgramArguments</key>
     <array>
       <string>__NODE_PATH__</string>
-      <string>src/sync-sparkasse-george-local.mjs</string>
-      <string>--banks=bank99</string>
-      <string>--allow-limited-bank-read</string>
+      <string>src/sync-trading212-local.mjs</string>
       <string>--write</string>
-      <string>--transactions</string>
+      <string>--snapshot-only</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -22,24 +20,11 @@
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
     </dict>
-    <key>StartCalendarInterval</key>
-    <array>
-      <dict>
-        <key>Hour</key>
-        <integer>6</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>16</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-bank99.out.log</string>
+    <string>/tmp/finanztool-trading212-sync.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-bank99.err.log</string>
+    <string>/tmp/finanztool-trading212-sync.err.log</string>
   </dict>
 </plist>

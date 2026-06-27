@@ -79,6 +79,7 @@ const sourceSortOrder = [
   "intergold",
   "bitget",
   "capitalcom",
+  "trading212",
   "vbv",
   "equateplus",
   "bank_accounts",
@@ -183,9 +184,10 @@ const agentStatusIds: Record<string, string | string[]> = {
   intergold: "intergold",
   bitget: ["bitget", "bitget_ledger"],
   capitalcom: "capitalcom",
+  trading212: "trading212",
   vbv: "vbv",
   equateplus: "equateplus",
-  bank_accounts: ["bank_accounts", "bank99", "amazon_visa", "tfbank"],
+  bank_accounts: ["bank_accounts", "bank99", "n26", "amazon_visa", "tfbank"],
 };
 
 const agentStatusMeta: Record<
@@ -210,6 +212,10 @@ const agentDisplayMeta: Record<string, { label: string; responsibility: string }
   capitalcom: {
     label: "Capital.com Agent",
     responsibility: "Kontostand, Cash und offene Positionen aus der Capital.com API",
+  },
+  trading212: {
+    label: "Trading 212 Agent",
+    responsibility: "Aktuelle Positionen, Cash, Einstandswerte, Orders, Dividenden und Cash-Bewegungen aus der Trading-212-API",
   },
   flatex: {
     label: "Flatex Broker-Agent",
@@ -245,11 +251,15 @@ const agentDisplayMeta: Record<string, { label: string; responsibility: string }
   },
   bank_accounts: {
     label: "Bankkonten Agent",
-    responsibility: "Sparkasse/Revolut stuendlich: Geldstand, Kreditlinien und Transaktionen ueber Enable Banking",
+    responsibility: "Erste/Revolut/PayPal stuendlich: Geldstand, Kreditlinien und Transaktionen ueber Enable Banking",
   },
   bank99: {
     label: "bank99 Agent",
-    responsibility: "bank99 limitiert: Geldstand und Transaktionen mit maximal vier Abrufen pro Tag",
+    responsibility: "bank99 limitiert: Geldstand und Transaktionen nur um 06:00 und 16:00",
+  },
+  n26: {
+    label: "N26 Agent",
+    responsibility: "N26 limitiert: Geldstand und Transaktionen nur um 06:00 und 16:00",
   },
   amazon_visa: {
     label: "Amazon Visa Agent",
@@ -704,15 +714,17 @@ function getAccountLabel(account: SourceSummaryAccount) {
 }
 
 function getBankAccountAgentId(account: SourceSummaryAccount) {
+  const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
+  if (bankKey === "bank99") return "bank99";
+  if (bankKey === "n26") return "n26";
+
   const configuredAgentId = account.agentStatusId?.trim();
   if (configuredAgentId) return configuredAgentId;
 
   const provider = String(account.providerSource ?? "").trim().toLowerCase();
   if (provider === "amazon_visa" || provider === "tfbank") return provider;
 
-  const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
-  if (bankKey === "bank99") return "bank99";
-  if (bankKey === "erste" || bankKey === "revolut") return "bank_accounts";
+  if (bankKey === "erste" || bankKey === "revolut" || bankKey === "paypal") return "bank_accounts";
   if (bankKey === "amazon_visa" || bankKey === "tfbank") return bankKey;
 
   const text = `${account.accountType ?? ""} ${account.bankName ?? ""} ${account.label ?? ""}`.toLowerCase();
@@ -725,38 +737,141 @@ function getBankAccountAgentLabel(agentId: string) {
   return agentDisplayMeta[agentId]?.label ?? agentId;
 }
 
-function bankAccountAgentHasIssue(agentStatus?: AgentStatusDocument) {
-  return Boolean(agentStatus?.status && agentStatus.status !== "OK");
+function normalizeBankIssueToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]+/g, "");
+}
+
+function getBankAccountIssueTokens(account: SourceSummaryAccount) {
+  return [
+    account.bankKey,
+    account.providerSource,
+    account.accountId,
+    account.providerAccountId,
+    account.bankName,
+    account.label,
+    getAccountLabel(account),
+  ]
+    .map(normalizeBankIssueToken)
+    .filter(Boolean);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function matchesBankAccountIssue(account: SourceSummaryAccount, issue: Record<string, unknown>) {
+  const issueTokens = [
+    issue.bank,
+    issue.bankKey,
+    issue.providerSource,
+    issue.accountId,
+    issue.providerAccountId,
+    issue.label,
+    issue.accountLabel,
+  ]
+    .map(normalizeBankIssueToken)
+    .filter(Boolean);
+  if (!issueTokens.length) return false;
+
+  const accountTokens = getBankAccountIssueTokens(account);
+  return issueTokens.some((issueToken) =>
+    accountTokens.some(
+      (accountToken) =>
+        issueToken === accountToken ||
+        accountToken.includes(issueToken) ||
+        issueToken.includes(accountToken),
+    ),
+  );
+}
+
+function getIssueMessage(issue: Record<string, unknown>) {
+  const message = issue.message ?? issue.reason ?? issue.status ?? issue.type;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
+function getIssueSeverity(issue: Record<string, unknown>, fallback: AgentUiStatus = "WARNUNG"): AgentUiStatus {
+  const typeText = `${issue.type ?? ""} ${issue.status ?? ""} ${issue.message ?? ""} ${issue.reason ?? ""}`.toLowerCase();
+  if (/fehler|error|failed|too many requests|tageslimit|limit|tan-login|warte|wartet|sms-tan/.test(typeText)) {
+    return "FEHLER";
+  }
+  if (/running|läuft|laeuft/.test(typeText)) return "RUNNING";
+  return fallback;
+}
+
+function getBankAccountAgentIssue(
+  account: SourceSummaryAccount,
+  agentStatus?: AgentStatusDocument,
+): { message: string; severity: AgentUiStatus } | null {
+  if (!agentStatus) {
+    return {
+      message: `${getBankAccountAgentLabel(getBankAccountAgentId(account))} hat noch keinen Laufstatus.`,
+      severity: "FEHLER",
+    };
+  }
+
+  const bankScopedIssues = [
+    ...(agentStatus.bankErrors ?? []),
+    ...(agentStatus.skippedBanks ?? []),
+    ...((agentStatus.warnings ?? []).map(asRecord).filter(Boolean) as Record<string, unknown>[]),
+  ];
+  const matchingIssue = bankScopedIssues.find((issue) => matchesBankAccountIssue(account, issue));
+  if (matchingIssue) {
+    return {
+      message: getIssueMessage(matchingIssue) ?? agentStatus.message ?? "Agent meldet ein kontospezifisches Problem.",
+      severity: getIssueSeverity(matchingIssue, agentStatus.status === "FEHLER" ? "FEHLER" : "WARNUNG"),
+    };
+  }
+
+  const displayStatus = getAgentDisplayStatus(agentStatus);
+  const agentId = getBankAccountAgentId(account);
+  const isSharedAgent = agentId === "bank_accounts";
+  const hasScopedIssues = bankScopedIssues.length > 0;
+  if (displayStatus && displayStatus !== "OK" && (!isSharedAgent || !hasScopedIssues)) {
+    return {
+      message: agentStatus.message ?? "Agent meldet keinen OK-Status.",
+      severity: displayStatus,
+    };
+  }
+
+  return null;
 }
 
 function getAgentDisplayStatus(agentStatus?: AgentStatusDocument | null): AgentUiStatus | undefined {
   if (!agentStatus?.status) return undefined;
   if (agentStatus.status === "OK") return "OK";
   if (agentStatus.status === "RUNNING") return "RUNNING";
+  if (agentStatus.status === "WARNUNG") return "WARNUNG";
   return "FEHLER";
 }
 
 function getBankAccountStatusTone(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
-  const displayStatus = getAgentDisplayStatus(agentStatus);
-  if (!agentStatus) return "error";
-  if (displayStatus === "FEHLER") return "error";
-  if (displayStatus === "RUNNING") return "warn";
-  if (account.status === "STALE") return "warn";
+  const agentIssue = getBankAccountAgentIssue(account, agentStatus);
+  if (agentIssue?.severity === "FEHLER") return "error";
+  if (agentIssue?.severity === "RUNNING" || agentIssue?.severity === "WARNUNG") return "warn";
+  if (account.status === "STALE") {
+    return account.staleIssueType === "error" || account.staleIssueType === "skipped" ? "error" : "warn";
+  }
   if (account.status === "MISSING" || account.status === "FEHLER" || account.status === "ERROR") return "error";
   return "good";
 }
 
 function getBankAccountStatusLabel(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
-  const displayStatus = getAgentDisplayStatus(agentStatus);
-  if (!agentStatus) return "Kein Status";
-  if (displayStatus && displayStatus !== "OK") {
-    const message = `${agentStatus.message ?? ""}`.toLowerCase();
-    if (message.includes("tan")) return "Wartet TAN";
-    if (displayStatus === "FEHLER") return "Fehler";
-    if (displayStatus === "RUNNING") return "Läuft";
+  const agentIssue = getBankAccountAgentIssue(account, agentStatus);
+  if (agentIssue) {
+    const message = agentIssue.message.toLowerCase();
+    if (agentIssue.severity === "RUNNING") return "Läuft";
+    if (message.includes("tan") && agentIssue.severity === "WARNUNG") return "Wartet TAN";
+    if (agentIssue.severity === "FEHLER") return "Fehler";
     return "Warnung";
   }
-  if (account.status === "STALE") return "Letzter Stand";
+  if (account.status === "STALE") {
+    return account.staleIssueType === "error" || account.staleIssueType === "skipped" ? "Fehler" : "Letzter Stand";
+  }
   if (account.status === "MISSING") return "Fehlt";
   if (account.status === "FEHLER" || account.status === "ERROR") return "Fehler";
   return "OK";
@@ -775,9 +890,7 @@ function getBankAccountUpdatedAt(account: SourceSummaryAccount) {
     : null;
   return (
     dataTimestampWithTime ??
-    account.lastSeenAt ??
-    account.updatedAt ??
-    account.lastSkippedAt ??
+    account.lastDataSuccessAt ??
     account.sourceDataUpdatedAt ??
     account.valuationDate ??
     null
@@ -785,12 +898,8 @@ function getBankAccountUpdatedAt(account: SourceSummaryAccount) {
 }
 
 function getBankAccountIssueMessage(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
-  if (!agentStatus) {
-    return `${getBankAccountAgentLabel(getBankAccountAgentId(account))} hat noch keinen Laufstatus.`;
-  }
-  if (bankAccountAgentHasIssue(agentStatus)) {
-    return agentStatus?.message ?? "Agent meldet keinen OK-Status.";
-  }
+  const agentIssue = getBankAccountAgentIssue(account, agentStatus);
+  if (agentIssue) return agentIssue.message;
   if (account.status === "STALE" && account.staleReason) return account.staleReason;
   return null;
 }
@@ -1110,7 +1219,7 @@ function getSourceAgentRunViews(
 }
 
 function getAgentRunTimestamp(status?: AgentStatusDocument) {
-  return status?.lastAgentRunAt ?? status?.updatedAt ?? status?.lastSuccessAt ?? status?.lastAgentSuccessAt ?? null;
+  return status?.lastAgentRunAt ?? status?.lastSuccessAt ?? status?.lastAgentSuccessAt ?? null;
 }
 
 function getAgentSuccessTimestamp(status?: AgentStatusDocument) {
@@ -1187,7 +1296,6 @@ function DocumentInbox({
   pendingDecisionId,
   pendingOpenDocumentId,
   isOpen,
-  isArchiveOpen,
   onSectionToggle,
 }: {
   items: DocumentInboxItem[];
@@ -1200,13 +1308,11 @@ function DocumentInbox({
   pendingDecisionId: string | null;
   pendingOpenDocumentId: string | null;
   isOpen: boolean;
-  isArchiveOpen: boolean;
   onSectionToggle: UiSectionToggleHandler;
 }) {
   const openItems = items.filter(isOpenDocumentInboxItem);
-  const processedItems = items.filter(isProcessedDocumentInboxItem);
 
-  if (!items.length) return null;
+  if (!openItems.length) return null;
 
   return (
     <details
@@ -1332,68 +1438,6 @@ function DocumentInbox({
           );
         })}
       </div>
-      {processedItems.length ? (
-        <details
-          className="document-inbox document-inbox--archive"
-          open={isArchiveOpen}
-          onToggle={(event) => {
-            event.stopPropagation();
-            onSectionToggle("documentInbox:archive", event.currentTarget.open, false);
-          }}
-        >
-          <summary>
-            <span>Verarbeitete Dokumente</span>
-            <strong>{numberFormatter.format(processedItems.length)}</strong>
-          </summary>
-          <div className="document-inbox__list">
-            {processedItems.map((item) => {
-              const isOpening = pendingOpenDocumentId === item.id;
-              const hasDocumentAccess = Boolean(item.documentStoragePath || item.documentUrl);
-              return (
-                <article className="document-inbox__row document-inbox__row--closed" key={item.id}>
-                  <div className="document-inbox__main">
-                    <div className="document-inbox__title">
-                      <strong>{item.title}</strong>
-                      <span className={`status-badge status-badge--${getDocumentInboxDecisionTone(item)}`}>
-                        {getDocumentInboxDecisionLabel(item)}
-                      </span>
-                    </div>
-                    <p>{item.message}</p>
-                    <div className="document-inbox__meta">
-                      <span>{getSourceDisplayName(item.source)}</span>
-                      <span>{formatUpdatedAt(item.date)}</span>
-                      {item.sourceChannel ? <span>{item.sourceChannel}</span> : null}
-                    </div>
-                  </div>
-                  {hasDocumentAccess ? (
-                    <div className="document-inbox__actions">
-                      {item.documentStoragePath ? (
-                        <button
-                          type="button"
-                          className="secondary-button document-inbox__button"
-                          disabled={isOpening}
-                          onClick={() => onOpenDocument(item)}
-                        >
-                          {isOpening ? "Öffne PDF" : "PDF öffnen"}
-                        </button>
-                      ) : item.documentUrl ? (
-                        <a
-                          className="secondary-button document-inbox__button document-inbox__button--link"
-                          href={item.documentUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          PDF öffnen
-                        </a>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        </details>
-      ) : null}
     </details>
   );
 }
@@ -1436,9 +1480,21 @@ function BankAccountGroup({
 }) {
   if (!accounts.length) return null;
   const groupStatus = getBankAccountsAggregateStatus(accounts, agentStatuses);
-  const groupIssueCount = accounts.filter(
-    (account) => getBankAccountEffectiveStatus(account, agentStatuses) !== "OK",
-  ).length;
+  const groupIssueStatuses = accounts
+    .map((account) => getBankAccountEffectiveStatus(account, agentStatuses))
+    .filter((status) => status !== "OK");
+  const groupErrorCount = groupIssueStatuses.filter((status) => status === "FEHLER").length;
+  const groupWarningCount = groupIssueStatuses.length - groupErrorCount;
+  const groupIssueLabel =
+    groupErrorCount > 0 && groupWarningCount > 0
+      ? `${numberFormatter.format(groupErrorCount)} Fehler, ${numberFormatter.format(groupWarningCount)} Hinweis${
+          groupWarningCount === 1 ? "" : "e"
+        }`
+      : groupErrorCount > 0
+        ? `${numberFormatter.format(groupErrorCount)} Fehler`
+        : groupWarningCount > 0
+          ? `${numberFormatter.format(groupWarningCount)} Hinweis${groupWarningCount === 1 ? "" : "e"}`
+          : null;
 
   return (
     <details
@@ -1449,9 +1505,7 @@ function BankAccountGroup({
       <summary>
         <span className="source-accounts-details__summary-title">
           <span>{title}</span>
-          {groupIssueCount > 0 ? (
-            <small>{numberFormatter.format(groupIssueCount)} Hinweis{groupIssueCount === 1 ? "" : "e"}</small>
-          ) : null}
+          {groupIssueLabel ? <small>{groupIssueLabel}</small> : null}
         </span>
         <span className="source-accounts-details__summary-status">
           <AgentStatusBadge status={groupStatus} emptyLabel="Kein Status" />
@@ -1479,7 +1533,7 @@ function BankAccountGroup({
             .slice(0, 8);
           const accountAgentId = getBankAccountAgentId(account);
           const accountAgentStatus = agentStatuses[accountAgentId];
-          const accountAgentDisplayStatus = getAgentDisplayStatus(accountAgentStatus);
+          const accountAgentDisplayStatus = getBankAccountEffectiveStatus(account, agentStatuses);
           const accountAgentRunText = formatUpdatedAt(getAgentRunTimestamp(accountAgentStatus));
           const accountAgentSuccessText = formatUpdatedAt(getAgentSuccessTimestamp(accountAgentStatus));
           const showAccountAgentSuccess =
@@ -2679,11 +2733,20 @@ function App() {
     }
     return grouped;
   }, [displayedPositions]);
-  const visibleAlerts = systemHealth?.alerts ?? [];
+  const documentAlertIds = new Set([
+    "unclassified_documents",
+    "unknown_document_facts",
+    "traderepublic_portal_unresolved_document_failures",
+  ]);
+  const visibleAlerts = (systemHealth?.alerts ?? []).filter(
+    (alert) => documentInboxItems.length > 0 || !documentAlertIds.has(alert.id),
+  );
+  const visibleErrorCount = visibleAlerts.filter((alert) => alert.severity === "error").length;
+  const visibleWarningCount = visibleAlerts.filter((alert) => alert.severity === "warning").length;
   const healthTone =
-    systemHealth?.status === "ERROR"
+    visibleErrorCount > 0
       ? "error"
-      : systemHealth?.status === "WARNUNG"
+      : visibleWarningCount > 0
         ? "warn"
         : "good";
 
@@ -2782,11 +2845,11 @@ function App() {
               </div>
               <p>Systemstatus</p>
               <strong className={`health-status health-status--${healthTone}`}>
-                {systemHealth ? systemHealth.alertCount : dataStatus === "live" ? 0 : "—"}
+                {systemHealth ? visibleAlerts.length : dataStatus === "live" ? 0 : "—"}
               </strong>
               <span>
                 {systemHealth
-                  ? `${systemHealth.errorCount} Fehler, ${systemHealth.warningCount} Warnungen`
+                  ? `${visibleErrorCount} Fehler, ${visibleWarningCount} Warnungen`
                   : dataStatus === "live"
                     ? "Keine Health-Daten gefunden"
                     : "Wird nach Login geladen"}
@@ -2818,7 +2881,7 @@ function App() {
             <Archive aria-hidden="true" />
           </div>
           <p className="document-inbox-panel__intro">
-            Offene Dokumente zur Entscheidung und verarbeitete Dokumente zur Kontrolle.
+            Offene Dokumente, die ein Agent nicht klassifizieren oder verarbeiten konnte.
           </p>
           {documentDecisionError ? (
             <p className="document-inbox-panel__error">{documentDecisionError}</p>
@@ -2831,12 +2894,11 @@ function App() {
               onOpenDocument={handleOpenDocument}
               onClassify={handleDocumentDecision}
               isOpen={getUiSectionOpen("documentInbox:open", true)}
-              isArchiveOpen={getUiSectionOpen("documentInbox:archive", false)}
               onSectionToggle={setUiSectionOpen}
             />
           ) : (
             <div className="document-inbox-panel__empty">
-              Keine offenen Dokumentprobleme und kein Dokumentarchiv geladen.
+              Keine offenen Dokumentprobleme.
             </div>
           )}
         </section>

@@ -1,10 +1,10 @@
 # Finanzperformance-Tool
 
 Persoenliches Portfolio- und Performance-Tool fuer Flatex, Trade Republic,
-Ginmon, Intergold, EquatePlus, Bitget, Capital.com, VBV, Bankkonten und
-Kreditkarten. Trading 212 ist als naechste Integration geplant.
+Ginmon, Intergold, EquatePlus, Bitget, Capital.com, Trading 212, VBV,
+Bankkonten und Kreditkarten.
 
-Stand: 2026-06-27
+Stand: 2026-06-28
 
 ## Ziel
 
@@ -283,7 +283,8 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 
 - Bankkonten/Kreditkarten:
   - George Visa
-- Trading 212
+- Trading 212 ist technisch vorbereitet; API-Key/Secret muessen noch im
+  lokalen Schluesselbund hinterlegt und der Agent danach aktiviert werden.
 
 ## Wichtige lokale Pfade
 
@@ -426,8 +427,8 @@ Wichtige Collections:
 
 ## Naechste sinnvolle Schritte
 
-1. Weitere Bank-Sessions fuer Revolut und bank99 erzeugen.
-2. Trading 212 als eigene Quelle ergaenzen.
+1. Trading 212 API-Key/Secret erzeugen, lokal speichern und Agent aktivieren.
+2. Weitere Bank-Sessions fuer neue/ablaufende Konten erneuern.
 3. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
    Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind.
 4. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,

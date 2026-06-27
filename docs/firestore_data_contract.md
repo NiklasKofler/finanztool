@@ -1,11 +1,11 @@
 # Firestore Data Contract
 
-Stand: 2026-06-25
+Stand: 2026-06-28
 
 Dieses Dokument beschreibt die kanonische Firestore-Struktur fuer alle Quellen.
 Es ist die Leitplanke, damit Flatex, Trade Republic, Ginmon, Intergold, Bitget,
-Capital.com, VBV, EquatePlus und spaeter Bankkonten/Kreditkarten vergleichbar
-gespeichert werden.
+Capital.com, Trading 212, VBV, EquatePlus und Bankkonten/Kreditkarten
+vergleichbar gespeichert werden.
 
 ## Grundsatz
 
@@ -172,6 +172,13 @@ Zuordnungsregeln:
 - Capital.com, Trading 212 oder kuenftige Quellen duerfen mit
   `allocationStatus=pending` und `allocationConfidence=unknown` starten, wenn
   die API noch nicht alle Kosten-/Steuerdetails liefert.
+- Trading 212 schreibt API-Orders, Dividenden und Cash-Transaktionen in
+  `ledgerEntries`; Dividenden werden zusaetzlich in `incomeEvents`
+  normalisiert, und API-Steuern/Gebuehren sowie `FEE`-Transaktionen landen in
+  `costEvents`. Aktuelle offene Positionen kommen aus
+  `sourcePositions/trading212_*`; geschlossene Positionen duerfen dort nicht
+  weiter sichtbar sein, bleiben aber ueber die Event-Collections historisch
+  nachvollziehbar.
 
 Umsetzung:
 
@@ -538,7 +545,7 @@ technisch abgedeckt sind:
 - Bankkonten werden read-only ueber Open Banking/Enable Banking integriert.
 - Kein George-/Bank-Web-Scraping und keine Payment-/Ueberweisungsfunktion.
 - Quelle ist generisch `bank_accounts`, damit Erste/Sparkasse, Revolut,
-  bank99 und spaetere Bankkonten gleich behandelt werden.
+  N26, PayPal, bank99 und spaetere Bankkonten gleich behandelt werden.
 - Der Balance-Import schreibt den echten Kontostand als `currentValue`,
   `cashValue` und `netValue`. Nur dieser Wert zaehlt zum Vermoegen.
 - Hoehere verfuegbare Werte inklusive Kreditrahmen duerfen nur als
@@ -554,6 +561,11 @@ technisch abgedeckt sind:
   Aktualisierung schnell bleibt.
 - Bankumsaetze werden idempotent als `ledgerEntries` je Konto mit stabiler
   Dedupe-Logik geschrieben.
+- Wenn eine Bankquelle nach Neufreigabe andere Provider-IDs oder zusaetzliche
+  `identificationHash`-Werte liefert, muss der bereits verwendete
+  Ledger-Schluessel erhalten bleiben. Bekannter Fall: PayPal darf denselben
+  Umsatz nicht einmal mit `identificationHash` und spaeter mit Provider-ID
+  speichern.
 - `transactionCount` in `sourceAccounts` und `sourceSummaries.accounts`
   bezeichnet die insgesamt gespeicherte Historie je Konto. Der letzte Lauf wird
   separat ueber `transactionSyncedCount`, `transactionNewCount` und
