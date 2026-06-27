@@ -187,7 +187,8 @@ Stand 2026-06-26:
   - Revolut, IBAN endet auf `943`
   - bank99, IBAN endet auf `0810`
 - Fuer jede Bank braucht der lokale Agent eine eigene gespeicherte
-  Enable-Banking-Session. Bisher ist die Erste/Sparkasse-Session vorhanden.
+  Enable-Banking-Session. Auf dem Mac Studio sind Sessions fuer
+  Erste/Sparkasse, Revolut und bank99 vorhanden.
 - bank99 wird lokal auf maximal 4 Abrufe pro Tag begrenzt.
 - Redirect URLs:
   - `https://finanzperformance-tool.web.app/open-banking/callback`
@@ -218,8 +219,26 @@ Stand 2026-06-26:
 - Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
   `incomeEvents` gespeichert, sofern sie im Umsatztext eindeutig erkannt
   werden.
-- Naechster praktischer Schritt: separate Enable-Banking-Sessions fuer Revolut
-  und bank99 erzeugen.
+- Stand 2026-06-27 01:25 lokal:
+  - Sync `OK`, Health `OK`
+  - `sourceSummaries/bank_accounts`: 3 Konten
+  - Geldstand gesamt `2183.15 EUR`
+  - verfuegbar inkl. Kredit `5183.15 EUR`
+  - Kreditlinie geschaetzt `3000.00 EUR`
+  - Erste/Sparkasse `2041.64 EUR`, letzter Umsatz `2026-06-26`
+  - Revolut `100.00 EUR`, keine Umsaetze geliefert, API-Datenstand
+    `2025-06-19`
+  - bank99 `41.51 EUR`, 9 Umsaetze, letzter Umsatz `2026-06-23`
+- Stand 2026-06-27 02:05 lokal:
+  - George/Erste erneut freigegeben, um Visa/Kreditkarte zu pruefen.
+  - Ergebnis: weiterhin nur ein Konto in der Session; kein Karten-/Visa-Hinweis.
+  - Agent schuetzt jetzt gegen wechselnde Enable-Banking-Provider-Account-IDs
+    nach Neufreigaben, indem er bei eindeutiger 1:1-Bankkontenlage die
+    vorhandene Kontoidentitaet weiterverwendet.
+
+- Naechster praktischer Schritt: George Visa bleibt pausiert. Amazon Visa und
+  TF Bank laufen inzwischen ueber eigene Portal-Agenten als Kreditkarten-
+  Unterkonten der Bankkarte.
 
 ## Enable-Banking-Klickpfad
 
@@ -241,8 +260,7 @@ Stand 2026-06-26:
 ## Offene Fragen vor Umsetzung
 
 - Welche Sparkasse-/George-Konten sollen einbezogen werden?
-- Sind Kreditkarten ueber denselben PSD2-Zugriff sichtbar oder brauchen sie
-  eigene Integrationen?
+- George Visa: klaeren, ob spaeter ein Portal-/PDF-/CSV-Weg verfuegbar ist.
 - Wie lange ist der Enable-Banking-Consent fuer die Sparkasse in der Praxis
   gueltig?
 - Welche Konten sollen im Gesamtvermoegen zaehlen und welche nur informativ

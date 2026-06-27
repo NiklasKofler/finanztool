@@ -3,12 +3,14 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.niklas.finanztool.traderepublic-mail</string>
+    <string>com.niklas.finanztool.bank-accounts</string>
     <key>ProgramArguments</key>
     <array>
-      <string>__NPM_PATH__</string>
-      <string>run</string>
-      <string>sync:traderepublic-mail</string>
+      <string>__NODE_PATH__</string>
+      <string>src/sync-sparkasse-george-local.mjs</string>
+      <string>--banks=erste,revolut</string>
+      <string>--write</string>
+      <string>--transactions</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -24,8 +26,8 @@
     <key>StartInterval</key>
     <integer>3600</integer>
     <key>StandardOutPath</key>
-    <string>/tmp/finanztool-traderepublic-mail.out.log</string>
+    <string>/tmp/finanztool-bank-accounts.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/finanztool-traderepublic-mail.err.log</string>
+    <string>/tmp/finanztool-bank-accounts.err.log</string>
   </dict>
 </plist>

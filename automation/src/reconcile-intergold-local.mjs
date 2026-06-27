@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
 import { FirestoreRest } from "./firestore-rest.mjs";
+import { normalizeEventDocument } from "./event-model.mjs";
 import {
   fetchIntergoldPriceHtml,
   INTERGOLD_PRICE_URL,
@@ -41,6 +42,7 @@ const sourceDirectories = [
 const snapshotDirectory = path.join(driveRoot, "01_Originale", "Intergold", "PreisSnapshots");
 const documentDataProvider = "intergold_confirmation_pdf";
 const quoteDataProvider = "intergold_website";
+const source = "intergold";
 
 function sum(values) {
   return values.reduce((total, value) => total + (typeof value === "number" ? value : 0), 0);
@@ -52,6 +54,67 @@ function roundCurrency(value) {
 
 function stableId(...parts) {
   return crypto.createHash("sha1").update(parts.filter(Boolean).join("|")).digest("hex").slice(0, 20);
+}
+
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function documentIdFromHash(fileHash) {
+  return `intergold_doc_${fileHash.slice(0, 20)}`;
+}
+
+function factId(...parts) {
+  return `intergold_fact_${stableId(...parts)}`;
+}
+
+function transactionId(...parts) {
+  return `intergold_tx_${stableId(...parts)}`;
+}
+
+function costEventId(...parts) {
+  return `intergold_cost_${stableId(...parts)}`;
+}
+
+function classifyIntergoldDocument({ fileName, text, confirmation }) {
+  if (confirmation?.positions?.length) {
+    return {
+      documentType: "purchase_confirmation",
+      parseStatus: "PARSED",
+      classification: "Intergold Kauf-/Einlagerungsbeleg",
+    };
+  }
+
+  const normalized = `${fileName}\n${text}`.toLowerCase();
+  if (/verkauf|rueckkauf|rückkauf|auslagerung|ausfolgung|storno/.test(normalized)) {
+    return {
+      documentType: "sale_or_withdrawal_document",
+      parseStatus: "UNPARSED",
+      classification: "Intergold Verkaufs-/Auslagerungsdokument",
+    };
+  }
+
+  if (/rechnung|beleg|einlagerung|lager|depot|metall|edelmetall/.test(normalized)) {
+    return {
+      documentType: "intergold_info_document",
+      parseStatus: "UNPARSED",
+      classification: "Intergold Info-Dokument",
+    };
+  }
+
+  return {
+    documentType: "unknown",
+    parseStatus: "UNKNOWN",
+    classification: "Intergold unbekanntes Dokument",
+  };
+}
+
+function textExcerpt(value, maxLength = 1200) {
+  return String(value ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
 }
 
 function priceHistoryId(price) {
@@ -103,6 +166,94 @@ async function savePriceSnapshot(html, fetchedAt) {
   const snapshotPath = path.join(snapshotDirectory, `${stamp}_Intergold_Aktuelles.html`);
   await fs.writeFile(snapshotPath, html, "utf8");
   return snapshotPath;
+}
+
+async function scanIntergoldDocuments(filePaths) {
+  const documentsByHash = new Map();
+  const warnings = [];
+
+  for (const filePath of filePaths) {
+    const fileName = path.basename(filePath);
+    let fileHash = null;
+    let text = "";
+    let confirmation = null;
+    let classification = {
+      documentType: "unknown",
+      parseStatus: "ERROR",
+      classification: "Intergold Dokument konnte nicht gelesen werden",
+    };
+    let errorMessage = null;
+
+    try {
+      const content = await fs.readFile(filePath);
+      fileHash = sha256(content);
+      if (documentsByHash.has(fileHash)) {
+        const existing = documentsByHash.get(fileHash);
+        existing.duplicatePaths.push(filePath);
+        existing.sourcePaths = [...new Set([...existing.sourcePaths, filePath])].sort();
+        continue;
+      }
+
+      text = await extractPdfText(filePath);
+      confirmation = parseIntergoldConfirmation(text, filePath);
+      classification = classifyIntergoldDocument({ fileName, text, confirmation });
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+      warnings.push(`${fileName}: ${errorMessage}`);
+      if (!fileHash) {
+        fileHash = stableId(filePath, errorMessage);
+      }
+    }
+
+    const documentId = documentIdFromHash(fileHash);
+    if (confirmation?.positions?.length) {
+      confirmation = {
+        ...confirmation,
+        sourceDocument: documentId,
+        sourceFilePath: filePath,
+        sourceFileHash: fileHash,
+        positions: confirmation.positions.map((position) => ({
+          ...position,
+          sourceDocument: documentId,
+          sourceFilePath: filePath,
+          sourceFileHash: fileHash,
+        })),
+      };
+    }
+
+    documentsByHash.set(fileHash, {
+      id: documentId,
+      source,
+      sourceChannel: "intergold_attachment",
+      fileName,
+      filePath,
+      sourcePaths: [filePath],
+      duplicatePaths: [],
+      fileHash,
+      fileType: "pdf",
+      documentType: classification.documentType,
+      parseStatus: classification.parseStatus,
+      classification: classification.classification,
+      documentDate: confirmation?.invoiceDate ?? null,
+      invoiceNumber: confirmation?.invoiceNumber ?? null,
+      totalAmount: confirmation?.totalAmount ?? null,
+      lineCostTotal: confirmation?.lineCostTotal ?? null,
+      feeAmount: confirmation?.feeAmount ?? null,
+      positionCount: confirmation?.positions?.length ?? 0,
+      rawTextExcerpt: textExcerpt(text),
+      parserVersion: "intergold_document_v1",
+      errorMessage,
+      confirmation,
+    });
+  }
+
+  return {
+    documents: [...documentsByHash.values()],
+    confirmations: [...documentsByHash.values()]
+      .map((document) => document.confirmation)
+      .filter((confirmation) => confirmation?.positions?.length),
+    warnings,
+  };
 }
 
 function buildHoldings(confirmations, prices) {
@@ -208,28 +359,143 @@ function holdingToPosition(holding) {
   };
 }
 
+function buildDocumentFacts(documents, now) {
+  const facts = [];
+  for (const document of documents) {
+    if (document.parseStatus !== "PARSED") continue;
+
+    const baseFact = {
+      id: factId(document.id, "summary"),
+      source,
+      sourceDocumentId: document.id,
+      sourceChannel: document.sourceChannel,
+      documentType: document.documentType,
+      parseStatus: document.parseStatus,
+      factType:
+        document.parseStatus === "PARSED"
+          ? "intergold_purchase_confirmation"
+          : "intergold_unparsed_attachment",
+      fileName: document.fileName,
+      filePath: document.filePath,
+      fileHash: document.fileHash,
+      documentDate: document.documentDate,
+      invoiceNumber: document.invoiceNumber,
+      totalAmount: document.totalAmount,
+      lineCostTotal: document.lineCostTotal,
+      feeAmount: document.feeAmount,
+      positionCount: document.positionCount,
+      classification: document.classification,
+      rawTextExcerpt: document.rawTextExcerpt,
+      errorMessage: document.errorMessage,
+      updatedAt: now,
+    };
+    facts.push(baseFact);
+
+    for (const position of document.confirmation?.positions ?? []) {
+      facts.push({
+        id: factId(document.id, "position", position.lineNumber, position.articleNumber, position.metal),
+        source,
+        sourceDocumentId: document.id,
+        sourceChannel: document.sourceChannel,
+        documentType: document.documentType,
+        parseStatus: "PARSED",
+        factType: "intergold_purchase_position",
+        fileName: document.fileName,
+        filePath: document.filePath,
+        fileHash: document.fileHash,
+        invoiceNumber: position.invoiceNumber,
+        invoiceDate: position.invoiceDate,
+        lineNumber: position.lineNumber,
+        articleNumber: position.articleNumber,
+        metal: position.normalizedMetal,
+        originalMetal: position.metal,
+        quantity: position.quantity,
+        unit: position.unit,
+        lineCostValue: roundCurrency(position.lineCostValue),
+        allocatedFee: roundCurrency(position.allocatedFee),
+        costValue: roundCurrency(position.costValue),
+        currency: "EUR",
+        updatedAt: now,
+      });
+    }
+  }
+  return facts;
+}
+
+function buildPurchaseTransactions(confirmations, now) {
+  return confirmations.flatMap((confirmation) =>
+    confirmation.positions.map((position) => ({
+      id: transactionId(
+        confirmation.sourceDocument,
+        position.invoiceNumber,
+        position.lineNumber,
+        position.articleNumber,
+        position.normalizedMetal,
+      ),
+      source,
+      sourceDocumentId: confirmation.sourceDocument,
+      filePath: confirmation.sourceFilePath,
+      fileHash: confirmation.sourceFileHash,
+      date: position.invoiceDate,
+      type: "buy",
+      category: "metal_purchase",
+      bookingText: `Intergold Kauf ${position.normalizedMetal}`,
+      invoiceNumber: position.invoiceNumber,
+      lineNumber: position.lineNumber,
+      articleNumber: position.articleNumber,
+      metal: position.normalizedMetal,
+      quantity: position.quantity,
+      unit: position.unit,
+      amount: roundCurrency(position.lineCostValue),
+      totalCostValue: roundCurrency(position.costValue),
+      allocatedFee: roundCurrency(position.allocatedFee),
+      currency: "EUR",
+      updatedAt: now,
+    })),
+  );
+}
+
+function buildPurchaseCostEvents(confirmations, now) {
+  return confirmations.flatMap((confirmation) =>
+    confirmation.positions
+      .filter((position) => (position.allocatedFee ?? 0) > 0)
+      .map((position) => ({
+        id: costEventId(
+          confirmation.sourceDocument,
+          position.invoiceNumber,
+          position.lineNumber,
+          position.articleNumber,
+          "fee_allocation",
+        ),
+        source,
+        sourceDocumentId: confirmation.sourceDocument,
+        filePath: confirmation.sourceFilePath,
+        fileHash: confirmation.sourceFileHash,
+        date: position.invoiceDate,
+        type: "purchase_fee_allocation",
+        category: "metal_purchase_fee",
+        bookingText: `Intergold anteilige Kauf-/Lagerkosten ${position.normalizedMetal}`,
+        invoiceNumber: position.invoiceNumber,
+        lineNumber: position.lineNumber,
+        metal: position.normalizedMetal,
+        amount: roundCurrency(position.allocatedFee),
+        amountAbs: roundCurrency(Math.abs(position.allocatedFee ?? 0)),
+        currency: "EUR",
+        updatedAt: now,
+      })),
+  );
+}
+
 const fetchedAt = new Date();
 const html = await fetchIntergoldPriceHtml();
 const snapshotPath = await savePriceSnapshot(html, fetchedAt);
 const prices = parseIntergoldPricesFromHtml(html);
 const files = [...new Set((await Promise.all(sourceDirectories.map(listPdfFiles))).flat())];
-const confirmations = [];
-const warnings = [];
-
-for (const filePath of files) {
-  let text = "";
-  try {
-    text = await extractPdfText(filePath);
-    const confirmation = parseIntergoldConfirmation(text, filePath);
-    if (!confirmation.positions.length) {
-      warnings.push(`${path.basename(filePath)}: Keine Metallpositionen gefunden`);
-      continue;
-    }
-    confirmations.push(confirmation);
-  } catch (error) {
-    warnings.push(`${path.basename(filePath)}: ${error.message}`);
-  }
-}
+const documentScan = await scanIntergoldDocuments(files);
+const documents = documentScan.documents;
+const confirmations = documentScan.confirmations;
+const warnings = documentScan.warnings;
+const openInfoDocuments = documents.filter((document) => document.parseStatus !== "PARSED");
 
 const holdings = buildHoldings(confirmations, prices);
 const positions = holdings.map(holdingToPosition);
@@ -250,7 +516,9 @@ const summary = {
   priceDate: latestPriceDate,
   latestDocumentDate,
   pdfCount: files.length,
+  sourceDocumentCount: documents.length,
   confirmationCount: confirmations.length,
+  openInfoDocumentCount: openInfoDocuments.length,
   holdingCount: holdings.length,
   currentValue,
   saleValue,
@@ -304,6 +572,37 @@ const quoteDataChangedAt =
       existingSummaryData.priceChangedAt ??
       latestCurrentPriceHistoryCreatedAt ??
       null;
+
+const documentFacts = buildDocumentFacts(documents, now);
+const purchaseTransactions = buildPurchaseTransactions(confirmations, now);
+const purchaseCostEvents = buildPurchaseCostEvents(confirmations, now);
+
+for (const document of documents) {
+  const { confirmation: _confirmation, ...documentData } = document;
+  await firestore.setDocument("sourceDocuments", document.id, {
+    ...documentData,
+    status: document.parseStatus === "PARSED" ? "PARSED" : "REVIEW_REQUIRED",
+    sourceDataProvider: documentDataProvider,
+    documentDataProvider,
+    documentDataUpdatedAt: document.documentDate,
+    updatedAt: now,
+  });
+}
+
+for (const fact of documentFacts) {
+  const { id, ...data } = fact;
+  await firestore.setDocument("sourceDocumentFacts", id, data);
+}
+
+for (const transaction of purchaseTransactions) {
+  const { id, ...data } = normalizeEventDocument("transactions", transaction, fetchedAt);
+  await firestore.setDocument("transactions", id, data);
+}
+
+for (const costEvent of purchaseCostEvents) {
+  const { id, ...data } = normalizeEventDocument("costEvents", costEvent, fetchedAt);
+  await firestore.setDocument("costEvents", id, data);
+}
 
 const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
   (position) => position.source === "intergold",
@@ -381,6 +680,11 @@ await firestore.setDocument("sourceSummaries", "intergold", {
   lastAgentSuccessAt: now,
   priceChanged,
   sourceDocumentCount: confirmations.length,
+  registeredDocumentCount: documents.length,
+  openInfoDocumentCount: openInfoDocuments.length,
+  documentFactCount: documentFacts.length,
+  transactionCount: purchaseTransactions.length,
+  costEventCount: purchaseCostEvents.length,
   positionCount: positions.length,
   missingPrices,
   status: missingPrices.length ? "PARTIAL" : "VERIFIED",
@@ -390,7 +694,10 @@ await firestore.setDocument("sourceSummaries", "intergold", {
 await firestore.setDocument("agentStatus", "intergold", {
   source: "intergold",
   status: missingPrices.length ? "PARTIAL" : "OK",
-  message: `${positions.length} Intergold-Positionen, ${prices.length} Preise, ${missingPrices.length} fehlende Preise`,
+  message:
+    `${positions.length} Intergold-Positionen, ${prices.length} Preise, ` +
+    `${documents.length} Dokumente registriert, ${openInfoDocuments.length} offen im Postfach, ` +
+    `${missingPrices.length} fehlende Preise`,
   lastSuccessAt: now,
   lastAgentRunAt: now,
   lastAgentSuccessAt: now,
@@ -403,6 +710,11 @@ await firestore.setDocument("agentStatus", "intergold", {
   quoteDataChangedAt,
   priceChanged,
   positionCount: positions.length,
+  registeredDocumentCount: documents.length,
+  openInfoDocumentCount: openInfoDocuments.length,
+  documentFactCount: documentFacts.length,
+  transactionCount: purchaseTransactions.length,
+  costEventCount: purchaseCostEvents.length,
   currentValue,
 });
 

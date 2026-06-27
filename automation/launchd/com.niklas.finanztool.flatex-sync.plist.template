@@ -9,6 +9,8 @@
       <string>__NODE_PATH__</string>
       <string>src/download-flatex-local.mjs</string>
       <string>--write</string>
+      <string>--snapshot-only</string>
+      <string>--headless</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>
@@ -20,42 +22,13 @@
       <string>finanzperformance-tool</string>
       <key>FLATEX_EXPORT_PERIOD</key>
       <string>zwei Wochen</string>
+      <key>FLATEX_HEADLESS</key>
+      <string>1</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
-    <key>StartCalendarInterval</key>
-    <array>
-      <dict>
-        <key>Hour</key>
-        <integer>8</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>10</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>13</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>17</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-      <dict>
-        <key>Hour</key>
-        <integer>22</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-      </dict>
-    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
     <key>StandardOutPath</key>
     <string>/tmp/finanztool-flatex-sync.out.log</string>
     <key>StandardErrorPath</key>

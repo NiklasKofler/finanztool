@@ -1,10 +1,10 @@
 # Finanzperformance-Tool
 
 Persoenliches Portfolio- und Performance-Tool fuer Flatex, Trade Republic,
-Ginmon, Intergold, EquatePlus, Bitget, Capital.com und VBV. Bankkonten,
-Kreditkarten und Trading 212 sind als naechste Integrationen geplant.
+Ginmon, Intergold, EquatePlus, Bitget, Capital.com, VBV, Bankkonten und
+Kreditkarten. Trading 212 ist als naechste Integration geplant.
 
-Stand: 2026-06-26
+Stand: 2026-06-27
 
 ## Ziel
 
@@ -89,6 +89,12 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 ### Flatex
 
 - CSV-Import ist fachlich umgesetzt.
+- Aktuelle Flatex-Positionen, Cash, Einstandswerte und Kurse kommen primaer
+  aus dem Flatex-Broker-Snapshot.
+- Der Flatex-Broker-Snapshot laeuft auf dem Mac Studio alle 5 Minuten
+  headless und erzeugt keine CSV-Dateien.
+- Der Flatex-CSV-/Dokumentexport laeuft getrennt davon taeglich um 22:10.
+- Boerse Frankfurt ist fuer Flatex nicht mehr die primaere Kursquelle.
 - Leere CSV-Header werden robust behandelt.
 - Daten landen in:
   - `imports`
@@ -109,6 +115,10 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
   als Einstand berechnet.
 - Net-Worth-PDF liefert aktuelle Positionswerte.
 - Gewinn/Verlust wird pro Position berechnet.
+- Die App-Karte hat zwei getrennte Aktionen:
+  - `Trade Republic: Refresh` startet nur den schnellen Portal-Snapshot fuer
+    aktuelle Brokerwerte und ueberspringt den langsamen Dokumentenscan.
+  - `Nur Kurse` startet nur den Kurs-Sync ohne Trade-Republic-Login.
 - Aktueller Stand war unter anderem:
   - Private Equity Einstand ca. 1045.40 EUR
   - Private Equity Marktwert ca. 1089.26 EUR
@@ -118,6 +128,9 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 
 - PDF-/Reportdaten werden gespeichert und teilweise ausgewertet.
 - Positionsdaten werden in `sourcePositions` geschrieben.
+- Aktuelle Werte/Kurse werden ueber die Ginmon-API alle 5 Minuten headless
+  aktualisiert.
+- Der Ginmon-Dokumentimport bleibt getrennt und laeuft taeglich um 02:00.
 - Weitere Kosten-/Steuerdetails muessen noch vertieft extrahiert werden.
 
 ### Intergold
@@ -130,15 +143,24 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 
 ### EquatePlus
 
-- Ordner ist in den Drive-Scan aufgenommen.
-- Quelle ist fachlich zurueckgestellt, bis die ersten echten
-  EquatePlus-Mail-Dokumente eintreffen.
-- Vorher wird kein aktiver Parser/Agent gebaut, damit wir nicht anhand
-  theoretischer Annahmen eine falsche Datenstruktur erzeugen.
-- Sobald die erste Mail vorliegt, werden Absender, Betreff, Anhaenge,
-  Dokumenttypen, Dedupe-Regeln und relevante Datenfelder analysiert.
-- Erst danach werden Holdings, Transaktionen, Kosten, Steuern und
-  Dokumentfakten in das kanonische Firestore-Modell integriert.
+- EquatePlus ist vorerst bewusst einfach integriert.
+- Die App zeigt eine Karte fuer Novartis-Mitarbeiteraktien.
+- Nutzer pflegt manuell:
+  - Anteile
+  - gesamten Einstandswert in EUR
+- Der Kurs kommt ueber SIX Swiss Exchange fuer `CH0012005267` und wird in EUR
+  umgerechnet.
+- Daten landen in:
+  - `manualInputs/equateplus_novartis`
+  - `sourcePositions/equateplus_novartis`
+  - `sourceSummaries/equateplus`
+  - `quotesCurrent/isin_CH0012005267`
+  - optional `priceHistory`
+- Ein Dokument-/Mail-Parser wird erst gebaut, wenn echte EquatePlus-Dokumente
+  relevante Mehrdaten wie Steuern, Kosten, Vesting oder Transaktionen liefern.
+- Fachliche Entscheidung 2026-06-27: EquatePlus ist damit fuer den aktuellen
+  Bedarf abgeschlossen. Ausreichend sind Depotbestand, Einstandswert und G/V;
+  wegen des Mitarbeiterbonus ist keine haeufige Bewegungslogik noetig.
 
 ### Bitget
 
@@ -182,16 +204,30 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 
 ### Capital.com
 
-- API funktioniert.
-- Live-Konto wird gelesen.
-- Aktueller Stand: `0,00 EUR`, 0 offene Positionen.
-- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert.
+- API-Anbindung ist vorbereitet und nutzt nur lesende Endpunkte:
+  `POST /session`, `GET /session`, `GET /accounts`, `GET /positions`.
+- Gespeicherter letzter gueltiger Stand: Live-Konto, EUR, `0,00 EUR`,
+  0 offene Positionen.
+- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert;
+  der Kontowert kommt aus `GET /accounts`.
+- Der Import ist fuer die naechste aktive Nutzung vorbereitet:
+  - aktuelle Konten/Positionen/Working Orders
+  - History-Transaktionen und Activity
+  - `ledgerEntries`, `sourceDocumentFacts`, `costEvents`, `incomeEvents`
+  - `rawDocuments/api_capitalcom_latest` als nachvollziehbarer API-Snapshot
+- Pruefung 2026-06-27: Der gespeicherte API-Key wird von Capital.com mit
+  `401 error.invalid.api.key` abgelehnt. Vor Nutzung muss in Capital.com ein
+  neuer API-Key erzeugt und mit `npm --prefix automation run setup:capitalcom`
+  im Schluesselbund gespeichert werden.
+- Der produktive LaunchAgent bleibt pausiert, bis Capital.com wirklich wieder
+  genutzt wird.
 
 ### VBV
 
 - VBV Vorsorgekasse ist als Summary-Quelle integriert.
 - Aktueller Stand: `1.815,86 EUR`, Stichtag `2026-05-31`.
 - Keine Einzelpositionen.
+- Der VBV-Agent laeuft woechentlich montags um 06:45 headless.
 
 ### Bankkonten
 
@@ -203,6 +239,8 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 - Verfuegbar inkl. Kredit wird separat gespeichert und nicht als Vermoegen
   gezaehlt.
 - Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden.
+- Der Bankkonto-Agent laeuft maximal viermal taeglich:
+  07:00, 12:00, 17:30 und 21:30.
 - Umsaetze werden per Enable Banking idempotent in `ledgerEntries`
   gespeichert.
 - Initialbestand ist vorhanden. Der normale Sync liest ab jetzt inkrementell:
@@ -212,12 +250,32 @@ Der Pfad muss exakt so kleingeschrieben sein. Alte Checkouts wie
 - Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
   `incomeEvents` klassifiziert, sofern sie im Umsatztext erkennbar sind.
 
+### Kreditkarten
+
+- Kreditkarten werden in der Bankkarte `bank_accounts` als Unterkonten
+  gefuehrt, nicht als eigene Depotkarten.
+- Offener Saldo zaehlt als negativer Wert zum Vermoegen/Geldstand.
+- Verfuegbarer Kredit und Kreditlimit werden separat angezeigt, aber nicht als
+  Vermoegen gezaehlt.
+- Amazon Visa Portal-Agent ist aktiv:
+  - Script: `npm --prefix automation run sync:amazon-visa`
+  - schreibt als Unterkonto in `sourceSummaries/bank_accounts`,
+    `sourcePositions/bank_accounts_amazon_visa_card`,
+    `sourceAccounts/bank_accounts_amazon_visa_card` und
+    `agentStatus/amazon_visa`
+- TF Bank Portal-Agent ist aktiv:
+  - Script: `npm --prefix automation run sync:tfbank`
+  - bei SMS-TAN kann derselbe Lauf mit
+    `node automation/src/sync-tfbank-local.mjs --write --tan-stdin`
+    fortgesetzt werden
+  - schreibt als Unterkonto in `sourceSummaries/bank_accounts`,
+    `sourcePositions/bank_accounts_tfbank_card`,
+    `sourceAccounts/bank_accounts_tfbank_card` und `agentStatus/tfbank`
+
 ### Noch nicht integriert
 
 - Bankkonten/Kreditkarten:
-  - Amazon Visa
-  - TF Bank Kreditkarte
-  - Revolut, derzeit inaktiv
+  - George Visa
 - Trading 212
 
 ## Wichtige lokale Pfade
@@ -367,10 +425,10 @@ Wichtige Collections:
    Bankkonten, Cash-Konten, Kreditkarten und Vorsorge sauber getrennt sind.
 4. UI weiter ausbauen: Filter, Sortierung, Detailansicht pro Position,
    Transaktionshistorie, Kosten/Steuern je Position.
-5. EquatePlus Parser erst nach Eingang der ersten echten Mail-Dokumente
-   ergaenzen.
-6. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
-7. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
+5. Ginmon Kosten-/Steuerdetails aus Reports vertiefen.
+6. Intergold Belegparser und Preisbewertung sauber zusammenfuehren.
+7. EquatePlus-Dokumentparser nur ergaenzen, wenn echte Dokumente relevante
+   Zusatzdaten liefern.
 
 ## Sicherheitsnotiz
 

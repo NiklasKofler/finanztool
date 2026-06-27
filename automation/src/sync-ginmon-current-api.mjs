@@ -369,6 +369,11 @@ async function applyCurrentSummary(firestore, currentSummary, discoveredMetaByCu
     accountCount: accounts.length,
     accounts,
     status: accounts.length ? "VERIFIED" : "UNVOLLSTAENDIG",
+    sourceDataProvider: "ginmon_api",
+    sourceDataUpdatedAt: currentSummary.date ?? now,
+    quoteDataProvider: "ginmon_api",
+    quoteDataUpdatedAt: now,
+    lastAgentSuccessAt: now,
     updatedAt: now,
   });
 
@@ -377,6 +382,9 @@ async function applyCurrentSummary(firestore, currentSummary, discoveredMetaByCu
     status: accounts.length ? "OK" : "UNVOLLSTAENDIG",
     message: `${accounts.length} Ginmon-Depot(s), ${livePositions.length} Live-Positionen`,
     lastSuccessAt: now,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
+    updatedAt: now,
     positionCount: livePositions.length,
     currentValue,
   });
@@ -417,9 +425,9 @@ if (process.argv.includes("--from-capture")) {
   if (!customerIds.length) {
     throw new Error("Keine Ginmon customerIds gefunden. Fuehre zuerst den Dokumentenabgleich aus.");
   }
-  const { context, page } = await launchGinmonBrowser();
+  const { context, page, headless } = await launchGinmonBrowser();
   try {
-    await ensureGinmonLogin(page);
+    await ensureGinmonLogin(page, { allowManual: !headless });
     const authorization = await captureAuthorization(page);
     currentSummary = await fetchCurrentSummary(authorization, customerIds);
   } finally {

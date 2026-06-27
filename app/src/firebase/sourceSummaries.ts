@@ -21,9 +21,9 @@ export interface SourceSummaryDocument {
   availableCash?: number;
   availableWithCredit?: number;
   creditLineEstimate?: number;
-  costValue?: number;
-  performanceValue?: number;
-  performancePct?: number;
+  costValue?: number | null;
+  performanceValue?: number | null;
+  performancePct?: number | null;
   brokerPositionValue?: number;
   brokerPositionSummaryDifference?: number | null;
   brokerSnapshotValue?: number | null;
@@ -33,6 +33,8 @@ export interface SourceSummaryDocument {
   brokerSnapshotDate?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   externalQuoteDepotValue?: number | null;
   externalQuoteDifference?: number | null;
+  externalQuoteDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  externalQuoteDataProvider?: string | null;
   latestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   oldestQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   quoteUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -70,14 +72,25 @@ export interface SourceSummaryAccount {
   accountId?: string | null;
   bankKey?: string | null;
   bankName?: string | null;
+  providerSource?: string | null;
   providerAccountId?: string | null;
+  accountType?: string | null;
   accountNumber?: string | null;
   customerId?: string | null;
   label?: string | null;
   strategy?: string | null;
+  status?: string | null;
+  staleReason?: string | null;
+  staleIssueType?: string | null;
+  lastSkippedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  lastSeenAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  sourceDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   currentValue?: number | null;
   depotValue?: number | null;
   cashValue?: number | null;
+  debtValue?: number | null;
+  reservedValue?: number | null;
   availableWithCredit?: number | null;
   creditLineEstimate?: number | null;
   costValue?: number | null;
@@ -90,6 +103,7 @@ export interface SourceSummaryAccount {
   transactionNewCount?: number | null;
   transactionDuplicateCount?: number | null;
   latestTransactionDate?: string | null;
+  sourceDataProvider?: string | null;
 }
 
 export interface BankLedgerEntryDocument {
@@ -160,7 +174,26 @@ export interface AgentStatusDocument {
   source?: string;
   status?: "OK" | "WARNUNG" | "FEHLER" | "RUNNING" | string;
   message?: string | null;
+  runSummary?: string | null;
   warningCount?: number | null;
+  skippedBanks?: Array<{
+    bank?: string | null;
+    label?: string | null;
+    reason?: string | null;
+  }> | null;
+  bankErrors?: Array<{
+    bank?: string | null;
+    label?: string | null;
+    message?: string | null;
+  }> | null;
+  transactionStats?: Array<{
+    bank?: string | null;
+    fetchedCount?: number | null;
+    newCount?: number | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    mode?: string | null;
+  }> | null;
   unknownCount?: number | null;
   portalDocumentFailedCount?: number | null;
   portalDocumentUnresolvedFailureCount?: number | null;
@@ -183,6 +216,20 @@ export interface AutomationCommandDocument {
   status?: "REQUESTED" | "RUNNING" | "DONE" | "ERROR" | string;
   errorMessage?: string | null;
   requestedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
+export interface EquatePlusManualInputDocument {
+  id: string;
+  source?: "equateplus" | string;
+  instrumentId?: "novartis" | string;
+  isin?: "CH0012005267" | string;
+  name?: string | null;
+  quantity?: number | null;
+  entryValueEur?: number | null;
+  entryValueCurrency?: "EUR" | string;
+  discountPct?: number | null;
+  updatedBy?: string | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
@@ -244,7 +291,7 @@ export interface DocumentInboxItem {
   id: string;
   source: string;
   origin: "sourceDocument" | "sourceDocumentFact";
-  severity: "warning" | "error";
+  severity: "warning" | "error" | "info";
   title: string;
   message: string;
   documentType?: string | null;
@@ -346,14 +393,17 @@ function documentRecordToInboxItem(document: SourceDocumentIssueRecord): Documen
   const storagePath = document.storagePath ?? document.rawStoragePath ?? null;
   const driveUrl = document.driveWebUrl ?? document.driveUrl ?? null;
   const canOpenPdf = Boolean(document.filePath && document.fileName?.toLowerCase().endsWith(".pdf"));
+  const isParsed = document.parseStatus === "PARSED" || document.status === "PARSED";
   const localDocumentUrl = canOpenPdf ? `http://127.0.0.1:5176/documents/${encodeURIComponent(document.id)}` : null;
   return {
     id: `document:${document.id}`,
     source: document.source ?? "unknown",
     origin: "sourceDocument",
-    severity: document.parseStatus === "ERROR" || document.parseStatus === "FEHLER" ? "error" : "warning",
+    severity: isParsed ? "info" : document.parseStatus === "ERROR" || document.parseStatus === "FEHLER" ? "error" : "warning",
     title: document.fileName ?? "Unbekanntes Dokument",
-    message: `Dokumenttyp ${documentType} wurde noch nicht fachlich klassifiziert.`,
+    message: isParsed
+      ? `Dokumenttyp ${documentType} wurde verarbeitet und bleibt im Archiv sichtbar.`
+      : `Dokumenttyp ${documentType} wartet auf Entscheidung oder spaeteren Parser.`,
     documentType,
     label: document.fileName ?? documentType,
     date: document.updatedAt ?? null,
@@ -427,6 +477,8 @@ const numericPositionFields = [
   "currentValueUsdt",
   "externalQuoteValue",
   "externalQuoteDifference",
+  "externalQuotePrice",
+  "externalQuotePriceEur",
   "costValue",
   "costValueQuote",
   "performanceValue",
@@ -470,6 +522,40 @@ export async function loadSourcePositions(db: Firestore): Promise<PortfolioPosit
       ...(doc.data() as Omit<PortfolioPosition, "id">),
     }),
   );
+}
+
+export async function loadEquatePlusManualInput(
+  db: Firestore,
+): Promise<EquatePlusManualInputDocument | null> {
+  const snapshot = await getDoc(doc(db, "manualInputs", "equateplus_novartis"));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() as Omit<EquatePlusManualInputDocument, "id">;
+  return {
+    id: snapshot.id,
+    ...data,
+    quantity: parseMaybeNumber(data.quantity) as number | null,
+    entryValueEur: parseMaybeNumber(data.entryValueEur) as number | null,
+    discountPct: parseMaybeNumber(data.discountPct) as number | null,
+  };
+}
+
+export async function saveEquatePlusManualInput(
+  db: Firestore,
+  input: { quantity: number; entryValueEur: number },
+  updatedBy?: string | null,
+) {
+  await setDoc(doc(db, "manualInputs", "equateplus_novartis"), {
+    source: "equateplus",
+    instrumentId: "novartis",
+    isin: "CH0012005267",
+    name: "Novartis",
+    quantity: input.quantity,
+    entryValueEur: input.entryValueEur,
+    entryValueCurrency: "EUR",
+    discountPct: 0.15,
+    updatedBy: updatedBy ?? null,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 function parseDateMillis(value: BankLedgerEntryDocument["date"]) {
@@ -527,6 +613,9 @@ export async function loadDocumentInboxItems(
 
   return [
     ...documents.filter(isUnknownDocument).map(documentRecordToInboxItem),
+    ...documents
+      .filter((document) => document.source === "intergold" && !isUnknownDocument(document))
+      .map(documentRecordToInboxItem),
     ...facts.filter(isUnknownFact).map(factRecordToInboxItem),
   ]
     .filter((item) => !sourceId || item.source === sourceId)

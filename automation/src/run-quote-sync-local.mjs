@@ -35,6 +35,10 @@ await firestore.setDocument("agentStatus", "quotes", {
 });
 
 try {
+  runScript(
+    "sync-equateplus-manual-local.mjs",
+    writeHistoryEnabled ? ["--write", "--write-history"] : ["--write"],
+  );
   runScript("sync-quotes-local.mjs", writeHistoryEnabled ? ["--write", "--write-history"] : ["--write"]);
   if (writeHistoryEnabled) runScript("sync-position-history-local.mjs", ["--write"]);
   const finishedAt = new Date();
@@ -47,7 +51,6 @@ try {
     lastSuccessAt: finishedAt,
     updatedAt: finishedAt,
   });
-  runScript("check-health-local.mjs");
 } catch (error) {
   const failedAt = new Date();
   await firestore.setDocument("agentStatus", "quotes", {

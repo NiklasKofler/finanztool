@@ -34,5 +34,5 @@ launchctl bootstrap "gui/$UID" "$api_plist_path"
 launchctl bootstrap "gui/$UID" "$documents_plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.ginmon-sync"
 
-echo "[ok] Ginmon-API-Sync laeuft stuendlich."
+echo "[ok] Ginmon-API-Sync laeuft alle 5 Minuten."
 echo "[ok] Ginmon-Dokumentimport laeuft taeglich um 02:00."

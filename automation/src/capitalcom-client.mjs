@@ -35,6 +35,14 @@ function roundCurrency(value) {
   return typeof value === "number" ? Math.round(value * 100) / 100 : value;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryStatus(status) {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
 function accountCurrency(account) {
   return account.currency ?? account.balance?.currency ?? account.accountCurrency ?? null;
 }
@@ -114,32 +122,40 @@ export class CapitalComClient {
   }
 
   async createSession() {
-    const response = await fetch(`${this.baseUrl}/session`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CAP-API-KEY": this.apiKey,
-      },
-      body: JSON.stringify({
-        identifier: this.identifier,
-        password: this.apiPassword,
-        encryptedPassword: false,
-      }),
-    });
-    const json = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new CapitalComApiError({
+    const maxAttempts = 3;
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const response = await fetch(`${this.baseUrl}/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CAP-API-KEY": this.apiKey,
+        },
+        body: JSON.stringify({
+          identifier: this.identifier,
+          password: this.apiPassword,
+          encryptedPassword: false,
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok) {
+        this.cst = response.headers.get("cst");
+        this.securityToken = response.headers.get("x-security-token");
+        if (!this.cst || !this.securityToken) {
+          throw new Error("Capital.com Session gestartet, aber CST oder X-SECURITY-TOKEN fehlt.");
+        }
+        return json;
+      }
+
+      lastError = new CapitalComApiError({
         status: response.status,
         message: json?.errorCode ?? json?.message ?? response.statusText,
         requestPath: "/session",
       });
+      if (!shouldRetryStatus(response.status) || attempt === maxAttempts) throw lastError;
+      await sleep(750 * attempt);
     }
-    this.cst = response.headers.get("cst");
-    this.securityToken = response.headers.get("x-security-token");
-    if (!this.cst || !this.securityToken) {
-      throw new Error("Capital.com Session gestartet, aber CST oder X-SECURITY-TOKEN fehlt.");
-    }
-    return json;
+    throw lastError;
   }
 
   async request(method, requestPath, { params } = {}) {
@@ -178,6 +194,18 @@ export class CapitalComClient {
   getPositions() {
     return this.request("GET", "/positions");
   }
+
+  getWorkingOrders() {
+    return this.request("GET", "/workingorders");
+  }
+
+  getHistoryTransactions({ from, to } = {}) {
+    return this.request("GET", "/history/transactions", { params: { from, to } });
+  }
+
+  getHistoryActivity({ from, to } = {}) {
+    return this.request("GET", "/history/activity", { params: { from, to } });
+  }
 }
 
 export async function createCapitalComClientFromLocalSecrets() {
@@ -209,14 +237,19 @@ export async function createCapitalComClientFromLocalSecrets() {
 export async function fetchCapitalComPortfolioSnapshot(client) {
   if (!client) throw new Error("fetchCapitalComPortfolioSnapshot benoetigt einen CapitalComClient.");
   await client.startSession();
-  const [session, accountsPayload, positionsPayload] = await Promise.all([
+  const [session, accountsPayload, positionsPayload, workingOrdersPayload] = await Promise.all([
     client.getSession(),
     client.getAccounts(),
     client.getPositions(),
+    client.getWorkingOrders().catch((error) => ({
+      warning: error instanceof Error ? error.message : String(error),
+      workingOrders: [],
+    })),
   ]);
 
   const accounts = accountsPayload.accounts ?? accountsPayload.clientAccounts ?? [];
   const rawPositions = positionsPayload.positions ?? [];
+  const rawWorkingOrders = workingOrdersPayload.workingOrders ?? workingOrdersPayload.orders ?? [];
   const eurAccounts = accounts.filter((account) => accountCurrency(account) === "EUR");
   const nonEurAccounts = accounts.filter((account) => accountCurrency(account) && accountCurrency(account) !== "EUR");
   const accountValue = roundCurrency(sum(eurAccounts.map(accountBalanceValue)));
@@ -243,6 +276,10 @@ export async function fetchCapitalComPortfolioSnapshot(client) {
       accountValueIncluded: false,
       valuationDate,
       valuationMethod: "capitalcom_api_positions_v1",
+      sourceDataProvider: "capitalcom_api",
+      sourceDataUpdatedAt: valuationDate,
+      quoteDataProvider: "capitalcom_api",
+      quoteDataUpdatedAt: valuationDate,
       rawDirection: positionDirection(position),
       rawEpic: epic,
       rawDealId: position.position?.dealId ?? position.dealId ?? null,
@@ -267,8 +304,66 @@ export async function fetchCapitalComPortfolioSnapshot(client) {
       available: roundCurrency(accountAvailableValue(account)),
       preferred: Boolean(account.preferred),
     })),
+    workingOrderCount: rawWorkingOrders.length,
+    workingOrders: rawWorkingOrders,
     nonEurAccountCount: nonEurAccounts.length,
+    raw: {
+      session,
+      accountsPayload,
+      positionsPayload,
+      workingOrdersPayload,
+    },
     positions,
-    status: nonEurAccounts.length ? "WARNUNG" : "VERIFIED",
+    warnings: [
+      ...(nonEurAccounts.length ? [`${nonEurAccounts.length} Nicht-EUR-Konto/Konten erkannt`] : []),
+      ...(workingOrdersPayload.warning ? [`Working Orders konnten nicht gelesen werden: ${workingOrdersPayload.warning}`] : []),
+    ],
+    status: nonEurAccounts.length || workingOrdersPayload.warning ? "WARNUNG" : "VERIFIED",
+  };
+}
+
+export async function fetchCapitalComHistory(client, { from, to } = {}) {
+  if (!client) throw new Error("fetchCapitalComHistory benoetigt einen CapitalComClient.");
+  const warnings = [];
+  const [transactionsPayload, activityPayload] = await Promise.all([
+    client.getHistoryTransactions({ from, to }).catch((error) => {
+      warnings.push({
+        scope: "history_transactions",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return { transactions: [] };
+    }),
+    client.getHistoryActivity({ from, to }).catch((error) => {
+      warnings.push({
+        scope: "history_activity",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return { activities: [] };
+    }),
+  ]);
+
+  const transactions =
+    transactionsPayload.transactions ??
+    transactionsPayload.history ??
+    transactionsPayload.items ??
+    transactionsPayload.activities ??
+    [];
+  const activity =
+    activityPayload.activities ??
+    activityPayload.activity ??
+    activityPayload.history ??
+    activityPayload.items ??
+    [];
+
+  return {
+    from,
+    to,
+    transactions,
+    activity,
+    raw: {
+      transactionsPayload,
+      activityPayload,
+    },
+    warnings,
   };
 }

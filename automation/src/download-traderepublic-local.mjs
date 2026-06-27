@@ -3,10 +3,10 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
 import { FirestoreRest } from "./firestore-rest.mjs";
+import { normalizeEventDocument } from "./event-model.mjs";
 import { extractPdfText } from "./pdf-text.mjs";
 import {
   TRADE_REPUBLIC_TRANSACTIONS_URL,
@@ -17,11 +17,12 @@ import {
 const TRADE_REPUBLIC_PORTFOLIO_URL = "https://app.traderepublic.com/portfolio?timeframe=1d";
 const TRADE_REPUBLIC_ACTIVITY_URL = "https://app.traderepublic.com/profile/activities";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../..");
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const source = "traderepublic";
 const writeEnabled = process.argv.includes("--write");
 const headless = process.argv.includes("--headless");
+const snapshotOnly = process.argv.includes("--snapshot-only");
+const fullPortalScan = process.argv.includes("--full-portal-scan");
 const applyExistingPortalDocsOnly = process.argv.includes("--apply-existing-portal-docs");
 const keepBrowserOpen = process.argv.includes("--keep-open") || process.env.TR_KEEP_BROWSER_OPEN === "1";
 const driveRoot =
@@ -35,7 +36,6 @@ const driveRoot =
     "Depot",
   );
 
-const portalInboxDir = path.join(driveRoot, "00_Inbox", "TradeRepublic", "ManualExports", "Portal");
 const portalDocumentOriginalDir = path.join(driveRoot, "01_Originale", "TradeRepublic", "PortalDocuments");
 const portalSnapshotDir = path.join(
   driveRoot,
@@ -46,14 +46,19 @@ const portalSnapshotDir = path.join(
 );
 const portalDocumentTextDir = path.join(driveRoot, "02_Archiviert", "TradeRepublic", "PortalDocuments", "Text");
 const portalDocumentScanLimit = Number.parseInt(process.env.TR_PORTAL_DOCUMENT_SCAN_LIMIT ?? "16", 10);
+const portalStopAfterKnownTransactions = fullPortalScan
+  ? 0
+  : Number.parseInt(process.env.TR_PORTAL_STOP_AFTER_KNOWN_TRANSACTIONS ?? "5", 10);
 const portalDocumentOpenTimeoutMs = Number.parseInt(process.env.TR_PORTAL_DOCUMENT_OPEN_TIMEOUT_MS ?? "8000", 10);
 const portalPdfFetchTimeoutMs = Number.parseInt(process.env.TR_PORTAL_PDF_FETCH_TIMEOUT_MS ?? "12000", 10);
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(
-    "Nutzung: node src/download-traderepublic-local.mjs [--write] [--headless] [--keep-open] [--apply-existing-portal-docs]",
+    "Nutzung: node src/download-traderepublic-local.mjs [--write] [--headless] [--keep-open] [--snapshot-only] [--full-portal-scan] [--apply-existing-portal-docs]",
   );
-  console.log("Oeffnet Trade Republic, wartet bei Bedarf auf App-Bestaetigung und importiert nur echte Portal-Downloads.");
+  console.log("Oeffnet Trade Republic, wartet bei Bedarf auf App-Bestaetigung, liest den Portal-Snapshot und prueft Portal-Dokumente.");
+  console.log("--snapshot-only liest nur den aktuellen Portal-Snapshot und ueberspringt den langsamen Dokument-/Transaktionsdetailscan.");
+  console.log("--full-portal-scan deaktiviert die Abbruchregel nach mehreren bereits bekannten Transaktionen.");
   console.log("--apply-existing-portal-docs wendet bereits geladene Portal-Dokumentfakten ohne Browser-Login operativ an.");
   process.exit(0);
 }
@@ -133,6 +138,10 @@ function roundQuantity(value) {
     : value;
 }
 
+async function setEventDocument(firestoreClient, collection, id, data, now = new Date()) {
+  await firestoreClient.setDocument(collection, id, normalizeEventDocument(collection, { id, ...data }, now));
+}
+
 async function getFirestore() {
   if (!writeEnabled) return null;
   if (firestore) return firestore;
@@ -208,7 +217,6 @@ async function writeStatus(status, message, extra = {}) {
 
 async function ensureDirectories() {
   await Promise.all([
-    fs.mkdir(portalInboxDir, { recursive: true }),
     fs.mkdir(portalDocumentOriginalDir, { recursive: true }),
     fs.mkdir(portalSnapshotDir, { recursive: true }),
     fs.mkdir(portalDocumentTextDir, { recursive: true }),
@@ -394,6 +402,18 @@ function portalCashNaturalKey(fact) {
   );
 }
 
+function portalTaxReportNaturalKey(fact) {
+  return sanitizeId(
+    [
+      "tax_report",
+      fact.taxYear ?? "",
+      fact.referenceNumber ?? "",
+      fact.depotNumber ?? "",
+      fact.accountNumber ?? "",
+    ].join("|"),
+  );
+}
+
 function matchesManualTradeFact(manualFact, portalFact) {
   if (manualFact.source !== source || !String(manualFact.id ?? "").startsWith("traderepublic_tx_")) return false;
   const portalDate = portalFact.transactionPortalDate ?? portalFact.documentDate;
@@ -448,6 +468,16 @@ function matchesManualIncomeFact(manualFact, portalFact) {
   return Math.abs(Math.abs(manualFact.amount) - Math.abs(portalAmount)) < 0.02;
 }
 
+function matchesManualTaxReportFact(manualFact, portalFact) {
+  if (manualFact.source !== source) return false;
+  if (manualFact.factType !== "tax_report") return false;
+  if (!portalFact.taxYear || String(manualFact.taxYear ?? "") !== String(portalFact.taxYear)) return false;
+  if (manualFact.referenceNumber && portalFact.referenceNumber) {
+    return String(manualFact.referenceNumber) === String(portalFact.referenceNumber);
+  }
+  return true;
+}
+
 function hasManualDuplicateForPortalFact(manualFacts, portalFact) {
   if (portalFact.factType === "security_execution") {
     return manualFacts.some((manualFact) => matchesManualTradeFact(manualFact, portalFact));
@@ -457,6 +487,9 @@ function hasManualDuplicateForPortalFact(manualFacts, portalFact) {
   }
   if (portalFact.factType === "interest") {
     return manualFacts.some((manualFact) => matchesManualIncomeFact(manualFact, portalFact));
+  }
+  if (portalFact.factType === "tax_report") {
+    return manualFacts.some((manualFact) => matchesManualTaxReportFact(manualFact, portalFact));
   }
   return false;
 }
@@ -499,6 +532,33 @@ async function collectPortalSnapshot(page) {
   };
 }
 
+function assertUsablePortalSnapshot(snapshot) {
+  const issues = [];
+  if (typeof snapshot?.portfolio?.totalValue !== "number") issues.push("Portfolio-Gesamtwert fehlt");
+  if (!Array.isArray(snapshot?.portfolio?.positions) || snapshot.portfolio.positions.length === 0) {
+    issues.push("keine sichtbaren Portfolio-Positionen erkannt");
+  } else {
+    const listedValue = snapshot.portfolio.positions.reduce(
+      (sum, position) => sum + (typeof position.currentValue === "number" ? position.currentValue : 0),
+      0,
+    );
+    const zeroValuedQuantityPositions = snapshot.portfolio.positions.filter(
+      (position) =>
+        typeof position.quantity === "number" &&
+        position.quantity > 0 &&
+        (!Number.isFinite(position.currentValue) || position.currentValue <= 0),
+    );
+    if (listedValue <= 0) issues.push("gelistete Portal-Positionen haben keinen positiven Wert");
+    if (zeroValuedQuantityPositions.length >= 2) {
+      issues.push(`${zeroValuedQuantityPositions.length} Portal-Positionen mit Stueckzahl, aber Wert 0`);
+    }
+  }
+  if (typeof snapshot?.transactions?.cashValue !== "number") issues.push("Cashwert fehlt");
+  if (issues.length) {
+    throw new Error(`Trade-Republic-Portal-Snapshot unvollstaendig: ${issues.join(", ")}.`);
+  }
+}
+
 async function savePortalSnapshot(snapshot) {
   const target = path.join(portalSnapshotDir, `${timestampForFilename(snapshot.observedAt)}_portal_snapshot.json`);
   await fs.writeFile(target, JSON.stringify(snapshot, null, 2));
@@ -522,6 +582,25 @@ async function scrollLoadedTransactions(page) {
     await page.waitForTimeout(900);
   }
   await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+}
+
+function transactionButtonLocator(page) {
+  return page.locator('li > div[role="button"], li [role="button"]').filter({
+    hasText: /\b(\d{1,2}\/\d{1,2}|Saving executed|Savings plan|Cash In|Interest|Completed|Dividend|Private Equity)\b/i,
+    hasNotText: /Documents?|Billing Execution|Inbound Invoice|Statement|Transaction confirmation|Dividend equivalent/i,
+  });
+}
+
+async function waitForRecentTransactions(page) {
+  const minimumCount = Math.min(Math.max(portalStopAfterKnownTransactions, 5), portalDocumentScanLimit);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const count = await transactionButtonLocator(page).count().catch(() => 0);
+    if (count >= minimumCount) break;
+    await page.mouse.wheel(0, 900).catch(() => {});
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+  await page.waitForTimeout(400);
 }
 
 function sha256(content) {
@@ -1378,6 +1457,19 @@ async function cleanupPortalApplicationsSupersededByManual(firestoreClient, fact
     const fact = portalFactsById.get(application.sourceDocumentFactId);
     if (!fact || !hasManualDuplicateForPortalFact(manualFacts, fact)) continue;
 
+    if (fact.factType === "tax_report") {
+      const { id, ...applicationData } = application;
+      await firestoreClient.setDocument("sourceDocumentFacts", id, {
+        ...applicationData,
+        status: "SKIPPED_DUPLICATE_MANUAL",
+        supersededAt: now,
+        message: "Portal-Steuerreport ist inzwischen im manuellen Trade-Republic-Export enthalten.",
+        updatedAt: now,
+      });
+      stats.portalOperationalSupersededByManualCount += 1;
+      continue;
+    }
+
     const transactionId = application.transactionId ?? portalOperationalId("tx", fact);
     const ledgerEntryId = application.ledgerEntryId ?? portalOperationalId("ledger", fact);
     if (fact.factType === "security_execution") {
@@ -1412,7 +1504,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
     firestoreClient.listDocuments("sourceDocumentFacts"),
     firestoreClient.listDocuments("sourcePositions"),
   ]);
-  const manualFacts = facts.filter((fact) => fact.source === source && String(fact.id ?? "").startsWith("traderepublic_tx_"));
+  const manualFacts = facts.filter((fact) => fact.source === source && !isPortalDataChannel(fact));
   const cleanupStats = await cleanupPortalApplicationsSupersededByManual(firestoreClient, facts, manualFacts, now);
   const applications = new Set(
     facts
@@ -1423,7 +1515,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
   );
   const portalFacts = facts
     .filter(isPortalDataChannel)
-    .filter((fact) => ["security_execution", "cash_deposit", "interest", "cash_transfer"].includes(fact.factType))
+    .filter((fact) => ["security_execution", "cash_deposit", "interest", "cash_transfer", "tax_report"].includes(fact.factType))
     .filter((fact) => fact.parseStatus === "PARSED");
   const positionsById = new Map(positions.filter((position) => position.source === source).map((position) => [position.id, position]));
   const stats = {
@@ -1457,6 +1549,32 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
       updatedAt: now,
     };
 
+    if (fact.factType === "tax_report") {
+      const naturalKey = portalTaxReportNaturalKey(fact);
+      const duplicateManual = hasManualDuplicateForPortalFact(manualFacts, fact);
+      await firestoreClient.setDocument("sourceDocumentFacts", applicationId, {
+        ...baseApplication,
+        status: duplicateManual ? "SKIPPED_DUPLICATE_MANUAL" : "APPLIED",
+        naturalKey,
+        taxYear: fact.taxYear ?? null,
+        depotNumber: fact.depotNumber ?? null,
+        accountNumber: fact.accountNumber ?? null,
+        referenceNumber: fact.referenceNumber ?? null,
+        excessIncomeNotOffset: fact.excessIncomeNotOffset ?? null,
+        capitalGainsTaxOnExcessIncome: fact.capitalGainsTaxOnExcessIncome ?? null,
+        appliedTo: duplicateManual ? [] : ["sourceDocumentFacts"],
+        message: duplicateManual
+          ? "Portal-Steuerreport ist bereits als manueller Trade-Republic-Tax-Report vorhanden."
+          : "Portal-Steuerreport als Jahresinformation gespeichert; keine Cash-Buchung erzeugt.",
+        appliedAt: duplicateManual ? null : now,
+      });
+      applications.add(fact.id);
+      stats.portalOperationalSkippedCount += duplicateManual ? 1 : 0;
+      stats.portalOperationalDuplicateManualCount += duplicateManual ? 1 : 0;
+      stats.portalOperationalAppliedCount += duplicateManual ? 0 : 1;
+      continue;
+    }
+
     if (fact.factType === "security_execution") {
       const naturalKey = portalTradeNaturalKey(fact);
       if (hasManualDuplicateForPortalFact(manualFacts, fact)) {
@@ -1489,7 +1607,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
       const operationId = portalOperationalId("tx", fact);
       const ledgerId = portalOperationalId("ledger", fact);
 
-      await firestoreClient.setDocument("ledgerEntries", ledgerId, {
+      await setEventDocument(firestoreClient, "ledgerEntries", ledgerId, {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: "traderepublic_portal_web",
@@ -1511,7 +1629,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
         updatedAt: now,
       });
 
-      await firestoreClient.setDocument("transactions", operationId, {
+      await setEventDocument(firestoreClient, "transactions", operationId, {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: "traderepublic_portal_web",
@@ -1636,7 +1754,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
             : netAmount;
       const tax = typeof fact.tax === "number" ? Math.abs(roundCurrency(fact.tax)) : null;
       const ledgerId = portalOperationalId("ledger", fact);
-      await firestoreClient.setDocument("ledgerEntries", ledgerId, {
+      await setEventDocument(firestoreClient, "ledgerEntries", ledgerId, {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: fact.sourceChannel ?? "traderepublic_portal_dom",
@@ -1654,7 +1772,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
         provisional: true,
         updatedAt: now,
       });
-      await firestoreClient.setDocument("incomeEvents", portalOperationalId("income", fact), {
+      await setEventDocument(firestoreClient, "incomeEvents", portalOperationalId("income", fact), {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: fact.sourceChannel ?? "traderepublic_portal_dom",
@@ -1673,7 +1791,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
         updatedAt: now,
       });
       if (typeof tax === "number" && tax > 0) {
-        await firestoreClient.setDocument("costEvents", `${ledgerId}_tax`, {
+        await setEventDocument(firestoreClient, "costEvents", `${ledgerId}_tax`, {
           source,
           sourceLabel: "Trade Republic",
           sourceChannel: fact.sourceChannel ?? "traderepublic_portal_dom",
@@ -1726,7 +1844,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
             ? roundCurrency(fact.amount)
             : null;
       const ledgerId = portalOperationalId("ledger", fact);
-      await firestoreClient.setDocument("ledgerEntries", ledgerId, {
+      await setEventDocument(firestoreClient, "ledgerEntries", ledgerId, {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: fact.sourceChannel ?? "traderepublic_portal_dom",
@@ -1782,7 +1900,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
             ? roundCurrency(fact.amount)
             : null;
       const ledgerId = portalOperationalId("ledger", fact);
-      await firestoreClient.setDocument("ledgerEntries", ledgerId, {
+      await setEventDocument(firestoreClient, "ledgerEntries", ledgerId, {
         source,
         sourceLabel: "Trade Republic",
         sourceChannel: "traderepublic_portal_web",
@@ -1801,7 +1919,7 @@ async function applyPortalDocumentFactsToOperationalCollections(firestoreClient,
         updatedAt: now,
       });
       if (typeof fact.fee === "number" && fact.fee > 0) {
-        await firestoreClient.setDocument("costEvents", `${ledgerId}_fee`, {
+        await setEventDocument(firestoreClient, "costEvents", `${ledgerId}_fee`, {
           source,
           sourceLabel: "Trade Republic",
           sourceChannel: "traderepublic_portal_web",
@@ -1847,29 +1965,32 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
   const knownSignatures = await getKnownPortalDocumentSignatures(firestoreClient);
   const stats = {
     portalDocumentScanLimit,
+    portalStopAfterKnownTransactions,
+    portalTransactionScanCandidateCount: 0,
     portalTransactionScannedCount: 0,
+    portalTransactionKnownStopCount: 0,
     portalDocumentFoundCount: 0,
     portalDocumentSkippedKnownCount: 0,
     portalDocumentDownloadedCount: 0,
     portalDocumentDomFallbackCount: 0,
     portalDocumentParsedCount: 0,
     portalDocumentFailedCount: 0,
+    portalTransactionNoDocumentCount: 0,
     portalDocumentUnknownLabels: [],
     portalDocumentFailures: [],
   };
 
   await page.evaluate(() => window.scrollTo(0, 0)).catch(() => null);
   await page.waitForTimeout(500);
-  const transactionButtons = page.locator('li > div[role="button"], li [role="button"]').filter({
-    hasText: /\b(\d{1,2}\/\d{1,2}|Saving executed|Savings plan|Cash In|Interest|Completed|Dividend|Private Equity)\b/i,
-    hasNotText: /Documents?|Billing Execution|Inbound Invoice|Statement|Transaction confirmation|Dividend equivalent/i,
-  });
+  const transactionButtons = transactionButtonLocator(page);
   const count = Math.min(await transactionButtons.count().catch(() => 0), portalDocumentScanLimit);
-  stats.portalTransactionScannedCount = count;
+  stats.portalTransactionScanCandidateCount = count;
+  let consecutiveKnownTransactions = 0;
 
   for (let index = 0; index < count; index += 1) {
     const button = transactionButtons.nth(index);
     if (!(await button.isVisible({ timeout: 1200 }).catch(() => false))) continue;
+    stats.portalTransactionScannedCount += 1;
     const cardDetail = parseTransactionCardText(await button.innerText().catch(() => ""));
     await button.scrollIntoViewIfNeeded().catch(() => null);
     await button.click({ timeout: 5000, force: true }).catch(() => null);
@@ -1892,6 +2013,11 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
         ? visibleLabels
         : transactionDetail.documentLabels;
     stats.portalDocumentFoundCount += labels.length;
+    let transactionHadNewWork = false;
+    let transactionAllDocumentsKnown = true;
+    if (labels.length === 0) {
+      stats.portalTransactionNoDocumentCount += 1;
+    }
 
     for (const label of labels) {
       if (documentTypeFromLabel(label) === "unknown_portal_document") {
@@ -1902,6 +2028,8 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
         stats.portalDocumentSkippedKnownCount += 1;
         continue;
       }
+      transactionAllDocumentsKnown = false;
+      transactionHadNewWork = true;
       try {
         const bytes = await clickDocumentAndReadBytes(context, page, label);
         const document = await savePortalDocumentPdf(bytes, label, transactionDetail);
@@ -1937,6 +2065,18 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
     }
 
     await closeDetailView(page);
+    if (transactionAllDocumentsKnown && !transactionHadNewWork) {
+      consecutiveKnownTransactions += 1;
+      stats.portalTransactionKnownStopCount = consecutiveKnownTransactions;
+      if (
+        portalStopAfterKnownTransactions > 0 &&
+        consecutiveKnownTransactions >= portalStopAfterKnownTransactions
+      ) {
+        break;
+      }
+    } else {
+      consecutiveKnownTransactions = 0;
+    }
   }
 
   stats.portalDocumentUnknownLabels = [...new Set(stats.portalDocumentUnknownLabels)];
@@ -2034,47 +2174,6 @@ async function crawlPortalActivityDocuments(context, page, firestoreClient, now)
     transactionPortalDate: failure.transactionDetail?.portalDate ?? null,
   }));
   return stats;
-}
-
-async function candidateLocators(page) {
-  return [
-    page.getByRole("button", { name: /export|csv|download|herunterladen|exportieren/i }),
-    page.getByRole("link", { name: /export|csv|download|herunterladen|exportieren/i }),
-    page.locator('button, [role="button"], a').filter({
-      hasText: /export|csv|download|herunterladen|exportieren|transaktionen/i,
-    }),
-    page.locator('[aria-label*="Export" i], [aria-label*="Download" i], [aria-label*="CSV" i]'),
-  ];
-}
-
-async function clickAndWaitForDownload(page, locator) {
-  const count = Math.min(await locator.count().catch(() => 0), 8);
-  for (let index = 0; index < count; index += 1) {
-    const item = locator.nth(index);
-    if (!(await item.isVisible({ timeout: 1000 }).catch(() => false))) continue;
-    const downloadPromise = page.waitForEvent("download", { timeout: 15000 }).catch(() => null);
-    await item.click({ timeout: 5000, force: true }).catch(() => null);
-    const download = await downloadPromise;
-    if (download) return download;
-    await page.waitForTimeout(800);
-  }
-  return null;
-}
-
-async function tryOfficialDownload(page) {
-  const locators = await candidateLocators(page);
-  for (const locator of locators) {
-    const download = await clickAndWaitForDownload(page, locator);
-    if (download) return download;
-  }
-  return null;
-}
-
-async function saveDownload(download) {
-  const suggested = sanitizeFileName(download.suggestedFilename() || "trade-republic-export.csv");
-  const target = path.join(portalInboxDir, `${timestampForFilename()}_portal_${suggested}`);
-  await download.saveAs(target);
-  return target;
 }
 
 async function saveDiagnosticSnapshot(page) {
@@ -2258,30 +2357,6 @@ async function applyPortalSnapshot(firestoreClient, snapshot, snapshotPath, now)
   };
 }
 
-function runManualExportImport() {
-  const result = spawnSync(
-    "npm",
-    [
-      "--prefix",
-      "automation",
-      "run",
-      "sync:traderepublic-manual-exports",
-      "--",
-      "--no-mail",
-      "--inbox-dir",
-      portalInboxDir,
-    ],
-    {
-      cwd: repoRoot,
-      env: process.env,
-      stdio: "inherit",
-    },
-  );
-  if (result.status !== 0) {
-    throw new Error(`Trade-Republic-Import nach Portal-Download fehlgeschlagen: Exit ${result.status}`);
-  }
-}
-
 async function main() {
   runStartedAt = new Date();
   await ensureDirectories();
@@ -2318,6 +2393,7 @@ async function main() {
 
     await writeStatus("RUNNING", "Portal-Snapshot wird gelesen");
     const snapshot = await collectPortalSnapshot(page);
+    assertUsablePortalSnapshot(snapshot);
     const snapshotPath = await savePortalSnapshot(snapshot);
     const client = await getFirestore();
     let portalStats = null;
@@ -2325,10 +2401,25 @@ async function main() {
       portalStats = await applyPortalSnapshot(client, snapshot, snapshotPath, new Date());
     }
 
+    if (snapshotOnly) {
+      await writeStatus("OK", "Portal-Snapshot aktualisiert; Dokument- und Transaktionsdetailscan uebersprungen", {
+        portalSnapshotPath: snapshotPath,
+        lastPortalObservedAt: snapshot.observedAt,
+        portalScanMode: "snapshot_only",
+        ...(portalStats ?? {}),
+      });
+      console.log(`[ok] Trade-Republic-Portal-Snapshot aktualisiert (schneller Lauf): ${snapshotPath}`);
+      return;
+    }
+
     await writeStatus("RUNNING", "Transaction-History-Seite wird geoeffnet");
     await page.goto(TRADE_REPUBLIC_TRANSACTIONS_URL, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3500);
-    await scrollLoadedTransactions(page);
+    if (fullPortalScan) {
+      await scrollLoadedTransactions(page);
+    } else {
+      await waitForRecentTransactions(page);
+    }
 
     await writeStatus("RUNNING", "Portal-PDFs werden gesucht und geprueft");
     const portalDocumentStats = await crawlPortalDocuments(context, page, client, new Date());
@@ -2360,48 +2451,19 @@ async function main() {
       return;
     }
 
-    await writeStatus("RUNNING", "Offizieller CSV/PDF-Download wird gesucht");
-    const download = await tryOfficialDownload(page);
-    if (!download) {
-      const diagnosticPath = await saveDiagnosticSnapshot(page);
-      const documentMessage =
-        downloadedDocumentCount > 0
-          ? `${downloadedDocumentCount} Portal-PDFs gespeichert`
-          : "keine Portal-PDFs gespeichert";
-      const status = portalHasWarnings(portalDocumentStats, portalActivityDocumentStats, portalDocumentTotals) ? "WARNUNG" : "OK";
-      await writeStatus(status, portalStatusMessage(`Portal-Snapshot aktualisiert; ${documentMessage}; kein globaler Download-Button gefunden`, portalDocumentStats, portalActivityDocumentStats, portalDocumentTotals), {
-        portalSnapshotPath: snapshotPath,
-        diagnosticPath,
-        lastPortalObservedAt: snapshot.observedAt,
-        ...(portalStats ?? {}),
-        ...portalDocumentStats,
-        ...portalActivityDocumentStats,
-        ...portalOperationalStats,
-        ...portalDocumentTotals,
-      });
-      console.log(
-        `[ok] Trade-Republic-Portal-Snapshot aktualisiert. ${documentMessage}. Kein globaler Download-Button gefunden: ${diagnosticPath}`,
-      );
-      return;
-    }
-
-    const downloadedPath = await saveDownload(download);
-    await writeStatus("RUNNING", `Download gespeichert: ${path.basename(downloadedPath)}`);
-    if (writeEnabled) runManualExportImport();
-
+    const diagnosticPath = await saveDiagnosticSnapshot(page);
     const status = portalHasWarnings(portalDocumentStats, portalActivityDocumentStats, portalDocumentTotals) ? "WARNUNG" : "OK";
-    await writeStatus(status, portalStatusMessage(`Portal-Download importiert: ${path.basename(downloadedPath)}`, portalDocumentStats, portalActivityDocumentStats, portalDocumentTotals), {
-      downloadedFile: downloadedPath,
+    await writeStatus(status, portalStatusMessage("Portal-Snapshot aktualisiert; keine neuen Portal-PDFs gespeichert", portalDocumentStats, portalActivityDocumentStats, portalDocumentTotals), {
       portalSnapshotPath: snapshotPath,
+      diagnosticPath,
       lastPortalObservedAt: snapshot.observedAt,
-      lastDownloadedAt: new Date(),
       ...(portalStats ?? {}),
       ...portalDocumentStats,
       ...portalActivityDocumentStats,
       ...portalOperationalStats,
       ...portalDocumentTotals,
     });
-    console.log(`[ok] Trade-Republic-Portal-Download: ${downloadedPath}`);
+    console.log(`[ok] Trade-Republic-Portal-Snapshot aktualisiert. Keine neuen Portal-PDFs gespeichert: ${diagnosticPath}`);
   } catch (error) {
     await writeStatus("FEHLER", error instanceof Error ? error.message : String(error));
     throw error;

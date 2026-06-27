@@ -57,6 +57,58 @@ Lokale Besonderheiten:
 
 ## Eintraege
 
+### 2026-06-27 14:55 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
+
+Datum/Zeit: 2026-06-27 14:55 CEST
+Quellgeraet: Mac Studio von Niklas
+Zielgeraet: MacBook Pro
+Commit/Stand: Ausgangscommit `6866c3a`; Handoff-Commit wird in diesem
+`ftp`-Lauf erstellt
+Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
+Firebase deployen
+Erledigt:
+- `ftp` wurde auf Mac Studio von Niklas gestartet
+- App-Build wird im Workflow ausgefuehrt
+- Geaenderte Dateien vor Handoff:
+  - M README.md
+  -  M app/src/App.css
+  -  M app/src/App.tsx
+  -  M app/src/domain/seedData.ts
+  -  M app/src/domain/types.ts
+  -  M app/src/firebase/sourceSummaries.ts
+  -  M automation/README.md
+  -  M automation/launchd/com.niklas.finanztool.flatex-sync.plist.template
+  -  M automation/launchd/com.niklas.finanztool.ginmon-sync.plist.template
+  -  M automation/launchd/com.niklas.finanztool.quote-history.plist.template
+  -  M automation/launchd/com.niklas.finanztool.quote-sync.plist.template
+  -  D automation/launchd/com.niklas.finanztool.traderepublic-mail.plist.template
+  -  M automation/launchd/com.niklas.finanztool.vbv-sync.plist.template
+  -  M automation/package.json
+  -  M automation/src/capitalcom-client.mjs
+  -  M automation/src/check-capitalcom.mjs
+  -  M automation/src/check-health-local.mjs
+  -  M automation/src/download-flatex-local.mjs
+  -  M automation/src/download-ginmon-local.mjs
+  -  M automation/src/download-traderepublic-local.mjs
+  -  M automation/src/flatex-browser.mjs
+  -  M automation/src/flatex-document-parser.mjs
+  -  M automation/src/ginmon-browser.mjs
+  -  M automation/src/ginmon-parser.mjs
+  -  M automation/src/import-capitalcom-local.mjs
+  -  M automation/src/install-all-agents.sh
+  -  M automation/src/install-flatex-launch-agent.sh
+  -  M automation/src/install-ginmon-launch-agent.sh
+  -  D automation/src/install-traderepublic-mail-agent.sh
+  -  M automation/src/install-vbv-launch-agent.sh
+Naechste Schritte:
+- Auf MacBook Pro `ftd` ausfuehren
+- Danach lokalen Status, Secrets und ggf. Agents pruefen
+Wechselprobleme:
+- Secrets und produktive LaunchAgents werden nicht per Git uebertragen
+- Mac Studio bleibt produktiver Agent-Knoten
+Lokale Besonderheiten:
+- Kurzbefehle: `ftd` Download, `fts` Save, `ftp` Publish; `ftu` ist alter Alias
+
 ### 2026-06-27 00:42 CEST - ftp Handoff Mac Studio von Niklas zu MacBook Pro
 
 Datum/Zeit: 2026-06-27 00:42 CEST

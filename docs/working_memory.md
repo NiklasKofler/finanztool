@@ -54,6 +54,36 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   schnell liefern statt unnoetig alte Historie erneut zu pruefen.
 - Prioritaet der Datenhaltung: aktuelle Finanzlage, dann Preis-/Kurshistorie,
   dann Kosten, Steuern, Zinsen und Produktdetails.
+- Entscheidung 2026-06-27: Vor Dashboards wird zuerst die Datenbasis der
+  Kernquellen bereinigt. EquatePlus und Kreditkarten sind fuer diesen
+  Datenbasis-Cleanup zurueckgestellt. Bestehende Basiswerte duerfen sichtbar
+  bleiben, aber keine weitere Portal-/Dokument-/Transaktionsautomatisierung
+  dafuer, bis Flatex, Trade Republic, Ginmon, Intergold, Bitget, VBV und
+  Bankkonten ohne Kreditkarten sauber normalisiert sind.
+- Entscheidung 2026-06-27: Kosten, Steuern, Ertraege und Transaktionen werden
+  nicht in eine neue parallele Wahrheit verschoben, sondern in den bestehenden
+  Collections `transactions`, `ledgerEntries`, `costEvents` und
+  `incomeEvents` mit einem gemeinsamen Zuordnungsmodell vereinheitlicht.
+  Zentrale Felder sind `eventGroupId`, `instrumentId`, `sourceAccountId`,
+  `financialImpactEur`, `allocationStatus`, `allocationMethod`,
+  `allocationConfidence`, `comparisonScope`, `costClass` und `incomeClass`.
+  Damit koennen Kosten spaeter auf Gesamtportfolio, Broker, Konto, Produkt,
+  Position und Einzelvorgang ausgewertet werden. Unsichere Daten bleiben als
+  `unallocated`, `pending`, `inferred` oder `estimated` sichtbar.
+- Umsetzung 2026-06-27:
+  - `automation/src/event-model.mjs`
+  - `automation/src/backfill-event-model-local.mjs`
+  - NPM-Befehle `reconcile:event-model` und `sync:event-model`
+  - bestehende Firestore-Events aktualisiert: `294` Transaktionen,
+    `3550` Ledger-Eintraege, `283` Kostenereignisse, `178` Ertragsereignisse.
+  - Folgelauf ist effizient: `reconcile:event-model` meldet danach
+    `changed=0`.
+- Datenbasis-Cleanup-Plan:
+  [docs/data_basis_cleanup_plan_2026-06-27.md](/Users/niklaskofler/Documents/finanztool/docs/data_basis_cleanup_plan_2026-06-27.md)
+- Kreditkarten werden als Unterkonten der Bankkarte `bank_accounts` gefuehrt,
+  nicht als eigene Depotkarten. Der offene Saldo zaehlt als negativer Wert zum
+  Vermoegen/Geldstand. Verfuegbarer Kredit und Kreditlimit sind
+  Transparenzwerte und duerfen nicht als Vermoegen gezaehlt werden.
 - Die bevorzugten Terminal-Kurzbefehle sind:
   - `ftd` = Download/Update
   - `fts` = Save/lokaler Commit
@@ -85,10 +115,13 @@ Zielbild:
 - Der Trade-Republic-Mail-Agent soll fachlich abgeloest werden.
 - Zielquelle ist das authentifizierte Trade-Republic-Webportal.
 - Prioritaet der Datenquellen:
-  1. Offizielle PDFs/Downloads aus dem Webportal, wenn vorhanden.
-  2. DOM-/Accessibility-Scraping nur fuer aktuelle Portalwerte oder wenn ein
-     offizieller Download nicht angeboten wird.
-  3. Selbst gemailte App-Exporte bleiben nur Rueckfall-/Kontrollkanal, bis der
+  1. Portal-Snapshot aus dem Webportal fuer aktuelle Werte, Cash,
+     Brokerage-Positionen und Private Markets.
+  2. Einzelne Portal-Dokumente aus Transaktions-/Activity-Details fuer Kosten,
+     Zinsen, Steuern und Dokumentfakten.
+  3. Kein globaler CSV/PDF-Export: Diese Suche ist seit 2026-06-27 bewusst
+     aus dem Agenten entfernt.
+  4. Selbst gemailte App-Exporte bleiben nur Rueckfall-/Kontrollkanal, bis der
      Portal-Agent alle notwendigen Informationen nachweislich vollstaendig
      liefert.
 
@@ -121,6 +154,80 @@ Umsetzung 2026-06-23:
   Portal-Refreshs jetzt Agentphasen aus `agentStatus/traderepublic_portal`.
 - Wenn die Agentmeldung auf App-Bestaetigung/Freigabe wartet, zeigt der Button
   `App bestätigen`.
+
+Update 2026-06-27:
+
+- Trade Republic bleibt Portal-first. Der alte Mail-/Manual-Export-Kanal ist
+  kein produktiver Standard.
+- Loginlauf wurde getestet; die gespeicherte Portal-Session konnte
+  wiederverwendet werden.
+- Der schnelle Portal-Snapshot aktualisiert aktuelle Werte, Cash und
+  sichtbare Positionen.
+- Der normale Portalcheck ist inkrementell:
+  - kein pauschales Durchscrollen der ganzen Historie
+  - Abbruch nach bekannten/neuenlosen Transaktionen
+  - voller Backfill nur bewusst mit `--full-portal-scan`
+- Schutzregel eingebaut: Ein Trade-Republic-Snapshot wird nur noch angewendet,
+  wenn Gesamtwert, sichtbare Positionen und Cash erkannt wurden. Leere oder
+  halb geladene Portaltexte duerfen Firestore nicht ueberschreiben.
+- Verifizierter aktueller Stand nach Reparaturlauf:
+  - Netto inkl. Cash `2.559,37 EUR`
+  - Depotwert `2.409,88 EUR`
+  - Cash `149,49 EUR`
+  - G/V `+73,47 EUR` bzw. `+3,14 %`
+- Portal-Faktenstand nach Portal-only-Normalisierung:
+  - `69` Portal-Datenfakten
+  - `69` Portal-Anwendungen
+  - `0` offene erkannte Portal-Fakten
+  - `63` Portal-Fakten als historische/manuelle Baseline-Duplikate markiert
+  - `6` Portal-Fakten angewendet
+  - Tax Report 2025 als Jahresinformation angewendet, ohne Cash-Buchung
+- Befund/Fix 2026-06-27:
+  - Ein Trade-Republic-Portal-Snapshot kann formal geladen sein und trotzdem
+    fachlich falsch sein, z. B. gelistete Positionen mit Stueckzahl, aber Wert
+    `0`.
+  - Solche Snapshots werden ab jetzt als unvollstaendig abgelehnt.
+  - Der letzte schlechte Snapshot wurde verworfen und der plausible
+    Portal-Snapshot `20260627_09-10-11_portal_snapshot.json` wiederhergestellt.
+  - Trade Republic bleibt primaer `traderepublic_portal_web`.
+  - Boerse Frankfurt wird nur als externe Vergleichsquelle in
+    `externalQuote*` Feldern gespeichert und darf den Portalwert nicht mehr
+    ueberschreiben.
+- UI-Entscheidung 2026-06-27:
+  - Trade-Republic-Karte startet standardmaessig im Modus `Aktuell`.
+  - `Aktuell` verwendet Frankfurt-Kurse fuer gelistete Positionen, damit die
+    Anzeige ohne manuellen Portal-Refresh naehere Kurswerte hat.
+  - `Broker` zeigt die letzte echte Trade-Republic-Portalbewertung.
+  - Cash und Private Markets bleiben in beiden Modi aus dem Portal.
+  - Die Karte zeigt getrennt `TR Stand` und `Frankfurt`, damit jederzeit
+    sichtbar ist, wann welche Quelle zuletzt aktualisiert wurde.
+  - Korrektur 2026-06-27: Der Frankfurt-Vergleichswert
+    `externalQuoteDifference` wird nur gegen den Brokerage-Wert der gelisteten
+    Wertpapiere gerechnet, nicht gegen Private Markets oder Cash.
+- Abschlusscheck 2026-06-27 11:13 CEST:
+  - schneller Portal-Refresh erfolgreich:
+    `20260627_11-12-49_portal_snapshot.json`
+  - `agentStatus/traderepublic_portal=OK`
+  - keine offenen Trade-Republic-Dokumente im zentralen Postfach
+  - Firestore-Stand:
+    - `6` Positionen inkl. Cash
+    - `78` Source-Dokumente
+    - `351` Source-Dokumentfakten
+    - `112` Transaktionen
+    - `212` Ledger-Zeilen
+    - `13` Kostenereignisse
+    - `15` Ertragsereignisse
+  - Werte:
+    - Netto inkl. Cash `2.559,37 EUR`
+    - Depotwert ohne Cash `2.409,88 EUR`
+    - Cash `149,49 EUR`
+    - Einstand `2.336,41 EUR`
+    - G/V `+73,47 EUR` bzw. `+3,14 %`
+  - Trade Republic ist fuer den aktuellen Ausbaustand abgeschlossen. Der
+    naechste Trade-Republic-Schritt waere nur noch ein bewusst geplanter
+    Vollscan/Backfill oder eine spaetere Kosten-/Tax-Dashboard-Auswertung.
+- Details:
+  [docs/traderepublic_import_strategie.md](/Users/niklaskofler/Documents/finanztool/docs/traderepublic_import_strategie.md)
 
 ## Rollen der Geraete
 
@@ -164,11 +271,14 @@ Umsetzung 2026-06-23:
 - Capital.com
 - VBV Vorsorgekasse
 - EquatePlus
-- Bankkonten/Kreditkarten, noch offen:
+- Bankkonten/Kreditkarten:
   - Sparkasse/George
+  - Revolut
+  - bank99
   - Amazon Visa
   - TF Bank Kreditkarte
-  - Revolut, derzeit inaktiv
+- Bankkonten/Kreditkarten, noch offen:
+  - George Visa
 - Trading 212, derzeit inaktiv/offen
 
 ## Aktueller Produktivstand
@@ -177,23 +287,28 @@ Umsetzung 2026-06-23:
 - Hosting URL: `https://finanzperformance-tool.web.app`
 - Letzter Deploy: 2026-06-20 18:43 CEST, Hosting, Firestore Rules/Indexes
   und Storage Rules
+- Letzter gezielter Firestore-Rules-Deploy: 2026-06-27, fuer
+  `manualInputs/equateplus_novartis` mit `entryValueEur`
 - Firestore Database ist erstellt
 - Firebase Hosting ist konfiguriert
 - Die App liest Live-Daten aus Firestore
 - App-Login ist auf `niklas.kofler@gmail.com` begrenzt
-- App darf nur `automationCommands/sync_quotes_manual` schreiben; der
-  Command-Runner interpretiert diesen historisch so benannten Command inzwischen
-  als Full-Refresh
+- App darf `automationCommands/sync_quotes_manual`,
+  `automationCommands/traderepublic_portal_refresh`,
+  `documentReviewDecisions/*` und das eng begrenzte manuelle
+  Eingabedokument `manualInputs/equateplus_novartis` schreiben.
+  Der Command-Runner interpretiert `sync_quotes_manual` historisch so benannt
+  inzwischen als Full-Refresh.
 - Finanzdaten werden lokal durch Agents geschrieben, nicht direkt aus der App
 - Mac Studio ist der Zielort fuer Dauerbetrieb
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-27 00:42 CEST
+- Stand: 2026-06-27 14:55 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `7d16665`
-- Handoff-Commit: `4d9c3da`
-- Firebase Deploy: 2026-06-27 00:42 CEST erfolgreich
+- Ausgangscommit: `6866c3a`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -257,22 +372,29 @@ Umsetzung 2026-06-23:
 
 ### Trade Republic
 
-- Mail-Agent fuer passwortgeschuetzte `Securities Settlement` PDFs ist gebaut,
-  ruht aber seit 2026-06-22 als fachlicher Kanal
-- PDF-Passwort liegt lokal im macOS-Schluesselbund
-- Bei Transaktionen kommt am Tagesende automatisch eine Trade-Republic-Mail;
-  diese `Duplicates`-Mails werden aktuell nicht mehr automatisch auf den
-  Trade-Republic-Bestand angewendet
-- Aktiver Kanal ist seit 2026-06-22 der Manual-Export-Agent fuer selbst
-  gemailte No-Subject-Exporte
+- Aktiver Kanal ist seit 2026-06-27 der Trade-Republic-Portal-Agent.
+- Mail-Agent und Manual-Export-Agent sind Legacy/Fallback und nicht mehr
+  produktiver Standard.
+- App-Refresh nutzt den schnellen Portal-Snapshot; ein voller Portal-Scan fuer
+  Dokumente, Kosten, Steuern und Transaktionen wird nur gezielt oder geplant
+  ausgefuehrt.
+- PDF-Passwort liegt lokal im macOS-Schluesselbund, falls alte/verschluesselte
+  PDF-Fallbacks spaeter nochmals ausgewertet werden muessen.
 - Wichtige Baseline-Entscheidung 2026-06-13:
   - Die am 2026-06-13 frisch exportierten Dateien sind ab jetzt der neue
     Trade-Republic-Status-Quo
   - alte Mail-Duplikate und fruehere Trade-Republic-Imports sind fachlich
     obsolet und wurden in Firestore entsprechend ersetzt/markiert
-  - ab 2026-06-22 veraendert Trade Republic den Stand primaer ueber die drei
-    selbst gemailten Exporte `Net Worth.pdf`, `Transaction export.csv` und
-    `Account statement.pdf`
+  - die selbst gemailten Exporte `Net Worth.pdf`, `Transaction export.csv` und
+    `Account statement.pdf` waren nur der Zwischenstand/Fallback bis zur
+    Portal-Integration
+- Aktueller Zielbetrieb seit 2026-06-27:
+  - aktueller Wert, Cash, sichtbare Brokerpositionen und Private-Markets-
+    Restwert kommen aus dem Trade-Republic-Webportal
+  - Portal-Dokumente liefern neue Transaktions-, Kosten-, Steuer- und
+    Zinsinformationen
+  - Mail-Agent und Manual-Export-Agent bleiben Legacy/Fallback und sollen im
+    normalen Betrieb nicht mehr gebraucht werden
 - Neue Baseline-Dateien:
   - `Transaction export.csv`: komplette Transaktions-/Positionsbasis
   - `Account statement.pdf`: Cashkonto-Abgleich, Periodenende `2026-06-12`
@@ -383,19 +505,21 @@ Umsetzung 2026-06-23:
 - Kurzfassung liegt in [intergold_preisimport_kurzfassung.md](/Users/niklaskofler/Documents/finanztool/docs/intergold_preisimport_kurzfassung.md)
 - Daten-Audit liegt in [intergold_data_audit_2026-06-22.md](/Users/niklaskofler/Documents/finanztool/docs/intergold_data_audit_2026-06-22.md)
 - LaunchAgent: `com.niklas.finanztool.intergold-sync`, taeglich 08:20
-- Verifizierter Stand 2026-06-22 00:35 CEST:
+- Verifizierter Stand 2026-06-27:
   - `sourcePositions`: 13 Metallpositionen
   - aktueller Lauf: 19 gueltige Preisbloecke aus der Intergold-Webseite
-  - `sourceSummaries/intergold.currentValue`: `30.540,92 EUR`
-  - `sourceSummaries/intergold.saleValue`: `35.559,33 EUR`
+  - `sourceSummaries/intergold.currentValue`: `29.895,52 EUR`
+  - `sourceSummaries/intergold.saleValue`: `34.863,99 EUR`
   - `sourceSummaries/intergold.costValue`: `23.040,51 EUR`
-  - `sourceSummaries/intergold.performanceValue`: `+7.500,41 EUR`
-  - `sourceSummaries/intergold.performancePct`: `+32,55 %`
+  - `sourceSummaries/intergold.performanceValue`: `+6.855,01 EUR`
+  - `sourceSummaries/intergold.performancePct`: `+29,75 %`
   - Dokumentstand: `2026-03-23`
-  - Preisstand Website: `2026-06-16`
-  - letzte bekannte Preisaenderung: `2026-06-21T19:07:05.114Z`
-  - Agent zuletzt: `2026-06-21T22:34:03.750Z`
-  - `priceChanged=false` beim letzten Lauf
+  - Preisstand Website: `2026-06-23`
+  - `sourceDocuments`: 2 Intergold-Kaufbelege, beide in Firebase Storage
+  - `sourceDocumentFacts`: 19
+  - `transactions`: 17 Metall-Kaufzeilen
+  - `costEvents`: 17 anteilige Kauf-/Lagerkosten
+  - offene Intergold-Info-Dokumente im Postfach: 0
 - Intergold schreibt jetzt Transparenzfelder:
   - `sourceDataUpdatedAt`, `sourceDataProvider=intergold_confirmation_pdf`
   - `documentDataUpdatedAt`, `documentDataProvider=intergold_confirmation_pdf`
@@ -404,27 +528,54 @@ Umsetzung 2026-06-23:
   - `lastAgentRunAt`, `lastAgentSuccessAt`
 - Preis-History ist idempotent nach
   `Metall + Preisstand + Einheit + Verkaufspreis + Ankaufspreis`
+- Intergold-Dokumentregel ab 2026-06-27:
+  - Kauf-/Einlagerungsbelege werden geparst und in Bestand, Fakten,
+    Transaktionen und Kosten uebernommen
+  - sonstige Intergold-Anhaenge bleiben als `UNPARSED`/`UNKNOWN` im zentralen
+    Dokumenten-Postfach und werden nicht automatisch ignoriert
+  - `not_relevant`/nicht relevant darf nur durch deine manuelle Entscheidung
+    im Dokumenten-Postfach gesetzt werden, nie automatisch durch den Agenten
+  - Verkaufs-/Auslagerungsdokumente werden erst verarbeitet, wenn echte
+    Verkaufsdaten vorhanden sind und der Parser dafuer explizit gebaut wurde
+  - Die GUI zeigt im Dokumenten-Postfach neben offenen Faellen auch
+    verarbeitete Intergold-Dokumente als Kontrollarchiv an, damit die
+    Intergold-Anhaenge dort auffindbar bleiben.
 - Offen:
-  - Verkaufsbestaetigungen/Rechnungen als eigener Bestandsreduktions- und
-    Transaktionsstrom
-  - Intergold-PDFs noch nicht im gleichen `sourceDocuments`/`sourceDocumentFacts`
-    Detailgrad wie VBV
+  - automatische Mailablage neuer Intergold-Anhaenge muss noch mit einem
+    echten neuen Mailanhang end-to-end auditiert werden
 
 ### EquatePlus
 
-- Ordner ist im Drive-Scan enthalten
-- Quelle ist ab 2026-06-26 bewusst zurueckgestellt, bis die ersten echten
-  EquatePlus-Mail-Dokumente eintreffen
-- Vorher wird kein fachlicher Parser und kein aktiver Agent gebaut, damit die
-  Datenhaltung nicht auf Annahmen statt auf realen Dokumenten basiert
-- Sobald die erste Mail vorliegt, muessen zuerst Absender, Betreff,
-  Anhaenge, Dokumenttypen, Dedupe-Regeln und alle relevanten Felder
-  analysiert werden
-- Danach wird entschieden, ob ein Mail-Agent reicht oder ob zusaetzlich ein
-  manueller PDF-/Portalweg noetig ist
-- Ziel bleibt: Holdings, Vesting/Einbuchungen, Verkaeufe, Kosten, Steuern und
-  alle fachlich relevanten Dokumentfakten in das kanonische Firestore-Modell
-  schreiben
+- Entscheidung 2026-06-27: EquatePlus wird fuer den aktuellen Stand bewusst
+  vereinfacht.
+- Keine Mail-/PDF-/Portal-Automatisierung, bis echte relevante Dokumente
+  vorliegen oder ein fachlicher Mehrwert entsteht.
+- App-Karte erlaubt manuelle Eingabe fuer:
+  - Novartis-Anteile
+  - gesamten Einstandswert in EUR
+- Der Kurs-Agent bewertet ausschliesslich Novartis (`ISIN CH0012005267`) ueber
+  SIX Swiss Exchange (`six_swiss_exchange`) und rechnet CHF mit Frankfurter/ECB-
+  FX in EUR um.
+- Firestore-Ziele:
+  - `manualInputs/equateplus_novartis`
+  - `sourcePositions/equateplus_novartis`
+  - `sourceSummaries/equateplus`
+  - `quotesCurrent/isin_CH0012005267`
+  - optional `priceHistory/isin_CH0012005267_<datum>`
+  - `agentStatus/equateplus`
+- Startwert aus Screenshot/aktueller Nutzerangabe:
+  - `16,2` Anteile
+  - `1.500 EUR` Einstandswert
+  - Einstand kann in der Karte ueberschrieben werden
+- Wenn spaeter EquatePlus-Dokumente eintreffen, werden sie zuerst klassifiziert;
+  ein Parser wird erst gebaut, wenn daraus Kosten, Steuern, Vesting,
+  Transaktionen oder andere fachlich relevante Felder ableitbar sind.
+- Fachlicher Abschluss 2026-06-27:
+  - EquatePlus gilt vorerst als erledigt.
+  - Fuer den aktuellen Zweck reicht es, Depotbestand, Einstandswert und G/V zu
+    kennen.
+  - Wegen des Mitarbeiterbonus und der voraussichtlich geringen Bewegung wird
+    keine zusaetzliche Bewegungs-, Dokument- oder Portalautomation gebaut.
 
 ### Bankkonten / Enable Banking
 
@@ -441,8 +592,8 @@ Umsetzung 2026-06-23:
 - Service ist `Account Information` und auf eigene verlinkte Konten
   eingeschraenkt (`Restricted`)
 - Im Control Panel verlinkt sind Erste Bank/Sparkasse, Revolut und bank99.
-  Pro Bank braucht der lokale Agent eine gespeicherte Enable-Banking-Session,
-  bevor Werte importiert werden koennen.
+  Fuer alle drei Banken ist auf dem Mac Studio eine Enable-Banking-Session im
+  macOS-Schluesselbund gespeichert.
 - Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden; das
   Limit wird lokal in `automation/runtime/enable-banking-rate-limits.json`
   erzwungen.
@@ -481,6 +632,31 @@ Umsetzung 2026-06-23:
     PayPal `-21.76`
   - Future/geplante Umsaetze wie `29.06.2026` werden im normalen BOOK-Ledger
     nicht als gebuchte Historie behandelt.
+- Gepruefter Stand 2026-06-27 01:25 lokal:
+  - Revolut-Session erzeugt und im Schluesselbund gespeichert
+  - bank99-Session erzeugt und im Schluesselbund gespeichert
+  - Bankkonten-Sync `OK`, Health `OK`, keine Warnungen
+  - `sourceSummaries/bank_accounts`: 3 Konten, Geldstand `2183.15 EUR`,
+    verfuegbar inkl. Kredit `5183.15 EUR`, Kreditlinie ca. `3000.00 EUR`
+  - Erste/Sparkasse: `2041.64 EUR`, letzter Umsatz `2026-06-26`,
+    `255` gespeicherte Umsaetze
+  - Revolut: `100.00 EUR`, aktuell keine Umsaetze aus der API geliefert;
+    Bankdatenstand laut API `2025-06-19`, deshalb beobachten
+  - bank99: `41.51 EUR`, `9` initiale Umsaetze gespeichert, letzter Umsatz
+    `2026-06-23`
+  - bank99-Limit genutzt: 1 von 4 erlaubten Abrufen am Kalendertag
+- Gepruefter Stand 2026-06-27 02:05 lokal:
+  - George/Erste-Freigabe wurde neu gestartet, um zu pruefen, ob die Visa
+    Kreditkarte ueber denselben PSD2-Zugriff sichtbar ist.
+  - Ergebnis: Enable Banking liefert fuer Erste/Sparkasse weiterhin genau
+    1 Account und keinen Karten-/Visa-/PAN-Hinweis. George Visa wird damit
+    ueber diesen Zugriff aktuell nicht sichtbar.
+  - TF Bank ist in der Enable-Banking-ASPSP-Liste nicht als eigener Treffer
+    auffindbar; daher vorerst nicht ueber denselben Open-Banking-Weg.
+  - Technische Schutzregel im Bank-Agent ergaenzt: Wenn eine Neufreigabe eine
+    neue Provider-Account-ID liefert, aber je Bank genau ein bestehendes und
+    ein neues Konto existiert, wird die alte Kontoidentitaet weiterverwendet,
+    damit keine doppelten Konten/Umsaetze entstehen.
 - Der echte Kontostand zaehlt als Cash/Netto-Wert. Ein von Enable Banking
   hoeher gelieferter verfuegbarer Betrag wird als `availableWithCredit`
   gespeichert; die Differenz wird als `creditLineEstimate` behandelt und nicht
@@ -488,9 +664,72 @@ Umsetzung 2026-06-23:
 - GUI-Regel: Bankkonten zeigen Geldstand, verfuegbaren Betrag, Kreditlinie,
   Bankstand und Agentstatus. Keine Einstand/G/V/Heute-Depotlogik auf
   Bankkonten anwenden.
-- Offener Schritt: weitere Sessions fuer Revolut und bank99 erzeugen.
+- Offener Schritt: George Visa bleibt pausiert; Revolut Datenstand beobachten,
+  weil die API aktuell keine Umsaetze geliefert hat.
 - Detailplan liegt in
   [Sparkasse George Integration](/Users/niklaskofler/Documents/finanztool/docs/sparkasse_george_integration_plan.md)
+
+### Kreditkarten-Portale
+
+- Entscheidung 2026-06-27: Kreditkarten-Portale sind fuer den aktuellen
+  Datenbasis-Cleanup zurueckgestellt. Bestehende Saldo-Unterkonten duerfen als
+  Transparenzwerte sichtbar bleiben; keine weitere Abrechnungs-,
+  Transaktions- oder Portal-Automatisierung, bis die Kernquellen bereinigt
+  sind.
+- Historischer technischer Stand 2026-06-27: Amazon Visa und TF Bank wurden
+  nicht ueber Enable Banking sichtbar, sondern zunaechst als Portal-Agenten mit
+  aktuellem Kreditkartensaldo vorbereitet.
+- Firestore-Regel:
+  - `sourceSummaries/<source>.currentValue` ist negativ, weil offener
+    Kreditkartensaldo eine Schuld ist.
+  - `debtValue` ist der positive offene Saldo.
+  - `availableWithCredit` und `creditLineEstimate` sind Transparenzwerte und
+    zaehlen nicht als Vermoegen.
+- App-Regel:
+  - Kreditkarten werden in der Bankkarte als Unterkonten angezeigt.
+  - Kreditkarten-Unterkonten zeigen Saldo, Verfuegbar und Kreditlimit.
+  - Keine Einstand/G/V/Heute-Depotlogik auf Kreditkarten anwenden.
+- Amazon Visa:
+  - Portal: `https://kunden.openbankpay.com/amazon/login`
+  - Agent: `automation/src/sync-amazon-visa-local.mjs`
+  - Script: `npm --prefix automation run sync:amazon-visa`
+  - Secrets im macOS-Schluesselbund:
+    `finanztool-amazon-visa-email`, `finanztool-amazon-visa-pin`
+  - Gepruefter Stand 2026-06-27 02:55 lokal:
+    - Login per Schluesselbund erfolgreich
+    - offener Saldo `1.620,23 EUR`
+    - verfuegbar `379,77 EUR`
+    - Kreditkartenlimit `2.000,00 EUR`
+    - Firestore geschrieben als Bank-Unterkonto nach
+      `sourceSummaries/bank_accounts`,
+      `sourcePositions/bank_accounts_amazon_visa_card`,
+      `sourceAccounts/bank_accounts_amazon_visa_card`,
+      `agentStatus/amazon_visa`
+- TF Bank Kreditkarte:
+  - Portal: `https://meine.tfbank.at/login`
+  - Agent: `automation/src/sync-tfbank-local.mjs`
+  - Script: `npm --prefix automation run sync:tfbank`
+  - Secrets im macOS-Schluesselbund:
+    `finanztool-tfbank-customer-number`, `finanztool-tfbank-birthdate`
+  - Gepruefter Stand 2026-06-27 03:05 lokal:
+    - Loginformular wird ausgefuellt
+    - Portal geht bis zur SMS-TAN
+    - `--tan-stdin` erlaubt Eingabe des frischen SMS-Codes im selben
+      Browserlauf
+    - offener Saldo `256,39 EUR`
+    - verfuegbar `5.743,61 EUR`
+    - Kreditrahmen `6.000,00 EUR`
+    - reserviert `0,00 EUR`
+    - Firestore geschrieben als Bank-Unterkonto nach
+      `sourceSummaries/bank_accounts`,
+      `sourcePositions/bank_accounts_tfbank_card`,
+      `sourceAccounts/bank_accounts_tfbank_card`, `agentStatus/tfbank`
+- Gepruefter Gesamtstand Bankkarte 2026-06-27 03:10 lokal:
+  - 5 Unterkonten: Erste/Sparkasse, Revolut, bank99, Amazon Visa, TF Bank
+  - Geldstand netto `306,53 EUR`
+  - verfuegbar `11.306,53 EUR`
+  - Kreditlinie `11.000,00 EUR`
+  - Health: `OK`, 0 Fehler, 0 Warnungen
 
 ### Betriebliche Altersvorsorge
 
@@ -541,7 +780,7 @@ Umsetzung 2026-06-23:
   `sourceDataUpdatedAt`, `sourceDataProvider=bitget_api`,
   `quoteDataUpdatedAt`, `quoteDataProvider=bitget_api`,
   `lastAgentRunAt` und `lastAgentSuccessAt`
-- Der aktuelle Mac-Studio-Test vom 2026-06-22 war erfolgreich:
+- Der aktuelle Mac-Studio-Test vom 2026-06-27 war erfolgreich:
   `npm run check:bitget`, `npm run import:bitget:local`,
   `npm run sync:bitget-ledger`, `npm run sync:health`
 - Firestore ueberschreibt ab 2026-06-20 bei jedem Lauf denselben aktuellen
@@ -570,15 +809,17 @@ Umsetzung 2026-06-23:
   oder Kreditkartenbuchungen bewusst leer
 - Health-Fehler zu alten Bitget-Importen werden ab 2026-06-20 ignoriert, wenn
   danach ein erfolgreicher `agentStatus/bitget.lastSuccessAt` vorhanden ist
-- Verifizierter Stand 2026-06-22 00:30 CEST:
+- Verifizierter Stand 2026-06-27:
   - `agentStatus/bitget`: `OK`
   - `sourcePositions`: 3 Bitget-Positionen (`BTC Earn`, `EUR`, `USDT`)
-  - `sourceSummaries/bitget.currentValue`: ca. `3.823 EUR`
+  - `sourceSummaries/bitget.currentValue`: ca. `3.632 EUR`
   - `sourceSummaries/bitget.costValue`: `3.000 EUR`
+  - `sourceSummaries/bitget.performanceValue`: ca. `+632 EUR`
   - `sourceSummaries/bitget.excludedPositionCount`: `3`
     (`bitget_spot_BTC`, `bitget_spot_TRUMP`, `bitget_spot_MELANIA`)
   - `sourceSummaries/bitget.unpricedPositionCount`: `0`
-  - `systemHealth/current`: `OK`
+  - Bitget selbst erzeugt keine Health-Warnung; aktuelle Health-Warnungen
+    betreffen Flatex-Wartung und offene Ginmon-Dokumente im Postfach
 - Daten-Audit liegt in `docs/bitget_data_audit_2026-06-20.md`
 - Wichtiger Audit-Befund:
   - aktuelle Positionen werden automatisch gepflegt
@@ -589,12 +830,21 @@ Umsetzung 2026-06-23:
     - stuendlicher Lauf
     - Script `automation/src/sync-bitget-ledger-local.mjs`
     - Lock-Datei `/tmp/finanztool-bitget-ledger.lock`
-  - Letzter verifizierter Ledger-Stand:
-    - `ledgerEntries`: 2166 historisch vorhanden, letzter Lauf 2165
+  - Seit 2026-06-27 arbeitet der Ledger-Agent im Normalbetrieb inkrementell:
+    - Startpunkt = letztes erfolgreiches Fensterende minus
+      `BITGET_LEDGER_OVERLAP_DAYS` (Standard 2 Tage)
+    - voller Backfill nur bewusst per `--backfill`, `--full` oder
+      `BITGET_LEDGER_FORCE_BACKFILL=true`
+    - vorhandene historische Dokumente werden nicht geloescht, sondern per ID
+      ueberschrieben/ergaenzt
+  - Letzter verifizierter Ledger-Stand 2026-06-27:
+    - letzter Lauf: `incremental`, 48 Ledger, 0 Trades, 0 Kosten, 2 Zinsen,
+      48 Tax-Facts, 0 Warnungen
+    - `ledgerEntries`: 2817 historisch vorhanden
     - `transactions`: 2
     - `costEvents`: 2
-    - `incomeEvents`: 91 historisch vorhanden, letzter Lauf 90
-    - `sourceDocumentFacts`: 750 historisch vorhanden, letzter Lauf 725
+    - `incomeEvents`: 96 historisch vorhanden
+    - `sourceDocumentFacts`: 877 historisch vorhanden
     - `agentStatus/bitget_ledger`: `OK`
   - Ledger-/Fact-Dokumente werden historisch behalten und nicht geloescht,
     wenn sie aus dem Rolling-Fenster herausfallen
@@ -603,13 +853,47 @@ Umsetzung 2026-06-23:
 
 ### Capital.com
 
-- API funktioniert
-- API-Key und Custom Password liegen lokal im macOS-Schluesselbund
-- Capital.com bietet laut Plattform nur `Read & Trade`, keinen echten Read-only-Key
-- Agent nutzt trotzdem nur lesende API-Endpunkte
-- Letzter Test: Live-Konto, EUR, `0,00 EUR`, 0 offene Positionen
-- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert
-- Kontowert kommt aus `GET /accounts`
+- API-Anbindung ist vorbereitet.
+- Capital.com bietet laut Plattform nur `Read & Trade`, keinen echten
+  Read-only-Key; der Agent nutzt trotzdem nur lesende API-Endpunkte:
+  `POST /session`, `GET /session`, `GET /accounts`, `GET /positions`.
+- Letzter gueltiger Firestore-Stand 2026-06-27 02:04:
+  - Live-Konto, EUR, `0,00 EUR`, 0 offene Positionen
+  - `sourceSummaries/capitalcom.currentValue=0`
+  - keine `sourcePositions` fuer Capital.com
+- Erweiterung 2026-06-27:
+  - `capitalcom-client.mjs` liest neben Konten und offenen Positionen auch
+    Working Orders sowie `history/transactions` und `history/activity`.
+  - `import-capitalcom-local.mjs` schreibt bei gueltigem Key:
+    - `sourceSummaries/capitalcom`
+    - `sourcePositions/capitalcom_*`
+    - `ledgerEntries/capitalcom_*`
+    - `sourceDocumentFacts/capitalcom_*`
+    - `costEvents/capitalcom_*`
+    - `incomeEvents/capitalcom_*`
+    - `rawDocuments/api_capitalcom_latest`
+  - History laeuft inkrementell:
+    - Standard-Backfill `CAPITALCOM_HISTORY_DAYS=30`
+    - danach letztes `lastHistorySyncEndAt` minus
+      `CAPITALCOM_HISTORY_OVERLAP_DAYS=2`
+    - Force-Lauf per `--backfill`, `--full` oder
+      `CAPITALCOM_FORCE_HISTORY_BACKFILL=true`
+  - API-Ausfaelle loeschen keine gueltigen Positions-/Summary-Daten.
+- Pruefung 2026-06-27 10:42:
+  - `npm --prefix automation run check:capitalcom` meldet
+    `401 error.invalid.api.key`
+  - `agentStatus/capitalcom` wird jetzt als `WARNUNG` geschrieben, ohne den
+    letzten gueltigen Summary-Stand zu loeschen
+  - `import-capitalcom-local.mjs` faengt API-Ausfaelle ab und schreibt
+    `lastAttemptAt`, `lastErrorAt`, `errorStatus` und `errorRequestPath`
+- Naechster Schritt vor aktiver Nutzung:
+  - neuen Capital.com API-Key erzeugen
+  - `npm --prefix automation run setup:capitalcom`
+  - `npm --prefix automation run check:capitalcom`
+  - erst danach `npm --prefix automation run install:capitalcom-agent`, falls
+    Capital.com dauerhaft aktiv ueberwacht werden soll
+- CFD-Positionen werden angezeigt, aber nicht zur Vermoegenssumme addiert.
+- Kontowert kommt aus `GET /accounts`.
 
 ## Aktueller Firestore-/Health-Stand
 
@@ -657,6 +941,7 @@ Diese Dateien muessen pro Geraet lokal vorhanden sein.
 - [Geraetewechsel und Codex-Workflow](/Users/niklaskofler/Documents/finanztool/docs/device_workflow.md)
 - [Geraetewechsel-Protokoll](/Users/niklaskofler/Documents/finanztool/docs/device_switch_log.md)
 - [Import Masterplan](/Users/niklaskofler/Documents/finanztool/docs/import_masterplan.md)
+- [Datenbasis-Cleanup-Plan 2026-06-27](/Users/niklaskofler/Documents/finanztool/docs/data_basis_cleanup_plan_2026-06-27.md)
 - [Arbeitsstand](/Users/niklaskofler/Documents/finanztool/docs/arbeitsstand_2026-05-25.md)
 - [Mac Studio Runbook](/Users/niklaskofler/Documents/finanztool/docs/export_import_runbook_mac_studio.md)
 - [Mac Studio Handoff 2026-06-13](/Users/niklaskofler/Documents/finanztool/docs/mac_studio_handoff_2026-06-13.md)
@@ -690,9 +975,8 @@ npm run sync:health
 
 1. Secrets verschluesselt vom MacBook auf den Mac Studio uebertragen
 2. Mac-Studio-Agents mit `npm run install:all-agents` installieren
-3. Sparkasse/George Umsaetze und Bankkosten/Zinsen ergaenzen; danach weitere
-   Bankkonten/Kreditkarten integrieren: Amazon Visa, TF Bank Kreditkarte,
-   spaeter Revolut
+3. Kreditkarten-Umsaetze/Abrechnungen fuer Amazon Visa und TF Bank ergaenzen;
+   George Visa bleibt pausiert, bis ein Portal-/PDF-/CSV-Weg verfuegbar ist
 4. Trading 212 als eigene Quelle ergaenzen, sobald wieder relevant oder Daten
    vorliegen
 5. Einheitliches Konto-/Depotmodell in Firestore ergaenzen, damit Broker,
@@ -701,7 +985,8 @@ npm run sync:health
 7. Ginmon-Kostenlogik vertiefen: fuer die zwei kleinen Ginmon-Depots fehlen
    positionsgenaue Einstandswerte; Konto-Performance kommt aber aus der
    Ginmon-API
-8. EquatePlus Parser nach Eingang der ersten echten Mail-Dokumente ergaenzen
+8. EquatePlus-Dokumentparser nur ergaenzen, wenn echte EquatePlus-Dokumente
+   relevante Mehrdaten liefern
 9. UI weiter ausbauen: Filter, Sortierung, Konto-/Depotansichten,
     Detailansichten, Charts
 
@@ -1389,6 +1674,7 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Scrapes
   - `capitalcom`: Kontostand, Cash und offene Positionen aus der API
   - `vbv`: Portalstichtag, Kontoinformation-PDF und Vertragswerte
+  - `equateplus`: manuelle Novartis-Anteile/Einstand, Kurs via SIX Swiss Exchange
 - Umgesetzte Dateien:
   - `app/src/App.tsx`
   - `app/src/App.css`
@@ -1481,13 +1767,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       - Cash kommt aus `Profile > Transactions`.
       - `sourceSummaries/traderepublic.netValue` enthaelt jetzt Portalwert plus
         Cash; `depotValue` bleibt der Investmentwert ohne Cash.
-      - Wenn kein offizieller Download gefunden wird, ist das kein harter
-        Fehler mehr, solange der Portal-Snapshot erfolgreich war. Der Agent
-        schreibt dann `agentStatus/traderepublic_portal=OK` mit Hinweis
-        `kein offizieller Download-Button gefunden`.
-    - Offizielle Downloads aus dem Portal werden weiterhin, falls vorhanden, in
-      `00_Inbox/TradeRepublic/ManualExports/Portal` abgelegt und durch den
-      bestehenden Manual-Export-Parser verarbeitet.
+      - Korrektur 2026-06-27: Der Agent sucht nicht mehr nach einem
+        globalen CSV/PDF-Download. Die Testlaeufe haben festgelegt, dass es
+        diesen Alles-Export im Trade-Republic-Webportal fuer unsere Strategie
+        nicht gibt.
+      - Der Vollscan endet nach Portal-Snapshot, gezielter
+        Transaktions-/Activity-Dokumentpruefung und operativer Anwendung.
+        `keine neuen Portal-PDFs gespeichert` ist ein normaler OK-Status.
     - Browsertext aus dem Portal ist aktuelle Bewertungs-/Transparenzquelle,
       aber kein vollstaendiger Audit-Ersatz fuer Transaktionen, Steuern und
       Kosten. Dafuer bleiben `Transaction export`, `Account statement`,
@@ -1759,3 +2045,382 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
       - `systemHealth/current` enthaelt keine Trade-Republic-Warnung mehr.
 - Detailplan:
   - `docs/traderepublic_import_strategie.md`
+
+## 2026-06-27 Agenten-Optimierung Mac Studio
+
+- Ziel: Agents sollen auf dem Mac Studio moeglichst unsichtbar/headless,
+  schnell und quellenrein laufen.
+- Datenbasis-Audit nach Agenten-Optimierung:
+  [Datenbasis-Audit 2026-06-27](/Users/niklaskofler/Documents/finanztool/docs/data_basis_audit_2026-06-27.md)
+- Flatex:
+  - `com.niklas.finanztool.flatex-sync` ist jetzt ein headless
+    Broker-Snapshot im 5-Minuten-Takt.
+  - Der Lauf nutzt `download-flatex-local.mjs --write --snapshot-only
+    --headless`.
+  - Er liest Positionen, Kurse, Einstand, Cash und Kreditfelder direkt aus
+    Flatex und erzeugt keine CSV-Dateien.
+  - `com.niklas.finanztool.flatex-documents` fuehrt den CSV-/Dokumentexport
+    getrennt taeglich um 22:10 aus.
+  - Flatex wird nicht mehr standardmaessig ueber Boerse Frankfurt bewertet.
+- Ginmon:
+  - `com.niklas.finanztool.ginmon-sync` laeuft jetzt alle 5 Minuten
+    headless.
+  - Dokumentimport bleibt taeglich um 02:00.
+- VBV:
+  - `com.niklas.finanztool.vbv-sync` laeuft nur noch woechentlich montags um
+    06:45 headless.
+- Bankkonten:
+  - neuer LaunchAgent `com.niklas.finanztool.bank-accounts` laeuft
+    07:00, 12:00, 17:30 und 21:30 und bleibt damit bei maximal 4 Abrufen/Tag
+    fuer bank99.
+- Kurs-/Health-Agenten:
+  - `sync-quotes-local.mjs` defaultet jetzt auf `QUOTE_SOURCES=traderepublic`;
+    Flatex/Ginmon/Bitget/EquatePlus nutzen ihre eigenen Quellen.
+  - `run-quote-sync-local.mjs` startet keinen Health-Check mehr bei jedem
+    5-Minuten-Lauf.
+  - neuer LaunchAgent `com.niklas.finanztool.health-check` laeuft alle
+    30 Minuten.
+- Deaktiviert/pausiert:
+  - `capitalcom-import`
+  - `traderepublic-mail`
+  - `traderepublic-manual-exports`
+- Command-Runner:
+  - `sync_quotes` fuehrt jetzt nur noch den Kurs-Sync aus.
+  - `full_refresh` bleibt der grosse Rundumlauf.
+  - `traderepublic_portal_refresh` nutzt den Portal-Agenten headless im
+    schnellen Snapshot-Modus (`--snapshot-only`).
+  - Der schnelle Trade-Republic-Button aktualisiert Depotwert, Cash,
+    Positionen und Broker-Kursstand, ueberspringt aber den langsamen
+    Dokument-/Transaktionsdetailscan.
+  - In der Trade-Republic-Karte gibt es zusaetzlich `Nur Kurse`; dieser Button
+    startet nur `sync_quotes` und benoetigt keinen Trade-Republic-Login.
+  - Der volle Portal-Lauf bleibt fuer gezielte Dokument-, PDF-, Kosten-,
+    Steuer- und Transaktionspruefungen per
+    `npm --prefix automation run sync:traderepublic-portal` verfuegbar.
+  - Der normale volle Portal-Lauf bricht inkrementell ab, sobald mehrere
+    neueste Transaktionen hintereinander bereits bekannte Dokument-Signaturen
+    haben. Fuer eine vollstaendige Neu-Inventarisierung gibt es
+    `npm --prefix automation run sync:traderepublic-portal-full`.
+  - Approval-Dauer: Die Trade-Republic-App-Freigabe kann erst erscheinen,
+    nachdem Browser-Login, Land, Telefonnummer und PIN abgeschlossen sind. Der
+    bisherige Zeitfresser nach der Freigabe war der automatische
+    Dokument-/Transaktionsscan; dieser ist aus dem normalen Button entfernt.
+
+## 2026-06-27 Flatex Datenbasis-Cleanup
+
+- Flatex-Dokumente wurden neu abgeglichen und normalisiert.
+- Firestore-Stand nach `sync:flatex-documents`:
+  - `sourceDocuments`: 283
+  - `sourceDocumentFacts`: 409
+  - `transactions`: 89
+  - `ledgerEntries`: 119
+  - `costEvents`: 129
+  - `incomeEvents`: 39
+- `agentStatus/flatex_documents` ist `OK` und meldet keine unbekannten
+  Dokumente oder Warnungen.
+- Dokumentparser erweitert:
+  - Depotpositionen aus Depotauszuegen werden jetzt vollstaendiger erkannt.
+  - Depotservicegebuehren werden als `cash_adjustment` geparst.
+  - MiFID-/Kosteninformation wird als `cost_information` plus Produktkosten
+    gespeichert.
+- Event-Normalisierung ersetzt alte Flatex-Platzhalterbewegungen durch
+  generische Events aus Dokumentfakten.
+- Verifikation:
+  - `npm --prefix automation run sync:health` ist `OK`.
+  - `npm --prefix app run build` ist erfolgreich.
+- Abschlusspruefung:
+  - Chrome-Sichtpruefung am `http://localhost:5173/` war erfolgreich.
+  - Flatex-Karte zeigt Broker-Snapshot `OK`, Dokumenten-Agent `OK`, Cash,
+    Kreditrahmen und in Anspruch genommenen Kredit plausibel.
+  - Werte in der Karte stimmen mit Firestore-Snapshot ueberein.
+- Korrektur 2026-06-27:
+  - Flatex-Tagesveraenderungen duerfen nicht mehr aus alten
+    Boerse-Frankfurt-Historienwerten abgeleitet werden.
+  - Der 5-Minuten-Broker-Snapshot und der 22:00-Positionshistorienlauf
+    akzeptieren fuer Flatex als Vortagsbasis nur `priceHistory` mit Provider
+    `flatex` oder `flatex_broker_snapshot_v1`.
+  - Solange noch keine Flatex-eigene Historie vorliegt, faellt die Anzeige
+    fuer `Heute` auf die Tageswerte aus dem Flatex-Broker-Snapshot zurueck.
+  - Neue Positionen werden dynamisch per ISIN als `sourcePositions/flatex_<ISIN>`
+    angelegt; nicht mehr im Broker-Snapshot vorhandene Wertpapierpositionen
+    werden aus der aktuellen Positionsansicht entfernt. Die historische
+    Nachvollziehbarkeit bleibt ueber `transactions`, `ledgerEntries`,
+    `costEvents`, `incomeEvents` und `priceHistory` erhalten.
+
+## 2026-06-27 Ginmon Datenbasis-Cleanup
+
+- Ginmon ist nach Flatex als zweite Quelle fachlich nachgezogen.
+- Aktuelle Wahrheit:
+  - `com.niklas.finanztool.ginmon-sync` laeuft alle 5 Minuten headless und
+    aktualisiert die aktuellen Depotwerte/Kurse aus der Ginmon-API.
+  - `com.niklas.finanztool.ginmon-documents` laeuft taeglich um 02:00 und
+    verarbeitet Dokumente.
+- Dokumentparser korrigiert:
+  - WP-Abrechnungen in zweispaltiger PDF-Struktur werden wieder mit ISIN,
+    Stueck, Kurs, Handelsdatum, Valuta und Cash-Betrag erkannt.
+  - Rechnungen lesen Rechnungsdatum, Rechnungsnummer, Zeitraum,
+    Berechnungsbasis, Gebuehr, MwSt. und Rechnungsbetrag.
+  - Basisinformationen, Welcome Letters, AGB/Vertragsbedingungen,
+    Datenschutz, Einlagensicherung und VL-Formulare werden nur klassifiziert,
+    aber nicht automatisch ignoriert. Sie bleiben mit `parseStatus=UNPARSED`
+    im zentralen Dokumenten-Postfach, bis der User sie selbst als nicht
+    relevant, wichtig/spaeter oder parserwuerdig markiert.
+- Normalisierung:
+  - `sourceDocumentFacts` werden in `transactions`, `ledgerEntries`,
+    `costEvents` und `incomeEvents` ueberfuehrt.
+  - Cash-Kontoauszugszeilen werden konservativ verarbeitet: Aggregierte
+    `Wertpapierkauf`-/`Wertpapierverkauf`-Zeilen aus Kontoauszuegen werden
+    nicht nochmals als Ledger erfasst, weil die einzelnen WP-Abrechnungen
+    bereits die Trade-Cash-Events erzeugen.
+  - Doppelte Rechnungen aus Portal- und Datei-Kopie werden per
+    Rechnungsnummer dedupliziert.
+- Firestore-Stand nach Abschluss:
+  - `sourceDocuments`: 382
+  - `sourceDocumentFacts`: 727
+  - `transactions`: 74
+  - `ledgerEntries`: 124
+  - `costEvents`: 120
+  - `incomeEvents`: 28
+  - Dokumenttypen: 94 Trades, 86 Rechnungen, 68 Kontoauszuege,
+    30 Vermoegensstatus, 33 Quartalsberichte, 32 Ertragsdokumente,
+    9 Kapitalmassnahmen, 10 Kontostandsdokumente, 3 Jahresdepotauszuege
+    plus bekannte ignorierte Informations-/Rechtsdokumente.
+- Verifikation:
+  - `npm --prefix automation run reconcile:ginmon-events` trocken erfolgreich.
+  - `npm --prefix automation run reconcile:ginmon-documents -- --pdf-timeout-ms=30000`
+    schreibt erfolgreich.
+  - `npm --prefix automation run sync:health` ist `OK`, 0 Warnungen.
+  - `npm --prefix app run build` ist erfolgreich.
+  - `git diff --check` ist sauber.
+
+## 2026-06-27 Agenten-Effizienz Flatex/Ginmon
+
+- Grundregel fuer alle Depot-Agents:
+  - Inkrementelle Pruefung vor Download/Parsing.
+  - Bekannte Dokumente nicht erneut herunterladen.
+  - Ohne neue Dokumente kein Voll-Reparse im normalen Agentlauf.
+  - Volle Reconciles nur bei neuen Dokumenten, Parser-Aenderungen oder
+    bewusstem Force-Lauf.
+  - Normale Agents laufen headless; sichtbare Browser nur mit bewusstem
+    Debug-/Login-Modus.
+  - Kein Agent markiert Dokumente automatisch als `IGNORED`,
+    `not_relevant` oder fachlich erledigt. Solche Entscheidungen gehoeren
+    ins zentrale Dokumenten-Postfach und werden vom User getroffen.
+- Ginmon:
+  - Browserstart ist jetzt headless by default.
+  - Sichtbarer Login nur noch bewusst mit
+    `npm --prefix automation run sync:ginmon-current -- --headed`.
+  - Wenn der headless Agent eine Anmeldung braucht und keine Session/Keychain
+    funktioniert, bricht er mit klarer Warnung ab, statt ein Fenster zu
+    oeffnen.
+  - Dokumentagent prueft Portal-Dokument-IDs. Testlauf:
+    343 bekannte Portal-Dokumente gesehen, 0 neue Downloads,
+    343 uebersprungen, Reconcile uebersprungen.
+  - Korrektur 2026-06-27: 17 automatisch auf `IGNORED` gesetzte Ginmon-
+    Informationsdokumente wurden wieder auf `UNPARSED` gesetzt und bleiben
+    damit pruefbar im Postfach.
+- Flatex:
+  - 5-Minuten-Snapshot laeuft headless und ueberschreibt aktuelle
+    `sourcePositions`/`sourceSummaries`; geschlossene Positionen werden aus
+    der aktuellen Ansicht entfernt.
+  - CSV-Exporte werden vor Ablage per SHA-256 gegen vorhandene Dateien in
+    Inbox/Originale/Archiv geprueft. Identischer Inhalt wird verworfen und
+    nicht erneut gespeichert.
+  - Portal-Ausfaelle werden in `agentStatus/flatex` als Warnung gespeichert.
+    Aktueller Test am 2026-06-27: Flatex leitete auf
+    `https://www.flatex.at/wartung/` um; der Agent meldet deshalb transparent
+    `WARNUNG` statt altes `OK`.
+
+## 2026-06-27 UI-Regel Depotkarten
+
+- Depotkarten in der Uebersicht sind einklappbar.
+- Eingeklappt zeigen sie nur die Kernwerte:
+  Depotwert, G/V, Heute, Fehler-/Agentstatus und letztes Update.
+- Der Klappzustand wird lokal im Browser gespeichert, damit die Uebersicht
+  beim Arbeiten kompakt bleiben kann.
+- Ausgeklappt bleiben alle Detailbereiche erhalten: Refresh-Buttons,
+  Wertmodus, Agenten, Zusatzmetriken, Konten, Depots und Positionen.
+
+## 2026-06-27 Freigabe fuer Dashboards/GUI
+
+- Nachpruefung am 2026-06-27 12:08 CEST abgeschlossen.
+- Build und Syntax:
+  - `npm --prefix app run build` erfolgreich.
+  - `node --check` fuer alle `automation/src/*.mjs` erfolgreich.
+- Datenmodell:
+  - `npm --prefix automation run reconcile:event-model` zeigt 4305 Events
+    und `changed=0`.
+  - Das zentrale Eventmodell `event_model_v1_2026-06-27` ist damit
+    idempotent und fuer Dashboards verwendbar.
+- Kosten-/Einstandspruefung:
+  - `npm --prefix automation run audit:costs` erfolgreich.
+  - 65 relevante Depotpositionen geprueft, 0 fehlende Einstandswerte.
+- Kurs-/Historienbasis:
+  - `priceHistory`: 1133 Eintraege von 2026-06-13 bis 2026-06-26.
+  - Quellen: Boerse Frankfurt, Bitget, Flatex, Ginmon, Intergold,
+    Trade Republic.
+  - Positionshistorie-Dry-Run fuer 2026-06-27 verarbeitet 72 Positionen,
+    49 davon mit Vortagsbasis.
+- Health:
+  - Aktuell `WARNUNG`, 0 Fehler.
+  - Bekannte Warnungen: Bankkonten teilweise nicht abrufbar,
+    Capital.com API-Key ungueltig/zurueckgestellt, Flatex Wartungsseite,
+    9 Ginmon Info-/Rechtsdokumente bewusst offen.
+- Entscheidung:
+  - Naechster Abschnitt ist `Dashboards und GUI`.
+  - Dashboards duerfen fuer Vermoegen, Depotwert, Cash/Kredit, Performance,
+    Tagesaenderung und Kosten-/Ertragsgrundlage gebaut werden.
+  - Jede Dashboard-Kachel muss Datenstand, Quelle und Warnstatus sichtbar
+    machen, wenn Daten nicht direkt oder nicht vollstaendig sind.
+
+## 2026-06-27 Bankkonten-Warnungen und letzter Stand
+
+- Regel fuer Bankkonten:
+  - Wenn eine Bank temporaer nicht gelesen werden kann, z. B. wegen
+    Tageslimit, fehlender Session oder Provider-Fehler, darf das Konto nicht
+    aus der GUI verschwinden.
+  - Der letzte bekannte Kontostand bleibt sichtbar und wird als `STALE`
+    markiert.
+  - Nur wenn eine Bank erfolgreich gelesen wurde und ein Konto dort wirklich
+    nicht mehr zurueckkommt, darf es als `MISSING` behandelt werden.
+- Konkreter Anlass:
+  - `bank99` erreichte am 2026-06-27 das Tageslimit von 4 Abrufen.
+  - Vor der Korrektur wurde die Position dadurch als `MISSING` und
+    `accountValueIncluded=false` gesetzt.
+  - Nach der Korrektur bleibt `bank99` mit 41,51 EUR sichtbar:
+    `status=STALE`, `accountValueIncluded=true`,
+    `staleReason=bank99: Tageslimit 4 Abrufe erreicht`.
+- GUI-Regel:
+  - Die Bankkonten-Agentmeldung muss die betroffene Bank und den Grund nennen.
+  - In der Kontozeile steht bei solchen Faellen `letzter bekannter Stand`
+    plus die konkrete Ursache.
+  - Warnbereiche duerfen keine Erfolgsmeldungen wie `x Konten gelesen` oder
+    `0 neue Umsaetze` anzeigen. Solche Laufdetails bleiben technisch als
+    `runSummary` gespeichert, werden aber nicht als Warnung dargestellt.
+  - Jedes Bankkonto zeigt direkt in der Kontozeile einen Status:
+    `OK`, `Letzter Stand`, `Fehlt` oder `Fehler`.
+  - Jedes Bankkonto zeigt direkt in der Kontozeile einen Zeitstempel fuer den
+    besten verfuegbaren Datenstand bzw. letzten Abrufversuch.
+
+## 2026-06-27 Bankkonten/Kreditkarten Agent-Trennung
+
+- Agent-Regel:
+  - Sparkasse/George und Revolut duerfen stuendlich laufen.
+  - `bank99` hat wegen Enable-Banking-/Provider-Limit einen eigenen Agenten
+    und laeuft nur 4x pro Tag.
+  - Kreditkarten sind eigene Agenten:
+    `amazon_visa` und `tfbank`, jeweils stuendlich.
+  - Der normale Bankkonten-Agent darf nur `erste,revolut` lesen und darf
+    `bank99` nicht als fehlend oder veraltet markieren.
+  - Der `bank99`-Agent schreibt seinen eigenen Agentstatus
+    `agentStatus/bank99`.
+- GUI-Regel:
+  - Die Karte `Bankkonten` zeigt die Agenten separat:
+    Sparkasse/Revolut, bank99, Amazon Visa, TF Bank.
+  - Innerhalb der Karte werden `Bankkonten` und `Kreditkarten` getrennt als
+    eigene ausklappbare Gruppen dargestellt.
+  - Beide Gruppen bleiben Teil des gemeinsamen Finanzwerts, aber jede Zeile
+    zeigt ihren eigenen Status, Zeitstempel und die letzten Umsaetze.
+  - Agenten werden bei Bankkonten/Kreditkarten direkt in der jeweiligen
+    Konto-/Kreditkartenzeile angezeigt, nicht als separate Agent-Kacheln.
+  - Wenn der zustaendige Agent `WARNUNG` oder `FEHLER` meldet, darf die
+    Kontozeile nicht `OK` anzeigen. Beispiel: TF Bank mit wartender SMS-TAN
+    zeigt `Wartet TAN`; bank99 mit Tageslimit zeigt `Letzter Stand`/Warnung.
+  - Wenn ein Konto einen erwarteten Agenten hat, aber noch kein
+    `agentStatus`-Dokument existiert, zeigt die Zeile `Kein Status` statt
+    `OK`.
+  - Der sichtbare `Update`-Wert muss Uhrzeit enthalten, wenn ein echter
+    Abruf-/Datenzeitpunkt vorhanden ist. Reine Stichtagsdaten sind nur
+    Rueckfallwerte.
+- Launchd-Regel:
+  - `com.niklas.finanztool.bank-accounts`:
+    stuendlich, `--banks=erste,revolut`.
+  - `com.niklas.finanztool.bank99`:
+    07:15, 12:15, 17:45, 21:45, `--banks=bank99`.
+    Kein `RunAtLoad` und kein Installer-Kickstart, damit kein zusaetzlicher
+    Abruf das Tageslimit verbraucht.
+  - `com.niklas.finanztool.amazon-visa` und
+    `com.niklas.finanztool.tfbank`:
+    stuendlich.
+
+## 2026-06-27 TF Bank TAN-Fix
+
+- Ursache:
+  - Der TF-Bank-Agent lief per LaunchAgent headless ohne TAN.
+  - Sobald TF Bank eine SMS-TAN verlangte, schrieb der Agent `WAITING_TAN`
+    und beendete den Browser. Der SMS-Code kam danach zwar am Mac an, aber
+    es gab keinen aktiven Login-Prozess mehr, der den Code verwenden konnte.
+  - Direkter Zugriff auf `~/Library/Messages/chat.db` ist auf diesem Mac aus
+    der Shell blockiert (`authorization denied`).
+- Fix:
+  - `sync-tfbank-local.mjs` wartet bei TAN-Abfrage jetzt bis zu 300 Sekunden
+    auf eine neue TAN.
+  - Primaere Quelle ist die lokale macOS-Nachrichten-App:
+    `automation/src/read-messages-tan.swift` liest die sichtbaren TF-Bank-SMS
+    ueber die native Accessibility-API.
+  - Der Agent merkt sich den letzten sichtbaren Code vor dem Login und
+    akzeptiert danach nur einen neuen Code. Dadurch wird kein alter TAN-Code
+    wiederverwendet.
+  - Fallback bleibt `~/.finanztool/tfbank-tan.txt`; die Datei enthaelt nur den
+    Code und wird nach erfolgreichem Lesen sofort geloescht.
+  - Alternativ bleiben `--tan=CODE` und `--tan-stdin` moeglich.
+  - Nach erfolgreichem Saldoabruf loggt sich der Agent standardmaessig aus
+    TF Bank aus. Debug-Ausnahme: `--no-logout`.
+- Verifikation:
+  - Vier echte Testlaeufe am 2026-06-27 erfolgreich.
+  - Test 1 und 2: TAN manuell aus Messages gelesen und per TAN-Datei in den
+    wartenden Agenten gespeist; jeweils Login, Snapshot und Logout `OK`.
+  - Test 3 und 4: TAN automatisch ueber
+    `read-messages-tan.swift` aus Messages gelesen; jeweils Login, Snapshot
+    und Logout `OK`.
+  - `agentStatus/tfbank=OK`.
+  - TF Bank Kreditkarte aktualisiert:
+    Saldo `-256,39 EUR`, Kreditlinie `6.000,00 EUR`, verfuegbar
+    `5.743,61 EUR`.
+  - Letzter verifizierter Import: `portal_tfbank_20260627124259`.
+
+## 2026-06-27 Bankkonten Kartenstatus und bank99 Label
+
+- GUI-Regel nachgezogen:
+  - Die Karte `Bankkonten` darf nur `OK` zeigen, wenn alle sichtbaren
+    Bankkonten/Kreditkarten und deren zuständige Agenten `OK` sind.
+  - Hat ein Unterkonto `Kein Status`, `Letzter Stand`, `Wartet TAN`,
+    `Warnung` oder `Fehler`, wird dieser Zustand auf die Kartenebene
+    hochgezogen.
+  - Die Kartenmeldung nennt den ersten betroffenen Eintrag, damit sofort klar
+    ist, welches Konto Aufmerksamkeit braucht.
+- bank99:
+  - Technische Provider-Namen wie `bank99:<uuid>` dürfen nicht mehr in der GUI
+    erscheinen.
+  - `sync-sparkasse-george-local.mjs`, die Bankkonten-Summary und die React-GUI
+    normalisieren diesen Fall auf `bank99 Konto`.
+  - Bestehende Firestore-Dokumente wurden ohne neuen bank99-API-Abruf
+    bereinigt: `sourceAccounts`, `sourcePositions` und
+    `sourceSummaries/bank_accounts.accounts`.
+- TF Bank SMS-TAN:
+  - Primaerer Pfad ist jetzt die automatische TAN-Erkennung ueber die
+    macOS-Accessibility-API von Messages (`read-messages-tan.swift`).
+  - Der Datei-/stdin-/Parameter-Pfad bleibt als Fallback erhalten.
+  - Wenn TF Bank künftig erneut eine SMS-TAN verlangt und kein Code geliefert
+    wird, muss die Kontozeile `Wartet TAN`/Warnung zeigen; die Karte darf
+    nicht `OK` anzeigen.
+
+## 2026-06-27 Bankkonten Gruppenkopf und TF-Bank-TAN-Status
+
+- GUI-Regel erweitert:
+  - Die ausklappbaren Gruppen `Bankkonten` und `Kreditkarten` zeigen jetzt
+    jeweils einen eigenen Status-Badge.
+  - Wenn nur eine Kreditkarte betroffen ist, muss die Warnung direkt am
+    Gruppenkopf `Kreditkarten` sichtbar sein, nicht nur an der Gesamtkarte.
+- TF Bank:
+  - Historische Ursache fuer `WARNUNG` trotz vorhandener Werte: Ein
+    Agentlauf brauchte eine SMS-TAN und konnte ohne bereitgestellten Code
+    nicht erfolgreich abschliessen.
+  - Das ist kein Bewertungsfehler: Der letzte gueltige TF-Bank-Stand bleibt in
+    der DB sichtbar, aber der letzte Abrufversuch ist nicht erfolgreich.
+  - `sync-tfbank-local.mjs` erhaelt bei TAN-Warnungen kuenftig
+    `lastAgentSuccessAt`/`lastSuccessAt` aus dem letzten erfolgreichen Lauf,
+    statt diese Zeitstempel zu verlieren.
+  - Seit der TAN-Automatisierung am 2026-06-27 waren zwei automatische
+    Messages-TAN-Laeufe erfolgreich; aktueller Zielstatus fuer TF Bank ist
+    wieder `OK`.

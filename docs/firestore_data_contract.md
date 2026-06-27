@@ -101,6 +101,98 @@ Regel: Einstand, Gewinn/Verlust und Performance duerfen nicht nur aus aktuellen
 Snapshots geraten werden. Wenn Bewegungsdaten verfuegbar sind, muessen sie in
 `transactions`, `ledgerEntries`, `costEvents` und `incomeEvents` landen.
 
+### 2a. Kanonisches Event- und Kostenmodell
+
+Ab 2026-06-27 gilt fuer alle vier Event-Collections ein gemeinsames
+Zuordnungsmodell. Ziel: Kosten, Steuern, Ertraege und Transaktionen muessen
+spaeter auf Gesamtportfolio, Quelle/Broker, Unterkonto/Depot, Produkt,
+Position und Einzelvorgang auswertbar sein. Wenn eine Zuordnung nicht sicher
+moeglich ist, wird sie nicht geraten, sondern transparent als
+`unallocated`, `pending`, `inferred` oder `estimated` markiert.
+
+Pflicht-/Standardfelder fuer `transactions`, `ledgerEntries`, `costEvents` und
+`incomeEvents`, soweit aus der Quelle ableitbar:
+
+- `eventModelVersion`: Version des kanonischen Eventmodells, aktuell
+  `event_model_v1_2026-06-27`
+- `eventCollection`: eine der Collections `transactions`, `ledgerEntries`,
+  `costEvents`, `incomeEvents`
+- `eventKind`: fachliche Ebene, z. B. `asset_transaction`,
+  `cash_or_account_movement`, `cost`, `income`
+- `eventType`: normalisierter Typ, aus `type` oder `category` abgeleitet
+- `eventDate`: fachliches Datum des Vorgangs; nicht nur Schreibzeitpunkt
+- `eventGroupId`: gemeinsame Klammer fuer zusammengehoerende Teilereignisse,
+  z. B. Kauf + Cashbuchung + Gebuehr + Steuer
+- `dedupeKey`: stabile fachliche Duplikatkennung
+- `source`: Quelle/Broker/Anbieter, z. B. `flatex`, `traderepublic`,
+  `ginmon`, `bitget`, `intergold`, `bank_accounts`
+- `sourceAccountId`: Depot/Konto/Wallet/Unterkonto, wenn bekannt
+- `sourcePositionId`: konkrete Position, wenn direkt bekannt
+- `instrumentId`: kanonisches Instrument, bei ISIN als `isin_<ISIN>`
+- `isin`, `symbol`, `metal`, `coin`, `epic`: quellenspezifische
+  Produktkennung, soweit vorhanden
+- `amount`, `currency`: Originalbetrag und Originalwaehrung
+- `amountEur`: Betrag in EUR, falls ohne FX-Schaetzung bestimmbar
+- `amountAbsEur`: positiver Absolutbetrag in EUR
+- `grossAmountEur`, `netAmountEur`, `taxAmountEur`, `feeAmountEur`
+- `financialImpactEur`: Vorzeichenlogik fuer Gesamtanalyse:
+  - Kosten negativ
+  - Ertraege positiv
+  - Cash-/Ledgerbewegungen mit echtem Cash-Vorzeichen
+- `allocationLevel`: `position`, `instrument`, `source_account`, `source`
+  oder `unknown`
+- `allocationStatus`: `direct`, `allocated`, `unallocated` oder `pending`
+- `allocationMethod`: `document`, `transaction`, `api`, `proportional`,
+  `manual`, `inferred` oder `unknown`
+- `allocationConfidence`: `exact`, `estimated`, `inferred` oder `unknown`
+- `comparisonScope`: `product`, `account`, `broker` oder `unknown`
+- `providerComparisonRelevant`: ob das Event spaeter fuer
+  Anbieter-/Produktvergleich relevant ist
+
+Spezielle Felder:
+
+- `costEvents.costClass`: `broker`, `product`, `tax`, `financing`,
+  `custody`, `other`, `unknown`
+- `incomeEvents.incomeClass`: `distribution`, `interest`, `reward`,
+  `cashback_or_rebate`, `other`, `unknown`
+
+Zuordnungsregeln:
+
+- Direkt einem Kauf zuordenbare Ordergebuehren erhalten dieselbe
+  `eventGroupId` wie die Transaktion und `allocationStatus=direct`.
+- Jahres-/MiFID-/Produktkosten, die nur als Uebersicht vorliegen, bleiben als
+  `summaryOnly=true` erhalten und bekommen `allocationConfidence=inferred`
+  oder `estimated`.
+- Anteilig verteilte Kosten, z. B. Intergold Kauf-/Lagerkosten, erhalten
+  `allocationMethod=proportional` und `allocationStatus=allocated`.
+- Nicht sicher zuordenbare Anbieter-/Depotkosten bleiben als
+  `allocationStatus=unallocated` auf Broker-/Quellenebene sichtbar. Sie
+  duerfen nicht verschwinden und werden spaeter bei Dashboards separat
+  ausgewiesen.
+- Capital.com, Trading 212 oder kuenftige Quellen duerfen mit
+  `allocationStatus=pending` und `allocationConfidence=unknown` starten, wenn
+  die API noch nicht alle Kosten-/Steuerdetails liefert.
+
+Umsetzung:
+
+- `automation/src/event-model.mjs` enthaelt den kanonischen Event-Enricher.
+- `npm --prefix automation run reconcile:event-model` prueft vorhandene Events.
+- `npm --prefix automation run sync:event-model` ergaenzt bestehende Events um
+  die kanonischen Zuordnungsfelder, ohne fachliche Rohwerte zu loeschen.
+- Der manuelle Full-Refresh fuehrt die Event-Modell-Normalisierung vor dem
+  Health-Check aus.
+
+Steuerregel ab 2026-06-27:
+
+- Quellensteuern, Kapitalertragsteuern, Steuerkorrekturen und andere
+  steuerliche Belastungen werden vorerst als `costEvents` mit eindeutigem
+  `type` gespeichert, z. B. `tax`, `withholding_tax` oder
+  `capital_gains_tax`.
+- Eine eigene `taxEvents`-Collection wird erst eingefuehrt, wenn
+  Jahressteuerberichte oder Steuer-Dashboards eine eigene, detailliertere
+  Struktur brauchen.
+- Bis dahin darf es keine zweite parallele Steuerwahrheit geben.
+
 ### 3. Aktueller Stand
 
 - `sourcePositions`
@@ -156,7 +248,7 @@ Pflichtfelder bzw. kanonische Bedeutung:
   `vbv_account_information_pdf`.
 - `quoteDataUpdatedAt`: letzter fachlicher Kurs-/Preisstand.
 - `quoteDataProvider`: z. B. `boerse-frankfurt`, `bitget`,
-  `ginmon_api`, `intergold_website`.
+  `ginmon_api`, `intergold_website`, `six_swiss_exchange`.
 - `quoteDataChangedAt`: Zeitpunkt der letzten erkannten Preisveraenderung,
   wenn Agentlaeufe haeufiger als Preisveraenderungen sind.
 - `lastAgentRunAt`: letzter technischer Lauf des jeweiligen Agents.
@@ -457,15 +549,26 @@ technisch abgedeckt sind:
 
 ### EquatePlus
 
-- EquatePlus ist zurueckgestellt, bis erste echte Mail-Dokumente vorliegen.
+- EquatePlus wird vorerst als manueller Novartis-Plan gefuehrt.
+- Manuelle Eingabe liegt ausschliesslich in
+  `manualInputs/equateplus_novartis`:
+  - `quantity`
+  - `entryValueEur`
+  - `entryValueCurrency=EUR`
+  - `isin=CH0012005267`
+- Der Agent bewertet diese Eingabe mit SIX Swiss Exchange und schreibt die
+  aktuellen kanonischen Werte in `sourcePositions/equateplus_novartis` und
+  `sourceSummaries/equateplus`.
+- `quotesCurrent/isin_CH0012005267` enthaelt den aktuellen SIX-Kurs samt
+  CHF/EUR-Umrechnung; `priceHistory` darf fuer Tageshistorie genutzt werden.
 - Vorher duerfen keine Holdings-/Transaktionsparser auf theoretischen
   Annahmen gebaut werden.
-- Nach Eingang der ersten Dokumente muessen zuerst Dokumenttypen, Dedupe-
-  Regeln und fachliche Felder bestimmt werden.
-- Ziel-Collections bleiben dieselben wie bei allen Quellen:
-  `sourceDocuments`, `sourceDocumentFacts`, `transactions`,
-  `ledgerEntries`, `costEvents`, `incomeEvents`, `sourcePositions` und
-  `sourceSummaries/equateplus`.
+- Nach Eingang echter EquatePlus-Dokumente muessen zuerst Dokumenttypen,
+  Dedupe-Regeln und fachliche Felder bestimmt werden.
+- Wenn Dokumente relevante Mehrdaten liefern, bleiben die Ziel-Collections
+  dieselben wie bei allen Quellen: `sourceDocuments`, `sourceDocumentFacts`,
+  `transactions`, `ledgerEntries`, `costEvents`, `incomeEvents`,
+  `sourcePositions` und `sourceSummaries/equateplus`.
 - Wenn EquatePlus Informationen zu Vesting, Einbuchung, Verkauf, Steuer,
   Gebuehr oder Mitarbeiteraktienbestand liefert, muessen diese Daten
   historisch nachvollziehbar als Fakten und Bewegungen gespeichert werden.

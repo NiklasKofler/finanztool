@@ -25,7 +25,15 @@ export function getGinmonPaths() {
   };
 }
 
-export async function launchGinmonBrowser({ headless = process.env.GINMON_HEADLESS === "true" } = {}) {
+export function ginmonHeadlessDefault() {
+  if (process.argv.includes("--headed")) return false;
+  if (process.argv.includes("--headless")) return true;
+  const env = String(process.env.GINMON_HEADLESS ?? "").toLowerCase();
+  if (["0", "false", "no"].includes(env)) return false;
+  return true;
+}
+
+export async function launchGinmonBrowser({ headless = ginmonHeadlessDefault() } = {}) {
   const paths = getGinmonPaths();
   await Promise.all([
     fs.mkdir(paths.profilePath, { recursive: true }),
@@ -40,10 +48,10 @@ export async function launchGinmonBrowser({ headless = process.env.GINMON_HEADLE
     viewport: { width: 1440, height: 1000 },
   });
   const page = context.pages()[0] ?? (await context.newPage());
-  return { context, page, paths };
+  return { context, page, paths, headless };
 }
 
-export async function ensureGinmonLogin(page, { manualTimeoutMs = 180000 } = {}) {
+export async function ensureGinmonLogin(page, { manualTimeoutMs = 180000, allowManual = false } = {}) {
   await page.goto(GINMON_LOGIN_URL, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
 
@@ -64,6 +72,12 @@ export async function ensureGinmonLogin(page, { manualTimeoutMs = 180000 } = {})
     await page.waitForURL(/app\.ginmon\.de/i, { timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(5000);
     if (!(await passwordField.isVisible().catch(() => false))) return { mode: "keychain" };
+  }
+
+  if (!allowManual) {
+    throw new Error(
+      "Ginmon-Anmeldung erforderlich, aber der Agent laeuft headless. Bitte einmal manuell mit `npm --prefix automation run sync:ginmon-current -- --headed` anmelden.",
+    );
   }
 
   console.log("[info] Bitte im geoeffneten Ginmon-Fenster anmelden. Ich warte auf die App.");

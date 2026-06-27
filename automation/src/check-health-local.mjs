@@ -12,6 +12,7 @@ const expectedSources = [
   "bitget",
   "capitalcom",
   "vbv",
+  "equateplus",
   "bank_accounts",
 ];
 const sourcesWithoutPositions = new Set(["capitalcom", "vbv"]);
@@ -25,7 +26,6 @@ const documentValuedInstruments = {
 };
 const staleHoursByAgent = {
   flatex: 12,
-  traderepublic_manual_exports: 2,
   traderepublic_portal: 24,
   ginmon: 48,
   intergold: 72,
@@ -34,17 +34,14 @@ const staleHoursByAgent = {
   capitalcom: 6,
   quotes: 2,
   vbv: 100 * 24,
+  equateplus: 26,
   bank_accounts: 26,
+  bank99: 26,
 };
-const allowedUnclassifiedGinmonDocuments = new Set([
-  "ginmon_doc_21333006",
-  "ginmon_doc_31350057",
-  "ginmon_doc_21334116",
-  "ginmon_doc_21648183",
-  "ginmon_file_0d9d6559cf5ca049",
-  "ginmon_file_80ad647a6d9a2979",
+const obsoleteAgentStatusIds = new Set([
+  "traderepublic_mail",
+  "traderepublic_manual_exports",
 ]);
-
 function parseDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -65,6 +62,8 @@ function isCashLike(position) {
   return (
     position.accountValueIncluded === false ||
     text.includes("cash") ||
+    text.includes("credit_card") ||
+    text.includes("kreditkarte") ||
     text.includes("geldkonto") ||
     text.includes("kontostand") ||
     /(^|\s)(eur|usdt)($|\s)/.test(text)
@@ -348,6 +347,7 @@ for (const source of expectedSources) {
 
 for (const status of statuses) {
   const agentId = status.id;
+  if (obsoleteAgentStatusIds.has(agentId)) continue;
   const reviewedTradeRepublicPortalWarning =
     agentId === "traderepublic_portal" &&
     status.status === "WARNUNG" &&
@@ -567,7 +567,6 @@ if (flatexSummary) {
 const unclassifiedGinmonDocuments = sourceDocuments.filter(
   (document) =>
     document.source === "ginmon" &&
-    !allowedUnclassifiedGinmonDocuments.has(document.id) &&
     !isIssueResolvedByDecision(document, activeDecisions) &&
     (document.documentType === "unknown" ||
       document.parseStatus === "UNKNOWN" ||
@@ -579,8 +578,8 @@ if (unclassifiedGinmonDocuments.length) {
     alert(
       "ginmon_unclassified_documents",
       "warning",
-      "Ginmon-Dokument nicht klassifiziert",
-      `${unclassifiedGinmonDocuments.length} Ginmon-Dokument(e) passen nicht in die bisherige Klassifizierung.`,
+      "Ginmon-Dokument im Postfach offen",
+      `${unclassifiedGinmonDocuments.length} Ginmon-Dokument(e) warten auf deine Entscheidung oder einen spaeteren Parser.`,
       "ginmon",
       unclassifiedGinmonDocuments.slice(0, 10).map((document) => ({
         id: document.id,

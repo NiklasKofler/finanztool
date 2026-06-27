@@ -15,6 +15,10 @@ Intergold ist als dokument- und preisbasierte Quelle produktiv nutzbar:
   - Preisstand Website
   - letzte echte Preisaenderung
   - letzter Agentlauf
+- Update 2026-06-27: Intergold-PDFs werden jetzt auch in
+  `sourceDocuments`, `sourceDocumentFacts`, `transactions` und `costEvents`
+  registriert. Nicht geparste Intergold-Anhaenge bleiben im zentralen
+  Dokumenten-Postfach und werden nicht automatisch ignoriert.
 
 ## Wie Intergold aktuell aktualisiert wird
 
@@ -47,6 +51,10 @@ Aktuell geschrieben:
 - `intergoldPrices`: aktueller Preis je Metall
 - `intergoldPriceHistory`: historische Preisstaende, idempotent
 - `agentStatus/intergold`: Agentstatus
+- `sourceDocuments`: registrierte Intergold-Anhaenge
+- `sourceDocumentFacts`: Kaufbeleg- und Positionsfakten
+- `transactions`: Metall-Kaufzeilen
+- `costEvents`: anteilige Kauf-/Lagerkosten
 
 ## Aktueller Stand
 
@@ -139,12 +147,45 @@ Ergebnis:
 - Health: `OK`.
 - App-Build erfolgreich.
 
+## Update 2026-06-27
+
+Aktueller verifizierter Lauf:
+
+- Preisbloecke: 19
+- gueltige Preisbloecke: 19
+- Intergold-Preisstand Website: `2026-06-23`
+- PDF-Dateien: 2
+- registrierte `sourceDocuments`: 2
+- geparste Kauf-/Einlagerungsbestaetigungen: 2
+- offene Intergold-Info-Dokumente im Postfach: 0
+- `sourceDocumentFacts`: 19
+- `transactions`: 17
+- `costEvents`: 17
+- Dokumentstand Bestand: `2026-03-23`
+- Metallpositionen: 13
+- fehlende Preise: 0
+- konservativer Ankaufwert: `29.895,52 EUR`
+- Verkaufswert: `34.863,99 EUR`
+- Einstand inklusive anteiliger Kosten: `23.040,51 EUR`
+- G/V konservativ: `+6.855,01 EUR`
+
+Regel fuer neue Intergold-Anhaenge:
+
+- Kauf-/Einlagerungsbelege werden geparst und in Bestand, Fakten,
+  Transaktionen und Kosten uebernommen.
+- Verkaufs-/Auslagerungsdokumente werden aktuell nicht automatisch gebucht,
+  weil es noch keine echten Verkaufsdaten gibt. Sie bleiben im zentralen
+  Dokumenten-Postfach.
+- Sonstige Intergold-Anhaenge werden als Info-Dokumente registriert und
+  bleiben im Dokumenten-Postfach, bis du sie als nicht relevant, wichtig/spaeter
+  oder parserwuerdig markierst.
+- Der Agent darf keine Intergold-Dokumente automatisch als nicht relevant,
+  ignoriert oder fachlich erledigt markieren. Diese Entscheidung gehoert immer
+  dir im Dokumenten-Postfach.
+
 ## Offene Punkte
 
 - Verkaufsbestaetigungen und Rechnungen sind konzeptionell vorgesehen, aber
   aktuell nicht als eigener Reduktions-/Transaktionsstrom geprueft.
-- Automatische Mailablage fuer neue Intergold-Belege ist noch nicht final
-  auditiert.
-- `sourceDocuments`/`sourceDocumentFacts` fuer Intergold-PDFs sind noch nicht
-  im gleichen Detailgrad wie VBV aufgebaut; aktuell liegt die fachliche
-  Aggregation in `intergoldHoldings` und `sourcePositions`.
+- Automatische Mailablage fuer neue Intergold-Belege muss noch end-to-end mit
+  echten neuen E-Mail-Anhaengen auditiert werden.

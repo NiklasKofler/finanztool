@@ -17,7 +17,7 @@ const historyTimeZone = process.env.FINANZTOOL_TIME_ZONE ?? "Europe/Vienna";
 const maxInstruments = Number.parseInt(readArg("--max-instruments") ?? process.env.QUOTE_MAX_INSTRUMENTS ?? "0", 10);
 const delayMs = Number.parseInt(readArg("--delay-ms") ?? process.env.QUOTE_DELAY_MS ?? "150", 10);
 const quoteSources = new Set(
-  (process.env.QUOTE_SOURCES ?? "flatex,traderepublic")
+  (process.env.QUOTE_SOURCES ?? "traderepublic")
     .split(",")
     .map((source) => source.trim())
     .filter(Boolean),
@@ -449,7 +449,10 @@ async function main() {
 
     for (const position of group) {
       const preserveSourceValue =
-        position.source === "ginmon" || position.valuationMethod === "flatex_broker_snapshot_v1";
+        position.source === "ginmon" ||
+        position.source === "traderepublic" ||
+        position.valuationMethod === "flatex_broker_snapshot_v1";
+      const preserveTradeRepublicPrimary = position.source === "traderepublic";
       const currentValue = preserveSourceValue
         ? parseMaybeNumber(position.currentValue)
         : roundCurrency(position.quantity * priceEur);
@@ -497,24 +500,36 @@ async function main() {
           position.quantityText ??
           (estimatedQuantity === null ? null : `ca. ${formatEstimatedQuantity(estimatedQuantity)} Stk.`),
         quantityEstimated: estimatedQuantity !== null || position.quantityEstimated === true,
-        quoteText: `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(quote.price)} ${quoteCurrency}`,
-        quotePrice: quote.price,
-        quoteCurrency,
-        quotePriceEur: priceEur,
-        quoteProvider,
-        quoteProviderSymbol: quote.providerSymbol ?? mapping.providerSymbol,
-        quoteAsOf: quote.asOf,
-        quoteStatus: "OK",
-        quoteUpdatedAt: now,
-        quoteFetchedAt: now,
-        priceSource: quoteProvider,
-        priceSourceUrl: quote.sourceUrl ?? mapping.sourceUrl ?? null,
-        quoteVenue: quote.mic ?? mapping.mic ?? null,
-        quoteAgeMinutes: quoteFreshness.quoteAgeMinutes,
-        quoteFreshness: quoteFreshness.quoteFreshness,
+        quoteText: preserveTradeRepublicPrimary
+          ? position.quoteText ?? null
+          : `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(quote.price)} ${quoteCurrency}`,
+        quotePrice: preserveTradeRepublicPrimary ? position.quotePrice ?? null : quote.price,
+        quoteCurrency: preserveTradeRepublicPrimary ? position.quoteCurrency ?? null : quoteCurrency,
+        quotePriceEur: preserveTradeRepublicPrimary ? position.quotePriceEur ?? null : priceEur,
+        quoteProvider: preserveTradeRepublicPrimary
+          ? position.quoteProvider ?? position.brokerQuoteProvider ?? "traderepublic_portal_web"
+          : quoteProvider,
+        quoteProviderSymbol: preserveTradeRepublicPrimary ? position.quoteProviderSymbol ?? null : quote.providerSymbol ?? mapping.providerSymbol,
+        quoteAsOf: preserveTradeRepublicPrimary ? position.quoteAsOf ?? position.brokerQuoteAsOf ?? null : quote.asOf,
+        quoteStatus: preserveTradeRepublicPrimary ? position.quoteStatus ?? "OK" : "OK",
+        quoteUpdatedAt: preserveTradeRepublicPrimary ? position.quoteUpdatedAt ?? position.updatedAt ?? now : now,
+        quoteFetchedAt: preserveTradeRepublicPrimary ? position.quoteFetchedAt ?? position.updatedAt ?? now : now,
+        priceSource: preserveTradeRepublicPrimary ? position.priceSource ?? "Trade Republic Web-Portal" : quoteProvider,
+        priceSourceUrl: preserveTradeRepublicPrimary ? position.priceSourceUrl ?? null : quote.sourceUrl ?? mapping.sourceUrl ?? null,
+        quoteVenue: preserveTradeRepublicPrimary ? position.quoteVenue ?? null : quote.mic ?? mapping.mic ?? null,
+        quoteAgeMinutes: preserveTradeRepublicPrimary ? position.quoteAgeMinutes ?? null : quoteFreshness.quoteAgeMinutes,
+        quoteFreshness: preserveTradeRepublicPrimary ? position.quoteFreshness ?? null : quoteFreshness.quoteFreshness,
         externalQuoteValue: quoteBasedCurrentValue,
         externalQuoteDifference:
           typeof currentValue === "number" ? roundCurrency(quoteBasedCurrentValue - currentValue) : null,
+        externalQuoteProvider: quoteProvider,
+        externalQuoteProviderSymbol: quote.providerSymbol ?? mapping.providerSymbol,
+        externalQuotePrice: quote.price,
+        externalQuoteCurrency: quoteCurrency,
+        externalQuotePriceEur: priceEur,
+        externalQuoteAsOf: quote.asOf,
+        externalQuoteUpdatedAt: now,
+        externalQuoteVenue: quote.mic ?? mapping.mic ?? null,
         valuationDate: preserveSourceValue ? position.valuationDate : quote.asOf,
         valuationMethod: preserveSourceValue ? position.valuationMethod : `${quoteProvider}_quote_v1`,
         performanceValue,
@@ -570,12 +585,18 @@ async function main() {
     const performanceValue =
       typeof costValue === "number" ? roundCurrency(securityValue - costValue) : existingSummary.performanceValue ?? null;
     const hasCash = sourcePositions.some(isCashPosition);
+    const preservePrimaryQuoteMeta = source === "traderepublic";
+    const externalQuoteComparisonValue =
+      source === "traderepublic"
+        ? parseMaybeNumber(existingSummary.brokerageValue) ??
+          roundCurrency(securityValue - (parseMaybeNumber(existingSummary.privateMarketsValue) ?? 0))
+        : securityValue;
     if (writeEnabled) {
       const { id: _id, ...existingData } = existingSummary;
       await firestore.setDocument("sourceSummaries", source, {
         ...existingData,
         source,
-        currentValue: hasCash ? securityValue : total,
+        currentValue: total,
         depotValue: hasCash ? securityValue : existingData.depotValue ?? null,
         cashValue: hasCash ? cashValue : existingData.cashValue ?? null,
         netValue: total,
@@ -587,8 +608,8 @@ async function main() {
         costExpectedCount: securityPositions.length,
         externalQuoteDepotValue: externalQuote.externalQuoteTotal,
         externalQuoteDifference:
-          typeof externalQuote.externalQuoteTotal === "number" && typeof securityValue === "number"
-            ? roundCurrency(externalQuote.externalQuoteTotal - securityValue)
+          typeof externalQuote.externalQuoteTotal === "number" && typeof externalQuoteComparisonValue === "number"
+            ? roundCurrency(externalQuote.externalQuoteTotal - externalQuoteComparisonValue)
             : null,
         externalQuoteCoverageCount: externalQuote.externalQuoteCoverageCount,
         externalQuoteExpectedCount: externalQuote.externalQuoteExpectedCount,
@@ -596,12 +617,16 @@ async function main() {
         oldestQuoteAsOf: quoteMeta.oldestQuoteAsOf,
         quoteFreshness: quoteMeta.quoteFreshness,
         quoteUpdatedAt: now,
-        quoteDataProvider: quoteProvider,
-        quoteDataUpdatedAt: now,
+        quoteDataProvider: preservePrimaryQuoteMeta ? existingData.quoteDataProvider ?? quoteProvider : quoteProvider,
+        quoteDataUpdatedAt: preservePrimaryQuoteMeta ? existingData.quoteDataUpdatedAt ?? now : now,
+        externalQuoteDataProvider: quoteProvider,
+        externalQuoteDataUpdatedAt: now,
         positionCount: sourcePositions.length,
         securityPositionCount: securityPositions.length,
         valuationMethod:
-          source === "flatex" && existingData.valuationMethod === "flatex_broker_snapshot_v1"
+          source === "traderepublic"
+            ? "traderepublic_portal_web_with_external_quotes_v1"
+            : source === "flatex" && existingData.valuationMethod === "flatex_broker_snapshot_v1"
             ? "flatex_broker_snapshot_with_market_quotes_v1"
             : `position_sum_with_${quoteProvider}_quotes_v1`,
         updatedAt: now,

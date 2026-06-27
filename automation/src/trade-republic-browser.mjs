@@ -7,6 +7,7 @@ import { requireLocalSecret } from "./local-secret.mjs";
 export const TRADE_REPUBLIC_TRANSACTIONS_URL = "https://app.traderepublic.com/profile/transactions";
 
 const TRADE_REPUBLIC_LOGIN_URL = "https://app.traderepublic.com/login";
+const TRADE_REPUBLIC_SESSION_CHECK_URL = "https://app.traderepublic.com/portfolio?timeframe=1d";
 const TR_PHONE_SERVICE = "finanztool-traderepublic-phone";
 const TR_PIN_SERVICE = "finanztool-traderepublic-pin";
 const TR_COUNTRY_NAME = process.env.TR_COUNTRY_NAME ?? "Austria";
@@ -141,18 +142,22 @@ async function waitForLoggedIn(page, timeoutMs) {
   while (Date.now() - startedAt < timeoutMs) {
     const url = page.url();
     const bodyText = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+    const hasAuthenticatedBody =
+      /wealth|cash|portfolio|profile|transactions|activity|vermögen|konto/i.test(bodyText);
+    const hasLoginBody = /phone|telefon|pin|passcode|log in|login|einloggen|anmelden/i.test(bodyText);
     const isAuthenticatedUrl =
       /app\.traderepublic\.com\/(portfolio|profile|cash|orders|browse|search|settings)/i.test(url) &&
       !/signin|login|challenge|identifier/i.test(url);
     if (
-      isAuthenticatedUrl ||
+      (isAuthenticatedUrl && hasAuthenticatedBody && !hasLoginBody) ||
       (/app\.traderepublic\.com/i.test(url) &&
         !/signin|login|challenge|identifier/i.test(url) &&
-        /wealth|cash|portfolio|profile|transactions|activity|vermögen|konto/i.test(bodyText))
+        hasAuthenticatedBody &&
+        !hasLoginBody)
     ) {
       return true;
     }
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(750);
   }
   return false;
 }
@@ -178,11 +183,17 @@ export async function ensureTradeRepublicLogin(page, { onStatus = async () => {}
   const confirmTimeoutMs =
     timeoutMs ?? Number.parseInt(process.env.TR_LOGIN_CONFIRM_TIMEOUT_MS ?? "300000", 10);
 
+  await onStatus("Trade Republic Session wird geprueft");
+  await page.goto(TRADE_REPUBLIC_SESSION_CHECK_URL, { waitUntil: "domcontentloaded" }).catch(() => null);
+  if (await waitForLoggedIn(page, 2500)) {
+    return { mode: "existing-session" };
+  }
+
   await onStatus("Trade Republic Login wird geprueft");
   await page.goto(TRADE_REPUBLIC_LOGIN_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(1000);
 
-  if (await waitForLoggedIn(page, 5000)) {
+  if (await waitForLoggedIn(page, 3000)) {
     return { mode: "existing-session" };
   }
 
@@ -213,7 +224,13 @@ export async function ensureTradeRepublicLogin(page, { onStatus = async () => {}
     'button[type="submit"]',
   ]).catch(() => false);
   await page.keyboard.press("Enter").catch(() => {});
-  await page.waitForTimeout(2500);
+  await page
+    .locator(
+      'input[type="password"], input[inputmode="numeric"], input[name*="pin" i], input[id*="pin" i], input[autocomplete="one-time-code"]',
+    )
+    .first()
+    .waitFor({ state: "visible", timeout: 5000 })
+    .catch(() => page.waitForTimeout(500));
 
   await onStatus("PIN wird eingegeben");
   const pinFilled = await fillFirst(page, [

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.niklas.finanztool.amazon-visa</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>__NODE_PATH__</string>
+      <string>src/sync-amazon-visa-local.mjs</string>
+      <string>--write</string>
+      <string>--headless</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__WORKING_DIRECTORY__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>__PATH__</string>
+      <key>FIREBASE_PROJECT_ID</key>
+      <string>finanzperformance-tool</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/finanztool-amazon-visa.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/finanztool-amazon-visa.err.log</string>
+  </dict>
+</plist>

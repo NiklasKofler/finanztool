@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.niklas.finanztool.health-check</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>__NODE_PATH__</string>
+      <string>src/check-health-local.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__WORKING_DIRECTORY__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>__PATH__</string>
+      <key>FIREBASE_PROJECT_ID</key>
+      <string>finanzperformance-tool</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/finanztool-health-check.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/finanztool-health-check.err.log</string>
+  </dict>
+</plist>

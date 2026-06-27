@@ -16,6 +16,7 @@ import {
   parseGinmonQuarterlyReport,
   parseGinmonTrade,
 } from "./ginmon-parser.mjs";
+import { replaceGinmonEvents } from "./ginmon-event-normalizer.mjs";
 import { extractPdfText } from "./pdf-text.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
@@ -230,6 +231,9 @@ function buildDocumentRecords(documents) {
         discount: parsed.discount ?? null,
         totalAmount: parsed.totalAmount ?? null,
         vatIncluded: parsed.vatIncluded ?? null,
+        dedupeKey: ["ginmon", "invoice", parsed.invoiceNumber, parsed.totalAmount]
+          .filter((value) => value !== null && value !== undefined)
+          .join("|"),
         sourceDocument: document.filePath,
       });
     }
@@ -648,16 +652,26 @@ for (const fact of documentFacts) {
   });
 }
 
+const normalizedEvents = await replaceGinmonEvents(firestore, documentFacts, now);
+
 if (writeDocumentsOnly) {
   await firestore.setDocument("agentStatus", "ginmon_documents", {
     source: "ginmon",
     status: "OK",
-    message: `${documentRecords.length} Ginmon-Dokumente, ${documentFacts.length} generische Dokumentfakten gespeichert`,
+    message: `${documentRecords.length} Ginmon-Dokumente, ${documentFacts.length} Fakten, ${normalizedEvents.written.transactions} Transaktionen, ${normalizedEvents.written.ledgerEntries} Ledger, ${normalizedEvents.written.costEvents} Kosten, ${normalizedEvents.written.incomeEvents} Ertraege gespeichert`,
     lastSuccessAt: now,
+    lastAgentRunAt: now,
+    normalizedAt: now,
     documentCount: documentRecords.length,
     factCount: documentFacts.length,
+    normalizedTransactions: normalizedEvents.written.transactions,
+    normalizedLedgerEntries: normalizedEvents.written.ledgerEntries,
+    normalizedCostEvents: normalizedEvents.written.costEvents,
+    normalizedIncomeEvents: normalizedEvents.written.incomeEvents,
   });
-  console.log(`[ok] Ginmon-Dokumentfakten geschrieben: ${documentRecords.length} Dokumente, ${documentFacts.length} Fakten`);
+  console.log(
+    `[ok] Ginmon-Dokumentfakten geschrieben: ${documentRecords.length} Dokumente, ${documentFacts.length} Fakten, ${normalizedEvents.written.transactions} Transaktionen, ${normalizedEvents.written.ledgerEntries} Ledger`,
+  );
   process.exit(0);
 }
 
@@ -701,28 +715,18 @@ await firestore.setDocument("sourceSummaries", "ginmon", {
   updatedAt: now,
 });
 
-for (const event of costEvents) {
-  const { id, ...data } = event;
-  await firestore.setDocument("costEvents", id, {
-    ...data,
-    updatedAt: now,
-  });
-}
-
-const existingCostEvents = (await firestore.listDocuments("costEvents")).filter(
-  (event) => event.source === "ginmon",
-);
-const currentCostEventIds = new Set(costEvents.map((event) => event.id));
-for (const existing of existingCostEvents) {
-  if (!currentCostEventIds.has(existing.id)) await firestore.deleteDocument("costEvents", existing.id);
-}
-
 await firestore.setDocument("agentStatus", "ginmon", {
   source: "ginmon",
   status: latestAssets.length ? "OK" : "UNVOLLSTAENDIG",
-  message: `${latestAssets.length} Ginmon-Depot(s), ${positions.length} Positionen, ${costEvents.length} Kostenereignisse`,
+  message: `${latestAssets.length} Ginmon-Depot(s), ${positions.length} Positionen, ${normalizedEvents.written.transactions} Transaktionen, ${normalizedEvents.written.ledgerEntries} Ledger, ${normalizedEvents.written.costEvents} Kosten, ${normalizedEvents.written.incomeEvents} Ertraege`,
   lastSuccessAt: now,
+  lastAgentRunAt: now,
+  normalizedAt: now,
   positionCount: positions.length,
+  normalizedTransactions: normalizedEvents.written.transactions,
+  normalizedLedgerEntries: normalizedEvents.written.ledgerEntries,
+  normalizedCostEvents: normalizedEvents.written.costEvents,
+  normalizedIncomeEvents: normalizedEvents.written.incomeEvents,
   currentValue,
 });
 

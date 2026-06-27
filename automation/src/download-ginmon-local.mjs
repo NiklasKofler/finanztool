@@ -4,12 +4,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
+import { FirestoreRest } from "./firestore-rest.mjs";
 import { ensureGinmonLogin, launchGinmonBrowser } from "./ginmon-browser.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const writeFirestore = process.argv.includes("--write");
 const writeDocumentsOnly = process.argv.includes("--write-documents-only");
 const reconcileAfterDownload = writeFirestore || writeDocumentsOnly || process.argv.includes("--reconcile");
+const forceReconcile = process.argv.includes("--force-reconcile") || process.argv.includes("--reconcile");
 const verbose = process.argv.includes("--verbose");
 const pageLimit = Number.parseInt(readArg("--page-limit") ?? "100", 10);
 const maxDocuments = Number.parseInt(readArg("--max-documents") ?? "0", 10);
@@ -246,10 +250,40 @@ function reconcile() {
   }
 }
 
-const { context, page } = await launchGinmonBrowser();
+async function ginmonAgentStatus() {
+  const firestore = new FirestoreRest({
+    projectId,
+    accessToken: await getFirebaseCliAccessToken(),
+  });
+  return {
+    firestore,
+    status: (await firestore.listDocuments("agentStatus")).find((document) => document.id === "ginmon_documents"),
+  };
+}
+
+async function recordNoNewDocuments(downloadSummary) {
+  if (!writeFirestore && !writeDocumentsOnly) return;
+  const { firestore, status: existing } = await ginmonAgentStatus();
+  const now = new Date();
+  const { id: _id, ...existingData } = existing ?? {};
+  await firestore.setDocument("agentStatus", "ginmon_documents", {
+    ...existingData,
+    source: "ginmon",
+    status: "OK",
+    message: `Keine neuen Ginmon-Dokumente gefunden; ${downloadSummary.skipped} bekannte Dokumente uebersprungen`,
+    lastAgentRunAt: now,
+    updatedAt: now,
+    lastDownloadCheckAt: now,
+    lastDownloadSeen: downloadSummary.seen,
+    lastDownloadSkipped: downloadSummary.skipped,
+    lastDownloadNew: downloadSummary.downloaded,
+  });
+}
+
+const { context, page, headless } = await launchGinmonBrowser();
 let downloadSummary;
 try {
-  await ensureGinmonLogin(page);
+  await ensureGinmonLogin(page, { allowManual: !headless });
   const authorization = await captureAuthorization(page);
   downloadSummary = await downloadAllDocuments(authorization);
 } finally {
@@ -271,4 +305,13 @@ console.log(
   ),
 );
 
-if (reconcileAfterDownload) reconcile();
+if (reconcileAfterDownload) {
+  const { status: existingStatus } = await ginmonAgentStatus();
+  const hasParsedState = typeof existingStatus?.factCount === "number" && existingStatus.factCount > 0;
+  if (forceReconcile || downloadSummary.downloaded > 0 || !hasParsedState) {
+    reconcile();
+  } else {
+    await recordNoNewDocuments(downloadSummary);
+    console.log("[ok] Keine neuen Ginmon-Dokumente. Reconcile uebersprungen.");
+  }
+}

@@ -12,13 +12,14 @@ const steps = [
   { id: "bitget", label: "Bitget Snapshot", script: "import-bitget-local.mjs" },
   { id: "bitget_ledger", label: "Bitget Ledger", script: "sync-bitget-ledger-local.mjs" },
   { id: "flatex", label: "Flatex Umsaetze und Broker-Snapshot", script: "download-flatex-local.mjs", args: ["--write"] },
-  { id: "traderepublic_manual_exports", label: "Trade Republic manuelle Exporte", script: "trade-republic-manual-export-agent.mjs", args: ["--write"] },
+  { id: "traderepublic_portal", label: "Trade Republic Portal", script: "download-traderepublic-local.mjs", args: ["--write", "--headless"] },
   { id: "ginmon", label: "Ginmon API", script: "sync-ginmon-current-api.mjs", args: ["--write"] },
   { id: "ginmon_documents", label: "Ginmon Dokumente", script: "download-ginmon-local.mjs", args: ["--write-documents-only"] },
   { id: "intergold", label: "Intergold Bestand und Preise", script: "reconcile-intergold-local.mjs", args: ["--write"] },
   { id: "vbv", label: "VBV Vorsorgekasse", script: "sync-vbv-local.mjs", args: ["--write"] },
   { id: "bank_accounts", label: "Bankkonten", script: "sync-sparkasse-george-local.mjs", args: ["--write", "--transactions"] },
   { id: "quotes", label: "Aktuelle Kurse", script: "run-quote-sync-local.mjs" },
+  { id: "event_model", label: "Event-Modell-Normalisierung", script: "backfill-event-model-local.mjs", args: ["--write"] },
   { id: "health", label: "Health-Check", script: "check-health-local.mjs" },
 ];
 

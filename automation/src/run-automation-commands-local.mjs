@@ -35,7 +35,12 @@ function runFullRefresh() {
 }
 
 function runTradeRepublicPortalRefresh() {
-  const result = spawnSync(process.execPath, [path.join(__dirname, "download-traderepublic-local.mjs"), "--write"], {
+  const result = spawnSync(process.execPath, [
+    path.join(__dirname, "download-traderepublic-local.mjs"),
+    "--write",
+    "--headless",
+    "--snapshot-only",
+  ], {
     cwd: path.resolve(__dirname, ".."),
     env: process.env,
     stdio: "inherit",
@@ -88,7 +93,7 @@ for (const command of pendingCommands) {
   });
 
   try {
-    if (command.type === "sync_quotes") runFullRefresh();
+    if (command.type === "sync_quotes") runQuoteSync();
     if (command.type === "full_refresh") runFullRefresh();
     if (command.type === "traderepublic_portal_refresh") runTradeRepublicPortalRefresh();
     const completedAt = new Date();

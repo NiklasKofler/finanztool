@@ -5,7 +5,8 @@ export type SourceKind =
   | "metals"
   | "equity_plan"
   | "pension"
-  | "bank";
+  | "bank"
+  | "credit_card";
 
 export type SourceStatus = "automated" | "ready" | "manual" | "planned" | "blocked";
 
@@ -32,6 +33,10 @@ export interface SourceOverview {
   quoteDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   quoteDataProvider?: string | null;
   quoteDataChangedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  externalQuoteDepotValue?: number | null;
+  externalQuoteDifference?: number | null;
+  externalQuoteDataUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  externalQuoteDataProvider?: string | null;
   lastAgentRunAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   lastAgentSuccessAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   lastDataChangeAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
@@ -67,6 +72,14 @@ export interface PortfolioPosition {
   currentValueUsdt?: number | null;
   externalQuoteValue?: number | null;
   externalQuoteDifference?: number | null;
+  externalQuoteProvider?: string | null;
+  externalQuoteProviderSymbol?: string | null;
+  externalQuotePrice?: number | null;
+  externalQuoteCurrency?: string | null;
+  externalQuotePriceEur?: number | null;
+  externalQuoteAsOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  externalQuoteUpdatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  externalQuoteVenue?: string | null;
   costValue?: number | null;
   costValueQuote?: number | null;
   costCurrency?: string | null;
@@ -120,4 +133,83 @@ export interface SystemHealth {
   errorCount: number;
   warningCount: number;
   alerts: SystemAlert[];
+}
+
+export type FinancialEventCollection =
+  | "transactions"
+  | "ledgerEntries"
+  | "costEvents"
+  | "incomeEvents";
+
+export type FinancialEventAllocationLevel =
+  | "position"
+  | "instrument"
+  | "source_account"
+  | "source"
+  | "unknown";
+
+export type FinancialEventAllocationStatus =
+  | "direct"
+  | "allocated"
+  | "unallocated"
+  | "pending";
+
+export type FinancialEventAllocationMethod =
+  | "document"
+  | "transaction"
+  | "api"
+  | "proportional"
+  | "manual"
+  | "inferred"
+  | "unknown";
+
+export type FinancialEventConfidence = "exact" | "estimated" | "inferred" | "unknown";
+
+export interface FinancialEventBase {
+  id: string;
+  source?: string | null;
+  sourceLabel?: string | null;
+  sourceAccountId?: string | null;
+  sourcePositionId?: string | null;
+  instrumentId?: string | null;
+  isin?: string | null;
+  symbol?: string | null;
+  metal?: string | null;
+  coin?: string | null;
+  eventModelVersion?: string | null;
+  eventCollection?: FinancialEventCollection | string | null;
+  eventKind?: string | null;
+  eventType?: string | null;
+  eventDate?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  eventGroupId?: string | null;
+  dedupeKey?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  amountEur?: number | null;
+  amountAbsEur?: number | null;
+  grossAmountEur?: number | null;
+  netAmountEur?: number | null;
+  taxAmountEur?: number | null;
+  feeAmountEur?: number | null;
+  financialImpactEur?: number | null;
+  allocationLevel?: FinancialEventAllocationLevel | string | null;
+  allocationStatus?: FinancialEventAllocationStatus | string | null;
+  allocationMethod?: FinancialEventAllocationMethod | string | null;
+  allocationConfidence?: FinancialEventConfidence | string | null;
+  comparisonScope?: "product" | "account" | "broker" | "unknown" | string | null;
+  providerComparisonRelevant?: boolean | null;
+  sourceDocumentId?: string | null;
+  sourceDocumentFactId?: string | null;
+  importId?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
+export interface CostEventDocument extends FinancialEventBase {
+  eventCollection?: "costEvents" | string | null;
+  costClass?: "broker" | "product" | "tax" | "financing" | "custody" | "other" | "unknown" | string | null;
+}
+
+export interface IncomeEventDocument extends FinancialEventBase {
+  eventCollection?: "incomeEvents" | string | null;
+  incomeClass?: "distribution" | "interest" | "reward" | "cashback_or_rebate" | "other" | "unknown" | string | null;
 }

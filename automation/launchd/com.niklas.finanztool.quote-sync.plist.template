@@ -17,6 +17,8 @@
       <string>__PATH__</string>
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
+      <key>QUOTE_SOURCES</key>
+      <string>traderepublic</string>
       <key>FINANZTOOL_TIME_ZONE</key>
       <string>Europe/Vienna</string>
     </dict>

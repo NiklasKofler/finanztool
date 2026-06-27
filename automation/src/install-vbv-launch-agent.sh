@@ -23,4 +23,4 @@ launchctl bootout "gui/$UID/com.niklas.finanztool.vbv-sync" 2>/dev/null || true
 launchctl bootstrap "gui/$UID" "$plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.vbv-sync"
 
-echo "[ok] VBV-Sync laeuft taeglich um 06:45 headless. Unveraenderte Stichtage werden nicht erneut importiert."
+echo "[ok] VBV-Sync laeuft wochenweise montags um 06:45 headless. Unveraenderte Stichtage werden nicht erneut importiert."

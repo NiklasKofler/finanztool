@@ -736,21 +736,20 @@ Ablauf:
      Portfolio-Gesamtwert minus gelistete Positionen
    - `sourceSummaries/traderepublic` mit `netValue` inklusive Cash und
      `depotValue` als Investmentwert ohne Cash
-7. Danach sucht der Agent einen offiziellen CSV/PDF-Download. Nur wenn Chrome
-   wirklich eine Datei herunterlaedt, wird diese in
-   `00_Inbox/TradeRepublic/ManualExports/Portal` abgelegt.
-8. Anschliessend laeuft derselbe Parser/Dedupe-Pfad wie fuer selbst gemailte
-   Exporte:
-   `trade-republic-manual-export-agent.mjs --write --no-mail --inbox-dir ...`
+7. Danach prueft der Agent gezielt die aktuell sichtbaren
+   Transaktions-/Activity-Details auf einzelne Portal-Dokumente und bekannte
+   Fakten. Bereits bekannte Signaturen werden uebersprungen.
+8. Der Agent sucht bewusst nicht mehr nach einem globalen CSV/PDF-Export. Die
+   Testlaeufe vom 2026-06-27 haben festgelegt: Ein solcher Alles-Download ist
+   im Trade-Republic-Webportal nicht Teil unserer Agent-Strategie.
 
 Fail-Safe:
 
-- Wenn die Web-App keinen offiziellen Download anbietet, ist das seit
-  2026-06-23 kein harter Fehler mehr, solange der Portal-Snapshot erfolgreich
-  gelesen wurde.
-- Der Agent schreibt dann `agentStatus/traderepublic_portal=OK` mit Hinweis,
-  dass kein offizieller Download-Button gefunden wurde, und legt zusaetzlich
-  einen Diagnose-Snapshot ab.
+- Der Agent ist erfolgreich, wenn Portal-Snapshot, bekannte
+  Transaktions-/Activity-Dokumente und operative Anwendung sauber geprueft
+  wurden.
+- Wenn keine neuen Portal-PDFs gefunden werden, schreibt der Agent `OK` mit
+  `keine neuen Portal-PDFs gespeichert`. Das ist der erwartete Normalfall.
 - Browsertext ist eine aktuelle Bewertungs- und Transparenzquelle, aber kein
   vollstaendiger Audit-Ersatz. Kosten, Steuern, Einstand und Historie bleiben
   ueber `Transaction export`, Abrechnungs-PDFs, `Account statement`,
@@ -1165,10 +1164,43 @@ Verifikation 2026-06-23 nach Fallback-Umsetzung:
   Umsetzung: Button als eigene breite Aktionszeile in der Trade-Republic-Karte.
   Waehrend des Logins zeigt er `Trade Republic: App bestätigen`, sobald
   `agentStatus/traderepublic_portal.message` auf App-Freigabe wartet.
-- Health bleibt korrekt `WARNUNG`, weil drei alte
-  `Transaction confirmation`-Portal-Dokumentbuttons weiter `Something went
-  wrong` liefern. Das betrifft Dokumentvollstaendigkeit, nicht den aktuellen
-  Portalwert.
+- Frueher gab es drei alte `Transaction confirmation`-Portal-Dokumentbuttons,
+  die nur `Something went wrong` lieferten. Diese Faelle sind geprueft und
+  verursachen Stand 2026-06-27 keine offene Trade-Republic-Postfachwarnung
+  mehr.
+
+## Abschlusscheck 2026-06-27
+
+- Befehl: `npm --prefix automation run sync:traderepublic-portal-fast`
+- Ergebnis: schneller Portal-Snapshot erfolgreich:
+  `20260627_11-12-49_portal_snapshot.json`
+- `agentStatus/traderepublic_portal=OK`
+- Meldung: `Portal-Snapshot aktualisiert; Dokument- und Transaktionsdetailscan
+  uebersprungen`
+- Firestore:
+  - `sourceSummaries/traderepublic.netValue=2.559,37 EUR`
+  - `sourceSummaries/traderepublic.depotValue=2.409,88 EUR`
+  - `sourceSummaries/traderepublic.cashValue=149,49 EUR`
+  - `sourceSummaries/traderepublic.costValue=2.336,41 EUR`
+  - `sourceSummaries/traderepublic.performanceValue=+73,47 EUR`
+  - `sourceSummaries/traderepublic.performancePct=+3,14 %`
+- Datenabdeckung:
+  - `6` Positionen inkl. Cash
+  - `78` Source-Dokumente
+  - `351` Source-Dokumentfakten
+  - `112` Transaktionen
+  - `212` Ledger-Zeilen
+  - `13` Kostenereignisse
+  - `15` Ertragsereignisse
+  - `0` offene Trade-Republic-Dokumente im zentralen Postfach
+- Quellen:
+  - Portalwerte, Cash, Private Markets und Brokerkurse:
+    `traderepublic_portal_web`
+  - externer Aktualitaets-/Vergleichswert fuer gelistete Positionen:
+    `boerse-frankfurt` in `externalQuote*`
+- Status: Trade Republic ist fuer den aktuellen Ausbaustand abgeschlossen.
+  Mail- und Manual-Export-Agenten bleiben Legacy/Notfallkanal und sind nicht
+  produktiver Standard.
 
 ## Preislogik und Redundanz-Audit 2026-06-24
 
@@ -1342,3 +1374,163 @@ Technische Regel fuer die Zukunft:
 - Sie muessen als offener Eintrag im Dokumenten-Postfach erscheinen.
 - Erst eine explizite Review-Entscheidung darf sie aus Health-Warnungen
   herausnehmen.
+
+## Portal-Pruefung und Effizienz-Fix 2026-06-27
+
+Ziel:
+
+- Trade Republic soll ohne Mail-Agent aktuell bleiben.
+- Der Portal-Login soll schnell bis zur App-Freigabe kommen.
+- Der normale Portalcheck soll nicht unnoetig alte Transaktionen und Dokumente
+  durchsuchen.
+- Halb geladene Portaltexte duerfen keine echten Werte in Firestore
+  ueberschreiben.
+
+Pruefung:
+
+- Sichtbarer Loginlauf mit bestehendem Trade-Republic-Profil erfolgreich.
+- Die gespeicherte Session wurde wiederverwendet; keine neue App-Freigabe war
+  im Test notwendig.
+- Schneller Snapshot nach Optimierung: ca. `15s`.
+- Normaler Portalcheck nach Optimierung: ca. `48s`.
+- Der normale Portalcheck pruefte nur die neuesten relevanten Karten:
+  - `5` Transaktionen gescannt
+  - `3` bekannte Dokumente uebersprungen
+  - `2` Transaktionen ohne Dokumentbutton als kein neuer Dokumentbedarf
+    behandelt
+  - `0` neue Portal-PDFs
+  - `0` neue Portal-Dokumentfehler
+  - `1` Annual-Tax-Report-Aktivitaet erkannt und als bereits bekannt
+    uebersprungen
+
+Technische Aenderungen:
+
+- Login-Erkennung pollt nach Telefon/PIN schneller und wartet nicht mehr
+  starr, wenn das naechste Eingabefeld schon sichtbar ist.
+- Der normale Portalcheck laedt nicht mehr pauschal die komplette
+  Transaktionsliste. Ein voller Scroll-/Backfill-Scan bleibt mit
+  `--full-portal-scan` moeglich.
+- Transaktionen ohne sichtbaren Dokumentbutton zaehlen als "kein neuer
+  Dokumentbedarf" und verhindern dadurch nicht mehr den inkrementellen
+  Abbruch.
+- Vor Firestore-Schreibzugriff wird der Portal-Snapshot validiert:
+  Gesamtwert, sichtbare Positionen und Cash muessen vorhanden sein.
+  Ein leerer oder noch nicht fertig geladener Portaltext fuehrt zu `FEHLER`,
+  nicht zu einem Ueberschreiben der Datenbasis.
+- Zusaetzliche Plausibilitaetsregel nach Befund 2026-06-27:
+  Gelistete Portal-Positionen mit Stueckzahl duerfen nicht massenhaft mit
+  Wert `0` uebernommen werden. Ein solcher Snapshot gilt als unvollstaendig,
+  auch wenn die Seite formal Text liefert.
+- Der globale Kurs-Sync darf Trade-Republic-Portalwerte nicht mehr als
+  primaeren Wert ueberschreiben. Boerse-Frankfurt-Kurse werden nur noch als
+  externe Vergleichswerte (`externalQuote*`) gespeichert.
+
+Verifizierter Stand nach Reparaturlauf:
+
+- `agentStatus/traderepublic_portal.status=OK`
+- `currentValue=2.559,37 EUR`
+- `depotValue=2.409,88 EUR`
+- `cashValue=149,49 EUR`
+- `brokerageValue=1.228,07 EUR`
+- `privateMarketsValue=1.181,81 EUR`
+- `costValue=2.336,41 EUR`
+- `performanceValue=+73,47 EUR`
+- `performancePct=+3,14 %`
+- Primaere Wertquelle: `traderepublic_portal_web`
+- Externe Vergleichskursquelle: `boerse-frankfurt`
+- sichtbare Portalpositionen:
+  - Stoxx Europe Defense EUR (Acc)
+  - NASDAQ100 USD (Acc)
+  - Core S&P 500 USD (Acc)
+  - Netflix
+  - Private Equity als abgeleiteter Portal-Restwert
+  - Cashkonto
+
+Aktuelle Datenquellen:
+
+- Aktueller Trade-Republic-Gesamtwert, Cash, sichtbare Brokerpositionen und
+  Private-Markets-Restwert kommen aus dem Trade-Republic-Webportal.
+- Kostenbasis, Einstand und Historie kommen weiterhin aus den bereits
+  geparsten Trade-Republic-Dokumenten und Portal-Fakten.
+- Portal-Dokumente und Tax Report werden inkrementell per Signatur
+  dedupliziert.
+- Wenn Trade Republic neue relevante Dokumentbuttons oder neue Dokumenttypen
+  liefert, muessen diese entweder geparst oder im zentralen Dokumenten-
+  Postfach sichtbar bleiben.
+
+## Portal-only Zielbetrieb 2026-06-27
+
+Entscheidung:
+
+- Trade Republic soll im Normalbetrieb nur noch ueber das Webportal aktuell
+  gehalten werden.
+- Der alte Mail-Agent und der No-Subject-Manual-Export bleiben nur
+  Legacy/Fallback und werden nicht als produktive Standardquelle verwendet.
+- Wenn eine Portal-Session abgelaufen ist, braucht der Agent weiterhin deine
+  App-Freigabe. Danach soll er die gespeicherte Browser-Session wiederverwenden.
+
+Kommandos:
+
+- `npm run sync:traderepublic-portal-fast`
+  - schneller Snapshot
+  - aktualisiert aktuelle Werte, Cash, sichtbare Positionen und
+    Private-Markets-Restwert
+  - kein Dokument-/Transaktionsdetailscan
+- `npm run sync:traderepublic-portal`
+  - normaler inkrementeller Portalcheck
+  - prueft nur die neuesten Transaktionen und stoppt nach bekannten
+    Transaktionen
+  - laedt nur neue, noch nicht bekannte Portal-Dokumente
+- `npm run sync:traderepublic-portal-full`
+  - bewusster Voll-/Backfill-Scan
+  - nur bei Parseraenderungen, Datenluecken oder manueller Kontrolle nutzen
+- `npm run sync:traderepublic-portal-facts`
+  - wendet bereits gespeicherte Portal-Dokumentfakten operativ an
+  - braucht keinen Browser-Login
+
+Verifizierter Portal-Faktenstand:
+
+- `69` Portal-Datenfakten erkannt.
+- `69` Portal-Anwendungen gespeichert.
+- `0` offene erkannte Portal-Fakten.
+- `63` Portal-Fakten sind als Duplikat zur historischen/manuellen Baseline
+  markiert.
+- `6` Portal-Fakten sind angewendet.
+- Der Portal-Tax-Report 2025 ist als Jahresinformation angewendet. Er erzeugt
+  bewusst keine Cash-Buchung, weil ein Steuerreport eine Zusammenfassung und
+  kein Kontoumsatz ist.
+
+Fachliche Regel:
+
+- Aktuelle Bewertung: Webportal ist Source of Truth.
+- Cash ist im Gesamtwert enthalten und wird zusaetzlich separat ausgewiesen.
+- UI-Regel ab 2026-06-27:
+  - Trade Republic hat zwei Anzeige-Modi.
+  - `Aktuell` ist Standard und verwendet Boerse-Frankfurt-Kurse fuer
+    gelistete Wertpapiere, solange kein frischer Portal-Refresh gemacht wurde.
+    Cash und Private Markets bleiben dabei aus dem Trade-Republic-Portal.
+  - `Broker` zeigt die letzte echte Trade-Republic-Portalbewertung.
+  - Beide Zeitpunkte muessen sichtbar sein: letzter Trade-Republic-Portalstand
+    und letzter Frankfurt-Kursstand.
+  - Die Datenbank-Wahrheit bleibt der Portalwert; Frankfurt darf nur als
+    externe Kursfortschreibung/Anzeige- und Vergleichswert dienen.
+  - `externalQuoteDifference` darf bei Trade Republic nur Frankfurt gegen den
+    Brokerage-/gelistete-Wertpapiere-Teil vergleichen. Private Markets und Cash
+    haben keinen Frankfurt-Kurs und duerfen diesen Vergleich nicht verfaelschen.
+- Kosten, Steuern, Zinsen und Transaktionshistorie: Portal-Dokumente und
+  bereits gespeicherte Baseline-Fakten sind Source of Truth.
+- Tax Reports werden als Steuer-/Jahresinformationen in
+  `sourceDocumentFacts`/Portal-Anwendungen gehalten. Sie duerfen nicht still als
+  Kontobewegung oder doppelte Steuerzahlung in den Cashflow eingehen.
+- Ein unbekanntes oder nicht parsebares Portal-Dokument bleibt im zentralen
+  Dokumenten-Postfach sichtbar, bis du es klassifizierst oder wir einen Parser
+  dafuer bauen.
+
+Rest-Risiken:
+
+- Trade Republic stellt keine stabile oeffentliche API fuer diese Daten bereit.
+  Der Portal-Agent ist daher DOM-/Download-basiert und muss bei
+  Webportal-Aenderungen neu geprueft werden.
+- Private Markets sind im Portal nur als Aggregat sichtbar. Die Bewertung wird
+  als Restwert aus dem Portal-Snapshot gefuehrt; Einstand und Historie kommen
+  aus den Dokument-/Transaktionsfakten.

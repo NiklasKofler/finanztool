@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 import { createEnableBankingClientFromLocalSecrets } from "./enable-banking-client.mjs";
 import { getFirebaseCliAccessToken } from "./firebase-cli-access-token.mjs";
 import { FirestoreRest } from "./firestore-rest.mjs";
+import { refreshBankAccountsSummary } from "./bank-accounts-summary-utils.mjs";
+import { normalizeEventDocument } from "./event-model.mjs";
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,15 @@ const bankConfigs = [
   },
 ];
 
+function bankIssueLine(issue, messageKey = "reason") {
+  const label = issue?.label ?? issue?.bank ?? "Bank";
+  const message = String(issue?.[messageKey] ?? "").trim();
+  if (!message) return label;
+  const normalizedLabel = String(label).trim().toLowerCase();
+  const normalizedMessage = message.toLowerCase();
+  return normalizedMessage.startsWith(`${normalizedLabel}:`) ? message : `${label}: ${message}`;
+}
+
 function readArg(name) {
   const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
   if (inline) return inline.slice(name.length + 1);
@@ -79,6 +90,22 @@ function findBank(key) {
     );
   }
   return bank;
+}
+
+function selectedBankConfigs() {
+  const raw = readArg("--banks") ?? readArg("--bank") ?? process.env.ENABLE_BANKING_BANKS ?? process.env.ENABLE_BANKING_BANK;
+  if (!raw) return bankConfigs;
+  const keys = String(raw)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return keys.map(findBank);
+}
+
+function agentStatusIdForBanks(banks) {
+  const keys = banks.map((bank) => bank.key).sort();
+  if (keys.length === 1 && keys[0] === "bank99") return "bank99";
+  return source;
 }
 
 function sessionService(bank) {
@@ -212,7 +239,11 @@ function providerAccountId(account) {
 
 function accountLabel(account, bank) {
   if (typeof account === "string") return `${bank.displayName} Konto`;
-  return account?.details ?? account?.product ?? account?.name ?? account?.cashAccountType ?? account?.cash_account_type ?? `${bank.displayName} Konto`;
+  const label = account?.details ?? account?.product ?? account?.name ?? account?.cashAccountType ?? account?.cash_account_type ?? null;
+  if (bank.key === "bank99" && (!label || String(label).toLowerCase().startsWith("bank99:"))) {
+    return "bank99 Konto";
+  }
+  return label ?? `${bank.displayName} Konto`;
 }
 
 function signedBalance(balance) {
@@ -320,7 +351,8 @@ function classifyBankLedgerEntry(transaction, amount, bookingText) {
 }
 
 function normalizedTransactionId(transaction, account) {
-  const accountStableKey = account.identificationHash ?? account.providerAccountId ?? account.accountId;
+  const accountStableKey =
+    account.ledgerStableKey ?? account.identificationHash ?? account.providerAccountId ?? account.accountId;
   const providerReference = transaction?.entry_reference ?? transaction?.entryReference ?? null;
   if (providerReference) {
     return `bank_accounts_ledger_${sanitizeId(account.bankKey)}_${sanitizeId(accountStableKey)}_${sanitizeId(providerReference)}`;
@@ -557,6 +589,43 @@ function normalizeAccount(account, session) {
   return { ...(accountData ?? {}), uid: account };
 }
 
+function activeExistingAccountsForBank(existingAccounts, bank) {
+  return existingAccounts.filter(
+    (account) => account.bankKey === bank.key && account.status !== "MISSING" && account.accountId,
+  );
+}
+
+function preserveExistingAccountIdentity(snapshot, bank, existingAccounts, currentAccountCount) {
+  const candidates = activeExistingAccountsForBank(existingAccounts, bank);
+  const exact = candidates.find(
+    (account) =>
+      account.accountId === snapshot.accountId ||
+      account.providerAccountId === snapshot.providerAccountId ||
+      (account.identificationHash &&
+        snapshot.identificationHash &&
+        account.identificationHash === snapshot.identificationHash),
+  );
+  if (exact) {
+    return {
+      ...snapshot,
+      accountId: exact.accountId,
+      ledgerStableKey: exact.providerAccountId ?? snapshot.providerAccountId ?? exact.accountId,
+    };
+  }
+
+  if (currentAccountCount === 1 && candidates.length === 1) {
+    const [existing] = candidates;
+    return {
+      ...snapshot,
+      accountId: existing.accountId,
+      ledgerStableKey: existing.providerAccountId ?? snapshot.providerAccountId ?? existing.accountId,
+      previousProviderAccountId: existing.providerAccountId ?? null,
+    };
+  }
+
+  return snapshot;
+}
+
 function summarizeAccount(account, balances, bank) {
   const providerId = providerAccountId(account);
   const balanceInfo = selectBalanceInfo(balances);
@@ -692,7 +761,11 @@ async function handleAuthorizationCallback(client, code) {
   console.log(JSON.stringify({ status: "OK", bank: bank.key, sessionStored: true }, null, 2));
 }
 
-async function readBankSnapshots(client, bank, { existingTransactionStatsByAccount = new Map() } = {}) {
+async function readBankSnapshots(
+  client,
+  bank,
+  { existingAccounts = [], existingTransactionStatsByAccount = new Map() } = {},
+) {
   const sessionId = await readBankSessionId(bank);
   if (!sessionId) {
     return {
@@ -747,7 +820,12 @@ async function readBankSnapshots(client, bank, { existingTransactionStatsByAccou
     const id = providerAccountId(account);
     if (!id) continue;
     const balances = await client.getBalances(id);
-    const snapshot = summarizeAccount(account, balances, bank);
+    const snapshot = preserveExistingAccountIdentity(
+      summarizeAccount(account, balances, bank),
+      bank,
+      existingAccounts,
+      accounts.length,
+    );
     accountSnapshots.push(snapshot);
 
     if (includeTransactions) {
@@ -826,6 +904,9 @@ async function main() {
   const skippedBanks = [];
   const bankErrors = [];
   const rateLimitReservations = [];
+  const banksToRead = selectedBankConfigs();
+  const attemptedBankKeys = new Set(banksToRead.map((bank) => bank.key));
+  const agentStatusId = agentStatusIdForBanks(banksToRead);
   const firestore = new FirestoreRest({
     projectId,
     accessToken: await getFirebaseCliAccessToken(),
@@ -833,11 +914,17 @@ async function main() {
   const existingSourceLedgerEntries = includeTransactions
     ? (await firestore.listDocuments("ledgerEntries")).filter((entry) => entry.source === source)
     : [];
+  const existingSourceAccounts = (await firestore.listDocuments("sourceAccounts")).filter(
+    (entry) => entry.source === source,
+  );
   const existingTransactionStatsByAccount = summarizeExistingTransactionsByAccount(existingSourceLedgerEntries);
 
-  for (const bank of bankConfigs) {
+  for (const bank of banksToRead) {
     try {
-      const result = await readBankSnapshots(client, bank, { existingTransactionStatsByAccount });
+      const result = await readBankSnapshots(client, bank, {
+        existingAccounts: existingSourceAccounts,
+        existingTransactionStatsByAccount,
+      });
       allAccountSnapshots.push(...result.accountSnapshots);
       allTransactionStats.push(...result.transactionStats);
       allLedgerEntries.push(...result.ledgerEntries);
@@ -870,6 +957,8 @@ async function main() {
   const result = {
     mode: writeEnabled ? "write" : "dry-run",
     source,
+    agentStatusId,
+    banks: banksToRead.map((bank) => bank.key),
     status,
     accountCount: allAccountSnapshots.length,
     valuedAccountCount: validAccounts.length,
@@ -922,7 +1011,7 @@ async function main() {
     current.latestTransactionDate = newestDate([current.latestTransactionDate, entry.date]);
     transactionWriteStatsByAccount.set(entry.accountId, current);
 
-    await firestore.setDocument("ledgerEntries", entry.id, entry);
+    await firestore.setDocument("ledgerEntries", entry.id, normalizeEventDocument("ledgerEntries", entry, now));
     await firestore.setDocument("sourceDocumentFacts", entry.id, {
       ...entry,
       factType: "bank_transaction",
@@ -930,9 +1019,9 @@ async function main() {
       ledgerEntryId: entry.id,
     });
     const costEvent = costEventFromBankLedgerEntry(entry, { now });
-    if (costEvent) await firestore.setDocument("costEvents", costEvent.id, costEvent);
+    if (costEvent) await firestore.setDocument("costEvents", costEvent.id, normalizeEventDocument("costEvents", costEvent, now));
     const incomeEvent = incomeEventFromBankLedgerEntry(entry, { now });
-    if (incomeEvent) await firestore.setDocument("incomeEvents", incomeEvent.id, incomeEvent);
+    if (incomeEvent) await firestore.setDocument("incomeEvents", incomeEvent.id, normalizeEventDocument("incomeEvents", incomeEvent, now));
   }
 
   const transactionWriteStats = [...transactionWriteStatsByAccount.entries()].map(([accountId, stats]) => ({
@@ -948,12 +1037,28 @@ async function main() {
     { newCount: 0, duplicateCount: 0, writtenCount: 0 },
   );
 
-  const existingAccounts = (await firestore.listDocuments("sourceAccounts")).filter(
-    (entry) => entry.source === source,
-  );
+  const existingAccounts = existingSourceAccounts;
   const currentAccountIds = new Set(allAccountSnapshots.map((account) => account.accountId));
+  const bankIssueByKey = new Map([
+    ...skippedBanks.map((issue) => [issue.bank, { ...issue, issueType: "skipped", message: bankIssueLine(issue) }]),
+    ...bankErrors.map((issue) => [issue.bank, { ...issue, issueType: "error", message: bankIssueLine(issue, "message") }]),
+  ]);
   for (const existing of existingAccounts) {
+    if (existing.accountType === "credit_card") continue;
+    if (!attemptedBankKeys.has(existing.bankKey)) continue;
     if (!currentAccountIds.has(existing.accountId)) {
+      const bankIssue = bankIssueByKey.get(existing.bankKey);
+      if (bankIssue) {
+        await firestore.setDocument("sourceAccounts", existing.id, {
+          ...existing,
+          status: "STALE",
+          staleReason: bankIssue.message,
+          staleIssueType: bankIssue.issueType,
+          lastSkippedAt: now,
+          updatedAt: now,
+        });
+        continue;
+      }
       await firestore.setDocument("sourceAccounts", existing.id, {
         ...existing,
         status: "MISSING",
@@ -967,7 +1072,22 @@ async function main() {
     (entry) => entry.source === source,
   );
   for (const existing of existingPositions) {
+    if (existing.category === "credit_card" || existing.accountType === "credit_card") continue;
+    if (!attemptedBankKeys.has(existing.bankKey)) continue;
     if (!currentAccountIds.has(existing.accountId)) {
+      const bankIssue = bankIssueByKey.get(existing.bankKey);
+      if (bankIssue) {
+        await firestore.setDocument("sourcePositions", existing.id, {
+          ...existing,
+          accountValueIncluded: true,
+          status: "STALE",
+          staleReason: bankIssue.message,
+          staleIssueType: bankIssue.issueType,
+          lastSkippedAt: now,
+          updatedAt: now,
+        });
+        continue;
+      }
       await firestore.setDocument("sourcePositions", existing.id, {
         ...existing,
         accountValueIncluded: false,
@@ -1044,62 +1164,23 @@ async function main() {
     });
   }
 
-  await firestore.setDocument("sourceSummaries", source, {
-    source,
-    displayName: "Bankkonten",
-    currentValue: totalValue,
-    cashValue: totalValue,
-    netValue: totalValue,
-    availableWithCredit: totalAvailableWithCredit,
-    creditLineEstimate: totalCreditLineEstimate || null,
-    positionCount: allAccountSnapshots.length,
-    accountCount: allAccountSnapshots.length,
-    accounts: allAccountSnapshots.map((account) => {
-      const writeStats = transactionWriteStatsByAccount.get(account.accountId);
-      const fetchStats = allTransactionStats.find((item) => item.accountId === account.accountId);
-      const historicalStats = historicalTransactionStatsByAccount.get(account.accountId);
-      return {
-        accountId: account.accountId,
-        bankKey: account.bankKey,
-        bankName: account.bankName,
-        label: account.label,
-        accountNumber: account.ibanMasked,
-        providerAccountId: account.providerAccountId,
-        currentValue: account.currentValue,
-        cashValue: account.currentValue,
-        availableWithCredit: account.availableWithCredit,
-        creditLineEstimate: account.creditLineEstimate,
-        valuationDate: account.sourceDataUpdatedAt,
-        positionCount: 1,
-        transactionCount: historicalStats?.totalCount ?? writeStats?.writtenCount ?? fetchStats?.fetchedCount ?? null,
-        transactionSyncedCount: writeStats?.writtenCount ?? fetchStats?.fetchedCount ?? null,
-        transactionNewCount: writeStats?.newCount ?? null,
-        transactionDuplicateCount: writeStats?.duplicateCount ?? null,
-        latestTransactionDate: historicalStats?.latestTransactionDate ?? writeStats?.latestTransactionDate ?? fetchStats?.latestTransactionDate ?? null,
-      };
-    }),
-    skippedBanks,
-    bankErrors,
-    rateLimitReservations,
-    sourceDataProvider: "enable_banking",
-    sourceDataUpdatedAt,
-    valuationDate: sourceDataUpdatedAt,
-    lastAgentRunAt: now,
-    lastAgentSuccessAt: now,
-    status,
-    valuationMethod: "enable_banking_balances_v1",
-    updatedAt: now,
+  const bankSummary = await refreshBankAccountsSummary(firestore, {
+    now,
     importId,
+    status,
+    valuationMethod: "bank_accounts_with_credit_cards_v1",
+    sourceDataProvider: "mixed_bank_and_credit_card_sources",
+    preserveAgentTimestamps: false,
   });
 
   await firestore.setDocument("imports", importId, {
     source,
     parser: "enable_banking_balances_v1",
     status: "IMPORTED",
-    accountCount: allAccountSnapshots.length,
-    currentValue: totalValue,
-    availableWithCredit: totalAvailableWithCredit,
-    creditLineEstimate: totalCreditLineEstimate || null,
+    accountCount: bankSummary.accountCount,
+    currentValue: bankSummary.currentValue,
+    availableWithCredit: bankSummary.availableWithCredit,
+    creditLineEstimate: bankSummary.creditLineEstimate || null,
     sourceDataUpdatedAt,
     transactionStats: allTransactionStats,
     transactionWriteStats,
@@ -1113,27 +1194,53 @@ async function main() {
     updatedAt: now,
   });
 
-  const messageParts = [
-    `${allAccountSnapshots.length} Konto/Konten, ${totalValue.toFixed(2)} EUR Geldstand`,
-    totalCreditLineEstimate > 0
-      ? `Kreditlinie ca. ${totalCreditLineEstimate.toFixed(2)} EUR`
+  const summaryParts = [
+    `${bankSummary.accountCount} Konto/Karten angezeigt, ${bankSummary.currentValue.toFixed(2)} EUR Gesamtstand`,
+    `${allAccountSnapshots.length} frisch ueber Enable Banking gelesen`,
+    (bankSummary.creditLineEstimate ?? 0) > 0
+      ? `Kreditlinie ca. ${bankSummary.creditLineEstimate.toFixed(2)} EUR`
       : null,
     includeTransactions
       ? `${transactionTotals.writtenCount} Umsatz/Umsaetze geprueft, ${transactionTotals.newCount} neu`
       : null,
-    skippedBanks.length ? `${skippedBanks.length} Bank(en) ohne Abruf` : null,
-    bankErrors.length ? `${bankErrors.length} Bank-Fehler` : null,
   ].filter(Boolean);
+  const issueParts = [
+    ...skippedBanks.map((issue) => `ohne Abruf: ${bankIssueLine(issue)}`),
+    ...bankErrors.map((issue) => `Fehler: ${bankIssueLine(issue, "message")}`),
+  ].filter(Boolean);
+  const warnings = [
+    ...skippedBanks.map((issue) => ({
+      type: "bank_skipped",
+      bank: issue.bank,
+      label: issue.label,
+      message: bankIssueLine(issue),
+      reason: issue.reason,
+    })),
+    ...bankErrors.map((issue) => ({
+      type: "bank_error",
+      bank: issue.bank,
+      label: issue.label,
+      message: bankIssueLine(issue, "message"),
+      reason: issue.message,
+    })),
+  ];
 
-  await firestore.setDocument("agentStatus", source, {
+  await firestore.setDocument("agentStatus", agentStatusId, {
     source,
+    agentStatusId,
+    banks: banksToRead.map((bank) => bank.key),
     status,
-    message: messageParts.join("; "),
+    message: issueParts.length ? issueParts.join("; ") : summaryParts.join("; "),
+    runSummary: summaryParts.join("; "),
+    warningCount: warnings.length,
+    warnings,
     lastAgentRunAt: now,
     lastAgentSuccessAt: allAccountSnapshots.length ? now : null,
     lastSuccessAt: allAccountSnapshots.length ? now : null,
     sourceDataUpdatedAt,
-    currentValue: totalValue,
+    currentValue: bankSummary.currentValue,
+    displayedAccountCount: bankSummary.accountCount,
+    freshAccountCount: allAccountSnapshots.length,
     ledgerEntryCount: ledgerEntries.length,
     transactionStats: allTransactionStats,
     transactionWriteStats,

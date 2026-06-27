@@ -1,6 +1,6 @@
 # Import Masterplan
 
-Stand: 2026-06-26
+Stand: 2026-06-27
 
 ## Hauptziel
 
@@ -39,18 +39,19 @@ Wichtig:
 
 | Kategorie | Quelle | Aktivitaet | Prioritaet | Ziel-Aktualitaet | Primare Importmethode | Backup-Methode | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Broker | Flatex | aktiv | sehr hoch | taeglich bis intraday per Export | Agent | manueller CSV-Export | teilweise produktiv |
-| Broker | Trade Republic | aktiv | sehr hoch | taeglich bei Transaktionen plus periodischer Snapshot | Mail-Agent fuer taegliche Abrechnungs-PDFs | manueller Mobile-Export plus Agent | Mailweg bestaetigt, Umsetzung offen |
-| Robo-Advisor | Ginmon | aktiv | hoch | taeglich bis woechentlich je nach Dokumentenlage | Agent | Browser-/Dokumentabruf | teilweise produktiv |
+| Broker | Flatex | aktiv | sehr hoch | Broker-Snapshot alle 5 Minuten, Dokumentexport taeglich | Headless Flatex-Broker-Snapshot | manueller CSV-Export | produktiv, Flatex ist primaere Kursquelle |
+| Broker | Trade Republic | aktiv | sehr hoch | schneller Portal-Snapshot on demand, Dokumentscan gezielt | Portal-Agent | manueller Mobile-Export nur Notfall | Portalstrategie aktiv; Mail-/Manual-Agent Legacy |
+| Robo-Advisor | Ginmon | aktiv | hoch | API alle 5 Minuten, Dokumente taeglich | Headless Ginmon-API + Dokumentagent | Browser-/Dokumentabruf | produktiv |
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
 | Krypto | Bitget | aktiv | hoch | alle 5 Minuten | API | CSV/Datei nur Notfall | produktiv auf Mac Studio |
-| Mitarbeiteraktien | EquatePlus | passiv/regelmaessig | mittel | bei neuer Benachrichtigung, mindestens monatlich | spaeter Mail-Agent nach erster echter Mail | manueller PDF-Import | zurueckgestellt bis erste Mail-Dokumente vorliegen |
-| Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99 max. 4/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse produktiv, Revolut/bank99 Sessions offen, Umsaetze offen |
-| Kreditkarte | Amazon Visa | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
-| Kreditkarte | TF Bank Kreditkarte | aktiv | mittel | taeglich | API ueber Open-Banking-Anbieter, falls unterstuetzt | Agent/Export | Anbieter pruefen |
-| Bank | Revolut | aktiv/vorbereitet | mittel | wenige Abrufe pro Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | im Control Panel verlinkt, Session noch offen |
+| Mitarbeiteraktien | EquatePlus | zurueckgestellt | mittel | vorerst nur Kurs per Kurs-Sync, Eingabe bei Aenderung | manuelle Novartis-Anteile/Einstandswert EUR + SIX-Kurs | spaeter Dokumentparser falls Mehrdaten | im Datenbasis-Cleanup geparkt |
+| Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99 max. 4/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse, Revolut und bank99 produktiv angebunden; Revolut-Datenstand beobachten |
+| Kreditkarte | Amazon Visa | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent/Abrechnung | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
+| Kreditkarte | George Visa | zurueckgestellt | mittel | spaeter pruefen | Portal/PDF/CSV falls verfuegbar | manueller Export | pausiert; Erste/George-PSD2 liefert aktuell keine Kreditkarte |
+| Kreditkarte | TF Bank Kreditkarte | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent mit SMS-TAN | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
+| Bank | Revolut | aktiv | mittel | wenige Abrufe pro Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Session aktiv, Saldo importiert, API liefert aktuell keine Umsaetze |
 | Broker | Trading 212 | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | offen |
-| Trading | Capital.com | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | offen |
+| Trading | Capital.com | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | LaunchAgent pausiert |
 | Vorsorge | Betriebliche Altersvorsorge | passiv | niedrig | monatlich bis quartalsweise | manueller Eintrag in der App | manueller Belegimport | entschieden |
 
 ## Zielbild pro Quelle
@@ -58,46 +59,54 @@ Wichtig:
 ### 1. Flatex
 
 - Ziel: Transaktionen, Cash, Positionen und aktueller Broker-Stand in der App
-- Realistisch: kein echtes Streaming, aber sehr gute Aktualitaet ueber regelmaessige CSV-Exporte
+- Realistisch: kein echtes Streaming, aber sehr gute Aktualitaet ueber
+  regelmaessige Broker-Snapshots
 - Methode:
-  - primaer `Agent`
-  - Exportdateien landen in Drive
-  - Watcher importiert automatisch
+  - primaer headless `Flatex-Broker-Snapshot` alle 5 Minuten
+  - CSV-/Dokumentexport getrennt taeglich um 22:10
 - Zusatz:
   - laufender Bestand wird rechnerisch aus Depot- und Kontoumsaetzen gebildet
   - aktueller Depot-Snapshot aus der Flatex-Oberflaeche ist primaere
     Bewertungsquelle fuer Flatex
-  - Boerse-Frankfurt-Kurse dienen als Vergleichs-/Historienwerte und duerfen
-    die Flatex-Brokerwerte nicht still ueberschreiben
+  - Flatex selbst ist primaere Kursquelle fuer Flatex
+  - Boerse-Frankfurt-Kurse duerfen Flatex-Brokerwerte nicht still ueberschreiben
   - Postbox bleibt optionales Belegarchiv
 
 ### 2. Trade Republic
 
 - Ziel: Positionen, Einstand, aktueller Marktwert, Cash, Performance
 - Realistisch:
-  - Trade Republic sendet am Ende eines Transaktionstages automatisch eine Sammelmail
-  - die Mail enthaelt passwortgeschuetzte `Securities Settlement` PDFs
-  - periodische Reports bleiben fuer Abgleich und Snapshot wichtig
+  - aktueller Stand kommt primaer aus dem authentifizierten Webportal
+  - der schnelle App-Refresh darf keinen Vollscan alter Dokumente erzwingen
+  - Dokumente/Reports bleiben fuer Kosten, Steuern, Zinsen und
+    Nachvollziehbarkeit wichtig
 - Methode:
-  - primaer `Mail-Agent`
-  - Agent erkennt die taeglichen Abrechnungsmails, laedt PDF-Anhaenge und importiert sie
-  - PDF-Passwort wird lokal im macOS-Schluesselbund gespeichert und bei neuer Passwort-Mail aktualisiert
-  - Passwort wird nicht in App, Firestore, Git oder Dokumentation gespeichert
+  - primaer `Portal-Agent`
+  - App-Button `Trade Republic: Refresh` startet den schnellen Portal-Snapshot
+  - voller Portal-Scan wird nur gezielt oder zeitlich geplant genutzt
+  - Login-Freigabe erfolgt durch den Nutzer in der Trade-Republic-App
 - Zusatz:
-  - `Transaction export.csv` periodisch fuer Vollstaendigkeit und Historienabgleich
-  - `Net Worth.pdf` periodisch fuer aktuellen Stand
-  - `Account statement.pdf` periodisch fuer Konto-/Cash-Abgleich
-  - `Tax Report` jaehrlich
+  - alte Mail-/Manual-Export-Agenten sind Legacy und nicht produktiver Standard
+  - selbst gemailte App-Exporte bleiben nur Notfall-/Kontrollkanal
+  - Portal-Dokumente und Tax-/Transaction-Fakten muessen in
+    `transactions`, `ledgerEntries`, `costEvents` und `incomeEvents`
+    normalisiert werden
+- Abschlussstand 2026-06-27:
+  - Portal-Agent `OK`
+  - keine offenen Trade-Republic-Dokumente
+  - aktueller schneller Refresh abgeschlossen
+  - fuer den aktuellen Ausbaustand abgeschlossen
 
 ### 3. Ginmon
 
 - Ziel: aktueller Bestand, Marktwert, Gebuehren, Einzahlungen
-- Realistisch: keine Echtzeit im Boersen-Sinn, aber gute Naehe ueber Portal-Dokumente
+- Realistisch: API-nahe Aktualitaet fuer Werte/Kurse; Dokumente fuer
+  Stueckzahlen, Kosten und Nachvollziehbarkeit
 - Methode:
-  - primaer `Agent`
-  - Dokumente und Reports automatisiert ablegen/importieren
+  - Ginmon-API alle 5 Minuten headless
+  - Dokumente taeglich um 02:00 headless
 - Zusatz:
-  - falls Browserabruf stabil wird, spaeter staerker automatisieren
+  - Dokumente und API bleiben getrennte Datenquellen
 
 ### 4. Intergold
 
@@ -110,6 +119,12 @@ Wichtig:
   - Belege: `Agent`
 - Zusatz:
   - Preisimport und Belegimport bleiben getrennt
+  - Kauf-/Einlagerungsbelege werden als `sourceDocuments`,
+    `sourceDocumentFacts`, `transactions` und `costEvents` gespeichert
+  - sonstige Intergold-Anhaenge bleiben als Info-/Review-Dokumente im
+    zentralen Dokumenten-Postfach
+  - Verkaufs-/Auslagerungsdokumente werden erst gebucht, wenn echte
+    Verkaufsdaten vorliegen und der Parser dafuer explizit gebaut wurde
 
 ### 5. Bitget
 
@@ -128,6 +143,11 @@ Wichtig:
     Historie
   - zusaetzlicher Bitget-Ledger-Agent laeuft stuendlich und schreibt Bills,
     Fills, Fees, Earn-Zinsen und Tax-Facts historisch/idempotent nach Firestore
+  - der Ledger-Agent arbeitet im Normalbetrieb inkrementell:
+    Startpunkt ist das letzte erfolgreiche Fensterende minus
+    `BITGET_LEDGER_OVERLAP_DAYS` (Standard 2 Tage); ein voller Backfill laeuft
+    nur bewusst mit `--backfill`, `--full` oder
+    `BITGET_LEDGER_FORCE_BACKFILL=true`
   - Ledger-Teilabrufe mit Rate-Limit/Netzwerkfehler schreiben `WARNUNG` plus
     `warnings`; sie duerfen nicht still als voller OK-Lauf erscheinen
   - Transparenzfelder:
@@ -151,16 +171,22 @@ Wichtig:
 ### 6. EquatePlus
 
 - Ziel: Mitarbeiteraktien sauber im Gesamtvermoegen zeigen
-- Realistisch: monatlich oder bei neuen Belegen ausreichend
+- Realistisch: fuer den aktuellen Bedarf abgeschlossen; aktueller Stand bleibt
+  mit manueller Eingabe und SIX-Kurs sichtbar
 - Methode:
-  - Quelle ist zurueckgestellt, bis die ersten echten EquatePlus-Mail-
-    Dokumente eintreffen
-  - erst danach Absender, Betreff, Anhaenge, Dokumenttypen und enthaltene
-    Daten analysieren
-  - erst danach entscheiden, ob ein Mail-Agent ausreicht oder zusaetzlich
-    ein manueller PDF-Import/Portalweg noetig ist
-  - keine Annahmen ueber Holdings, Transaktionen, Vesting, Steuern oder Kosten
-    hart codieren, bevor echte Dokumente vorliegen
+  - Nutzer pflegt in der App `Anteile` und den gesamten `Einstandswert EUR`
+  - Agent `sync-equateplus-manual-local.mjs` liest
+    `manualInputs/equateplus_novartis`
+  - aktueller Novartis-Kurs kommt von SIX Swiss Exchange fuer
+    `CH0012005267CHF4`
+  - CHF/EUR kommt ueber Frankfurter/ECB-FX
+  - schreibt `sourcePositions`, `sourceSummaries`, `quotesCurrent`,
+    `agentStatus` und optional `priceHistory`
+  - keine Dokumentannahmen fuer Vesting, Steuern, Kosten oder Transaktionen,
+    bevor echte EquatePlus-Dokumente mit Mehrdaten vorliegen
+  - fachlicher Status 2026-06-27: Depotbestand, Einstand und G/V reichen
+    vorerst, weil hier durch den Mitarbeiterbonus nur geringe Bewegung
+    erwartet wird
 
 ### 7. Bankkonten ueber Enable Banking
 
@@ -193,37 +219,78 @@ Wichtig:
 
 ### 8. Amazon Visa
 
+- Ziel: offener Kreditkartensaldo als negativer Vermoegenswert plus
+  Verfuegbarkeit und Kreditlimit als Transparenzwerte
+- Status: im Datenbasis-Cleanup zurueckgestellt
+- Methode:
+  - spaeter Portal-Agent gegen Amazon-Visa/Openbankpay
+  - Zugangsdaten nur im macOS-Schluesselbund
+  - Firestore: Kreditkarten-Unterkonto in `sourceSummaries/bank_accounts`,
+    `sourcePositions/bank_accounts_amazon_visa_card`,
+    `sourceAccounts/bank_accounts_amazon_visa_card`, `agentStatus/amazon_visa`
+- Zusatz:
+  - Kreditlimit und verfuegbarer Betrag zaehlen nicht als Vermoegen
+  - spaeter: Abrechnungen/Transaktionen/Kosten, falls Portal/Export stabil
+    verfuegbar
+
+### 9. George Visa
+
 - Ziel: offener Kreditkartensaldo und Transaktionen
+- Status: im Datenbasis-Cleanup zurueckgestellt
 - Methode:
   - bevorzugt `API` ueber denselben Open-Banking-Anbieter, falls unterstuetzt
   - sonst `Agent` ueber Abrechnung/Export
+- Stand:
+  - pausiert, weil Enable Banking fuer Erste/Sparkasse aktuell keine
+    Kreditkarte liefert
 
-### 9. TF Bank Kreditkarte
+### 10. TF Bank Kreditkarte
 
-- Ziel: offener Kreditkartensaldo und Transaktionen
+- Ziel: offener Kreditkartensaldo als negativer Vermoegenswert; spaeter
+  Transaktionen und Kosten
+- Status: im Datenbasis-Cleanup zurueckgestellt
 - Methode:
-  - bevorzugt `API` ueber denselben Open-Banking-Anbieter, falls unterstuetzt
-  - sonst `Agent` ueber Abrechnung/Export
+  - spaeter Portal-Agent gegen `meine.tfbank.at`
+  - Zugangsdaten nur im macOS-Schluesselbund
+  - SMS-TAN wird nicht gespeichert; erster Lauf kann Nutzer-TAN benoetigen
+- Stand:
+  - Agent fuellt Login aus und erkennt SMS-TAN
+  - `--tan-stdin` erlaubt Eingabe des frischen Codes im selben Browserlauf
+  - Firestore: Kreditkarten-Unterkonto in `sourceSummaries/bank_accounts`,
+    `sourcePositions/bank_accounts_tfbank_card`,
+    `sourceAccounts/bank_accounts_tfbank_card`, `agentStatus/tfbank`
 
-### 10. Revolut
+### 11. Revolut
+
+- Ziel: als Unterkonto der Bankkonten im Gesamtgeldstand enthalten
+- Methode:
+  - read-only Open Banking ueber Enable Banking
+  - kein eigener Depot-/Kreditkarten-Agent
+  - Datenstand beobachten, weil die API zuletzt keine Umsaetze geliefert hat
+
+### 12. Trading 212
 
 - Ziel: nur bei spaeterer Reaktivierung relevant
 - Methode:
   - spaeter `API` oder Export
 
-### 11. Trading 212
+### 13. Capital.com
 
-- Ziel: nur bei spaeterer Reaktivierung relevant
+- Ziel: bald nutzbar machen, sobald der API-Key erneuert ist
 - Methode:
-  - spaeter `API` oder Export
+  - offizielle Capital.com API
+  - lesende Endpunkte: `POST /session`, `GET /session`, `GET /accounts`,
+    `GET /positions`, `GET /workingorders`, `GET /history/transactions`,
+    `GET /history/activity`
+  - aktueller gespeicherter Stand: Live-Konto, `0,00 EUR`, 0 Positionen
+  - bei gueltigem Key werden neben aktuellen Positionen auch History-Fakten,
+    Ledger, Kosten und Ertraege geschrieben
+  - Pruefung 2026-06-27: vorhandener Schluesselbund-Key ist ungueltig
+    (`401 error.invalid.api.key`)
+  - naechster Schritt: neuen API-Key erzeugen, `setup:capitalcom`,
+    `check:capitalcom`, danach optional Agent aktivieren
 
-### 12. Capital.com
-
-- Ziel: nur bei spaeterer Reaktivierung relevant
-- Methode:
-  - spaeter `API` oder Export
-
-### 13. Betriebliche Altersvorsorge
+### 14. Betriebliche Altersvorsorge
 
 - Ziel: langfristige Vermoegenskomponente im Gesamtbild
 - Realistisch: fachlicher Datenwechsel selten, aber taegliche technische
@@ -247,8 +314,7 @@ Verwendung, wenn:
 Aktuelle Hauptquelle:
 
 - Bitget
-- Sparkasse George ueber einen Open-Banking-Anbieter
-- Amazon Visa und TF Bank Kreditkarte, falls vom Anbieter unterstuetzt
+- Bankkonten ueber Enable Banking
 
 ### Agent
 
@@ -264,7 +330,8 @@ Aktuelle Hauptquellen:
 - Trade Republic
 - Ginmon
 - Intergold
-- EquatePlus erst nach Analyse der ersten echten E-Mail-Dokumente
+- EquatePlus Kurs-Agent fuer Novartis/SIX plus manuelle Eingabe bleibt
+  technisch vorhanden, wird aber im Datenbasis-Cleanup nicht erweitert
 
 ### Manueller Eintrag
 
@@ -277,44 +344,54 @@ Verwendung, wenn:
 Aktuelle Hauptquellen:
 
 - Betriebliche Altersvorsorge
+- EquatePlus-Anteile und Einstandswert EUR
+- Kreditkarten-Details, bis der Datenbasis-Cleanup der Kernquellen fertig ist
 
 ## Empfohlene Umsetzungsreihenfolge
 
-### Phase 1 - Bitget abschliessen
+### Phase 1 - Datenbasis der Kernquellen schliessen
 
-1. Bitget Read-only API auf MacBook und Mac Studio einrichten
-2. Einmaligen Startbestand kontrollieren und Einstand manuell festhalten
-3. Laufende API-Updates automatisieren
+1. Flatex-Dokumentfakten in `transactions`, `ledgerEntries`, `costEvents`
+   und `incomeEvents` normalisieren
+2. Trade-Republic-Portal-/Tax-/Transaction-Fakten normalisieren
+3. Ginmon-Dokumentfakten je Depot und Produkt in Events ueberfuehren
+4. Intergold-Belege als `sourceDocuments`, `sourceDocumentFacts` und
+   Metall-`transactions` nachziehen
+5. Bitget-Ledger-Kategorien und Kosten-/Ertragsnormalisierung auditieren
+6. Bankkonten ohne Kreditkarten fuer Ausgaben-/Kostenanalyse stabilisieren
 
-### Phase 2 - Download-Agents auf dem Mac Studio
+### Phase 2 - Agenten effizient halten
 
-1. Flatex-Agent legt neue Exporte automatisch im Drive ab
-2. Ginmon-Agent legt neue Dokumente automatisch im Drive ab
-3. Trade-Republic-Mail-Agent legt neue Dokumente automatisch im Drive ab
+1. Schnelle Snapshot-Agenten duerfen alte Historie nicht neu scannen
+2. Dokument-Agenten nutzen Hashes, Provider-IDs, Cursor und
+   Dokumentzeitstempel
+3. Full-Scans laufen nur gezielt oder zu geplanten Zeiten
+4. Technischer Agentlauf, fachliche Datenveraenderung, Dokumentstand und
+   Kursstand bleiben getrennt sichtbar
 
-In dieser Phase werden die Agents zuerst nur fuer eine verlaessliche
-Dateiablage gebaut. Parser und Firestore-Import folgen danach getrennt.
+### Phase 3 - Dashboards
 
-### Phase 3 - Parser und Firestore-Updates
+1. Erst nach geschlossener Datenbasis Vermoegens-, Cash-, Kosten- und
+   Performance-Dashboards bauen
+2. Datenluecken je Quelle sichtbar anzeigen
+3. KI-Ueberwachung erst auf normalisierten Events aufsetzen
 
-1. Erstbestand je Quelle gemeinsam und kontrolliert erfassen
-2. Flatex-Updates parsen und importieren
-3. Ginmon-Updates parsen und importieren
-4. Trade-Republic-Updates parsen und importieren
-5. Source-Summaries vereinheitlichen und gegen Kontrollwerte pruefen
+### Phase 4 - Zurueckgestellte Quellen
 
-### Phase 4 - Gesamtvermoegen schliessen
-
-1. Weitere Bank-Sessions fuer Revolut und bank99 erzeugen
-2. Amazon Visa und TF Bank Kreditkarte
-3. EquatePlus Parser nach Eingang der ersten echten Mail-Dokumente
-4. optionale Quellen wie Revolut, Trading 212, Capital.com
+1. Kreditkarten-Umsaetze/Abrechnungen fuer Amazon Visa, TF Bank und George
+   Visa wieder aufnehmen
+2. EquatePlus-Dokumentparser nur ergaenzen, wenn echte Dokumente relevante
+   Zusatzdaten liefern
+3. optionale Quellen wie Trading 212, Capital.com
 
 ## Wichtigste offene Entscheidungen
 
-1. Welcher Open-Banking-Anbieter deckt Sparkasse George, Amazon Visa und TF Bank ab?
-2. Welche Informationen enthalten die ersten EquatePlus-Mail-Dokumente?
-3. Welche Trade-Republic-Abrechnungstypen decken die taeglichen PDFs ab und was fehlt gegenueber den periodischen Reports?
+1. Reicht `costEvents` fuer Steuern dauerhaft oder brauchen Jahressteuer-
+   Dashboards spaeter eine eigene `taxEvents`-Collection?
+2. Welche Trade-Republic-Portal-Dokumenttypen decken Tax, Kosten, Zinsen und
+   Private Markets vollstaendig ab?
+3. Welche Intergold-Belege fehlen fuer eine vollstaendige Metall-Transaktions-
+   und Kostenbasis?
 
 ## Arbeitsregel fuer die naechsten Sessions
 

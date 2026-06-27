@@ -21,7 +21,12 @@ export function parseGermanDate(value) {
 }
 
 function normalizeText(text) {
-  return String(text ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return String(text ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/ﬂ/g, "fl")
+    .replace(/ﬁ/g, "fi")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function classifyFlatexDocument(fileName, text = "") {
@@ -193,18 +198,49 @@ export function parseFlatexDepotStatement(text, filePath = "") {
   const normalized = normalizeText(text);
   const common = commonFlatexFields(normalized, filePath);
   const positions = [];
-  const positionPattern = /([\d.,]+)\s+(.+?)\s+(?:Clearstream\s+(?:Lux\.|Nat\.)|[A-Za-z. ]+)\s+([A-Z]{2}[A-Z0-9]{10})\s+(.+?)\s+([-\d.,]+)\s*EUR\s+([-\d.,]+)\s*EUR/gi;
-  for (const match of normalized.matchAll(positionPattern)) {
+  const lines = String(text ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/ﬂ/g, "fl")
+    .replace(/ﬁ/g, "fi")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const headerMatch = line.match(/^([0-9.]+,[0-9]{6})\s+(.+?)\s+(Clearstream\s+(?:Lux\.|Nat\.))/i);
+    if (!headerMatch) continue;
+    const lookahead = lines.slice(index + 1, index + 10);
+    const isin = lookahead.map((entry) => entry.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)?.[1]).find(Boolean) ?? null;
+    const valueLine = lookahead.find((entry) => /[-\d.]+,\d{2}\s*EUR\s+[-\d.]+,\d{6}\s*(?:EUR|USD)/i.test(entry));
+    const valueMatch = valueLine?.match(/([-\d.]+,\d{2})\s*EUR\s+([-\d.]+,\d{6})\s*(EUR|USD)(?:\s+([-\d.]+,\d{6}))?/i);
+    if (!isin || !valueMatch) continue;
     positions.push({
-      quantity: parseGermanNumber(match[1]),
-      quantityText: `${match[1]} Stück`,
-      name: match[2].trim(),
-      isin: match[3],
-      custodyText: match[4].trim(),
-      marketValue: parseGermanNumber(match[5]),
-      valuationPrice: parseGermanNumber(match[6]),
+      quantity: parseGermanNumber(headerMatch[1]),
+      quantityText: `${headerMatch[1]} Stück`,
+      name: headerMatch[2].trim(),
+      isin,
+      custodyText: headerMatch[3].trim(),
+      marketValue: parseGermanNumber(valueMatch[1]),
+      valuationPrice: parseGermanNumber(valueMatch[2]),
+      valuationCurrency: valueMatch[3] ?? "EUR",
+      fxRate: parseGermanNumber(valueMatch[4] ?? ""),
       currency: "EUR",
     });
+  }
+  if (!positions.length) {
+    const positionPattern = /([\d.,]+)\s+(.+?)\s+(?:Clearstream\s+(?:Lux\.|Nat\.)|[A-Za-z. ]+)\s+([A-Z]{2}[A-Z0-9]{10})\s+(.+?)\s+([-\d.,]+)\s*EUR\s+([-\d.,]+)\s*EUR/gi;
+    for (const match of normalized.matchAll(positionPattern)) {
+      positions.push({
+        quantity: parseGermanNumber(match[1]),
+        quantityText: `${match[1]} Stück`,
+        name: match[2].trim(),
+        isin: match[3],
+        custodyText: match[4].trim(),
+        marketValue: parseGermanNumber(match[5]),
+        valuationPrice: parseGermanNumber(match[6]),
+        currency: "EUR",
+      });
+    }
   }
   return {
     ...common,
@@ -262,6 +298,88 @@ export function parseFlatexTaxCertificate(text, filePath = "") {
   };
 }
 
+export function parseFlatexCashAdjustment(text, filePath = "") {
+  const normalized = normalizeText(text);
+  const common = commonFlatexFields(normalized, filePath);
+  const grossAmount = parseGermanNumber(
+    normalized.match(/in Höhe von\s*([-\d.,]+)\s*EUR/i)?.[1] ??
+      normalized.match(/in Hoehe von\s*([-\d.,]+)\s*EUR/i)?.[1] ??
+      normalized.match(/(?:Endbetrag|Belastung|Gutschrift)\s*:?\s*([-\d.,]+)\s*EUR/i)?.[1] ??
+      "",
+  );
+  const isDebit = /wir belasten/i.test(normalized);
+  const isCredit = /wir schreiben gut|gutschrift/i.test(normalized);
+  const cashAmount =
+    grossAmount == null ? null : isDebit ? -Math.abs(grossAmount) : isCredit ? Math.abs(grossAmount) : grossAmount;
+  return {
+    ...common,
+    title:
+      normalized.match(/Graz,\s*(?:den\s*)?\d{2}\.\d{2}\.\d{4}\s+(.+?)\s+Kundennummer/i)?.[1]?.trim() ??
+      normalized.match(/(Depotservicegebühr\s+[A-Z]{2}[A-Z0-9]{10})/i)?.[1]?.trim() ??
+      null,
+    adjustmentType: /Depotservicegebühr/i.test(normalized) ? "depot_service_fee" : "cash_adjustment",
+    valuationDate: parseGermanDate(normalized.match(/Valuta\s*(\d{2}\.\d{2}\.\d{4})/i)?.[1]),
+    wkn: normalized.match(/\b([A-Z0-9]{3,8})\s+([A-Z]{2}[A-Z0-9]{10})\s+/i)?.[1] ?? null,
+    isin: normalized.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)?.[1] ?? null,
+    name: normalized.match(/\b[A-Z0-9]{3,8}\s+[A-Z]{2}[A-Z0-9]{10}\s+(.+?)\s+[\d.,]+\s+Sehr geehr/i)?.[1]?.trim() ?? null,
+    quantity: parseGermanNumber(
+      normalized.match(/\b[A-Z0-9]{3,8}\s+[A-Z]{2}[A-Z0-9]{10}\s+.+?\s+([\d.,]+)\s+Sehr geehr/i)?.[1] ?? "",
+    ),
+    grossAmount,
+    amount: cashAmount,
+    cashAmount,
+    currency: "EUR",
+  };
+}
+
+function parseCostSummaryLine(normalized, label) {
+  return parseGermanNumber(normalized.match(new RegExp(`${label}\\s+([\\d.,]+)`, "i"))?.[1] ?? "");
+}
+
+function parseProductCostBlock(block) {
+  return {
+    serviceCosts: parseCostSummaryLine(block, "Dienstleistungskosten"),
+    otherCosts: parseCostSummaryLine(block, "Weitere Kosten"),
+    productCosts: parseCostSummaryLine(block, "Produktkosten"),
+    fxCosts: parseCostSummaryLine(block, "Fremdwährungskosten|Fremdwaehrungskosten"),
+    rebates: parseCostSummaryLine(block, "Rückvergütung|Rueckverguetung"),
+  };
+}
+
+export function parseFlatexCostInformation(text, filePath = "") {
+  const normalized = normalizeText(text);
+  const common = commonFlatexFields(normalized, filePath);
+  const products = [];
+  const productMatches = [...normalized.matchAll(/([A-Z0-9ÄÖÜ.,&'()\- /]+?)\s*\/\s*([A-Z]{2}[A-Z0-9]{10})\s+([-\d.,]+)/gi)];
+  for (let index = 0; index < productMatches.length; index += 1) {
+    const match = productMatches[index];
+    const next = productMatches[index + 1];
+    const block = normalized.slice(match.index ?? 0, next?.index ?? normalized.length);
+    const costs = parseProductCostBlock(block);
+    products.push({
+      name: match[1].trim(),
+      isin: match[2],
+      totalCosts: parseGermanNumber(match[3]),
+      currency: "EUR",
+      ...costs,
+    });
+  }
+  return {
+    ...common,
+    title: "Jaehrliche Kosteninformation",
+    costYear: normalized.match(/Kalenderjahr\s*(\d{4})/i)?.[1] ?? null,
+    totalCosts: parseCostSummaryLine(normalized, "Gesamtkosten"),
+    serviceCosts: parseCostSummaryLine(normalized, "Dienstleistungskosten"),
+    otherCosts: parseCostSummaryLine(normalized, "Weitere Kosten"),
+    productCosts: parseCostSummaryLine(normalized, "Produktkosten"),
+    fxCosts: parseCostSummaryLine(normalized, "Fremdwährungskosten|Fremdwaehrungskosten"),
+    rebates: parseCostSummaryLine(normalized, "Rückvergütung|Rueckverguetung"),
+    ancillaryCosts: parseCostSummaryLine(normalized, "Nebendienstleistungen"),
+    products,
+    currency: "EUR",
+  };
+}
+
 export function parseFlatexSimpleNotice(text, filePath = "") {
   const normalized = normalizeText(text);
   return {
@@ -283,6 +401,8 @@ export function parseFlatexDocumentByType(type, text, filePath = "") {
   if (type === "depot_statement") return parseFlatexDepotStatement(text, filePath);
   if (type === "corporate_action") return parseFlatexCorporateAction(text, filePath);
   if (type === "tax_certificate") return parseFlatexTaxCertificate(text, filePath);
+  if (type === "cash_adjustment") return parseFlatexCashAdjustment(text, filePath);
+  if (type === "cost_information") return parseFlatexCostInformation(text, filePath);
   if (type === "unknown") return null;
   return parseFlatexSimpleNotice(text, filePath);
 }

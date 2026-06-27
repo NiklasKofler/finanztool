@@ -35,7 +35,9 @@ export function getFlatexPaths() {
   };
 }
 
-export async function launchFlatexBrowser({ headless = false } = {}) {
+export async function launchFlatexBrowser({
+  headless = ["1", "true", "yes"].includes(String(process.env.FLATEX_HEADLESS ?? "").toLowerCase()),
+} = {}) {
   const paths = getFlatexPaths();
   await Promise.all([
     fs.mkdir(paths.profilePath, { recursive: true }),
@@ -61,7 +63,10 @@ export async function ensureFlatexLogin(page) {
     page.getByText("Mein flatex Depot", { exact: false }).waitFor({ state: "visible", timeout: 15000 }),
   ]).catch(() => {});
   const loginRequired = await userField.isVisible().catch(() => false);
-  if (!loginRequired) return;
+  if (!loginRequired) {
+    await waitForFlatexReady(page);
+    return;
+  }
 
   const [userId, password] = await Promise.all([
     requireLocalSecret("FLATEX_USER_ID", FLATEX_USER_SERVICE),
@@ -90,6 +95,34 @@ export async function ensureFlatexLogin(page) {
   if (await userField.isVisible().catch(() => false)) {
     throw new Error("Flatex-Anmeldung fehlgeschlagen. Zugangsdaten oder Login-Seite pruefen.");
   }
+  await waitForFlatexReady(page);
+}
+
+async function waitForFlatexReady(page, { timeoutMs = 45000 } = {}) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await flatexBodyLooksReady(page)) return;
+    if (/loginProgressFormAction/i.test(page.url())) {
+      await page.waitForTimeout(1500);
+      continue;
+    }
+    await page.waitForTimeout(1000);
+  }
+
+  await page.goto(FLATEX_OVERVIEW_URL, { waitUntil: "domcontentloaded" }).catch((error) => {
+    if (!String(error?.message ?? "").includes("ERR_ABORTED")) throw error;
+  });
+  const finalStartedAt = Date.now();
+  while (Date.now() - finalStartedAt < 25000) {
+    if (await flatexBodyLooksReady(page)) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`Flatex-Portal nach Login nicht bereit. Aktuelle URL: ${page.url()}`);
+}
+
+async function flatexBodyLooksReady(page) {
+  const text = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+  return /Mein flatex Depot|Depot und Guthaben|Konto und Kredit/i.test(text);
 }
 
 export async function acceptNecessaryCookies(page) {
@@ -204,6 +237,11 @@ export async function readFlatexOverviewSummary(page) {
 export async function readFlatexBrokerPositions(page) {
   await openFlatexOverview(page);
   await acceptNecessaryCookies(page);
+  await page
+    .getByRole("tab", { name: "Depot und Guthaben", exact: true })
+    .click({ timeout: 5000, force: true })
+    .catch(() => {});
+  await page.waitForTimeout(1000);
   const clickedAll = await page.evaluate(() => {
     const items = [...document.querySelectorAll(".BlockSelectionItem")].filter(
       (element) => element instanceof HTMLElement && !!element.offsetParent,
@@ -219,7 +257,7 @@ export async function readFlatexBrokerPositions(page) {
   });
   if (!clickedAll) {
     const allTab = page.getByRole("tab", { name: "Alle", exact: true });
-    await allTab.click({ timeout: 10000, force: true });
+    await allTab.click({ timeout: 5000, force: true }).catch(() => {});
   }
   await page.waitForTimeout(2500);
 

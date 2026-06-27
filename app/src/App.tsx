@@ -10,8 +10,10 @@ import {
   Activity,
   AlertTriangle,
   Archive,
+  ChevronDown,
   CheckCircle2,
   Cloud,
+  CreditCard,
   Database,
   Eye,
   EyeOff,
@@ -19,13 +21,14 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
   loadAgentStatuses,
   loadBankLedgerEntries,
   loadDocumentInboxItems,
+  loadEquatePlusManualInput,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
@@ -34,9 +37,11 @@ import {
   markDocumentInboxItemDecision,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
+  saveEquatePlusManualInput,
   type AgentStatusDocument,
   type BankLedgerEntryDocument,
   type DocumentInboxItem,
+  type EquatePlusManualInputDocument,
   type SourceSummaryAccount,
   type SourceSummaryDocument,
   type SourceSummaryVbvAccountInformation,
@@ -72,16 +77,22 @@ const sourceSortOrder = [
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
 type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
+type EquatePlusSaveStatus = "idle" | "saving" | "saved" | "error";
+type EquatePlusDraft = { quantity: string; entryValueEur: string };
+type TradeRepublicDisplayMode = "current" | "broker";
+type AgentUiStatus = "OK" | "WARNUNG" | "FEHLER" | "RUNNING";
+const emptyEquatePlusDraft: EquatePlusDraft = { quantity: "", entryValueEur: "" };
 
 const agentStatusIds: Record<string, string | string[]> = {
   flatex: ["flatex", "flatex_documents"],
-  traderepublic: ["traderepublic_manual_exports", "traderepublic_portal"],
+  traderepublic: "traderepublic_portal",
   ginmon: ["ginmon", "ginmon_documents"],
   intergold: "intergold",
   bitget: ["bitget", "bitget_ledger"],
   capitalcom: "capitalcom",
   vbv: "vbv",
-  bank_accounts: "bank_accounts",
+  equateplus: "equateplus",
+  bank_accounts: ["bank_accounts", "bank99", "amazon_visa", "tfbank"],
 };
 
 const agentStatusMeta: Record<
@@ -127,25 +138,33 @@ const agentDisplayMeta: Record<string, { label: string; responsibility: string }
     label: "Intergold Agent",
     responsibility: "Intergold-Webpreise, Bestand aus Belegen und Metallbewertung",
   },
-  traderepublic_mail: {
-    label: "Trade Republic Mail-Agent",
-    responsibility: "Pausiert: automatische Duplicates-Mails werden aktuell nicht als fachlicher Kanal genutzt",
-  },
-  traderepublic_manual_exports: {
-    label: "Trade Republic Export-Agent",
-    responsibility: "Selbst gesendete Exporte ohne Betreff: Net Worth, Transaction Export und Account Statement",
-  },
   traderepublic_portal: {
     label: "Trade Republic Portal-Agent",
-    responsibility: "Manueller Portal-Refresh: Login, App-Bestaetigung und Transaction-History-Export aus Trade Republic",
+    responsibility: "Portal-Snapshot, App-Bestaetigung und gezielte Dokument-/Transaktionspruefung aus Trade Republic",
   },
   vbv: {
     label: "VBV Agent",
     responsibility: "VBV-Portalstichtag, Kontoinformation-PDF und Vertragswerte",
   },
+  equateplus: {
+    label: "EquatePlus Kurs-Agent",
+    responsibility: "Manuelle Novartis-Stueckzahl und Einstand mit aktuellem SIX-Kurs bewerten",
+  },
   bank_accounts: {
     label: "Bankkonten Agent",
-    responsibility: "Read-only Geldstand, Kreditlinien und spaeter Transaktionen ueber Enable Banking",
+    responsibility: "Sparkasse/Revolut stuendlich: Geldstand, Kreditlinien und Transaktionen ueber Enable Banking",
+  },
+  bank99: {
+    label: "bank99 Agent",
+    responsibility: "bank99 limitiert: Geldstand und Transaktionen mit maximal vier Abrufen pro Tag",
+  },
+  amazon_visa: {
+    label: "Amazon Visa Agent",
+    responsibility: "Aktueller Kreditkartensaldo, verfuegbarer Betrag und Kreditlimit aus dem Amazon-Visa-Portal",
+  },
+  tfbank: {
+    label: "TF Bank Agent",
+    responsibility: "Aktueller Kreditkartensaldo, verfuegbarer Betrag und Kreditlimit aus dem TF-Bank-Portal",
   },
 };
 
@@ -166,7 +185,7 @@ function getTradeRepublicPortalButtonLabel(
   return "Läuft";
 }
 
-function formatCurrency(value?: number) {
+function formatCurrency(value?: number | null) {
   if (typeof value !== "number") {
     return "—";
   }
@@ -259,6 +278,7 @@ function getQuoteProviderLabel(position: PortfolioPosition) {
   if (provider.includes("ginmon")) return "Ginmon API";
   if (provider.includes("bitget")) return "Bitget";
   if (provider.includes("intergold")) return "Intergold";
+  if (provider.includes("six")) return "SIX";
   if (position.quoteVenue?.trim()) return position.quoteVenue.trim();
   return null;
 }
@@ -304,6 +324,27 @@ function formatSignedPercent(value?: number | null) {
   if (typeof value !== "number") return "—";
   if (value === 0) return `±${formatPercent(0)}`;
   return `${value > 0 ? "+" : "-"}${formatPercent(Math.abs(value))}`;
+}
+
+function parseEditableNumber(value: string) {
+  const cleaned = value.trim().replace(/[^\d,.-]/g, "");
+  const normalized = cleaned.includes(",")
+    ? cleaned.replace(/\./g, "").replace(",", ".")
+    : cleaned;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function draftNumber(value?: number | null) {
+  if (typeof value !== "number") return "";
+  return String(value).replace(".", ",");
+}
+
+function equatePlusDraftFromInput(input?: EquatePlusManualInputDocument | null): EquatePlusDraft {
+  return {
+    quantity: draftNumber(input?.quantity),
+    entryValueEur: draftNumber(input?.entryValueEur),
+  };
 }
 
 function getPositionDayChange(position: PortfolioPosition) {
@@ -431,18 +472,254 @@ function getSourceDepotDisplayValue(source: SourceOverview) {
   return displayValue ?? source.depotValue;
 }
 
+function roundMoneyValue(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getTradeRepublicCurrentSummary(summary?: SourceSummaryDocument) {
+  if (!summary || typeof summary.externalQuoteDepotValue !== "number") return null;
+  const privateMarketsValue =
+    typeof summary.privateMarketsValue === "number" ? summary.privateMarketsValue : 0;
+  const cashValue = typeof summary.cashValue === "number" ? summary.cashValue : 0;
+  const depotValue = roundMoneyValue(summary.externalQuoteDepotValue + privateMarketsValue);
+  const netValue = roundMoneyValue(depotValue + cashValue);
+  const performanceValue =
+    typeof summary.costValue === "number" ? roundMoneyValue(depotValue - summary.costValue) : null;
+
+  return {
+    ...summary,
+    currentValue: netValue,
+    depotValue,
+    netValue,
+    cashValue,
+    performanceValue,
+    performancePct:
+      typeof summary.costValue === "number" && summary.costValue > 0 && typeof performanceValue === "number"
+        ? performanceValue / summary.costValue
+        : summary.performancePct,
+    quoteDataProvider: summary.externalQuoteDataProvider ?? "boerse-frankfurt",
+    quoteDataUpdatedAt: summary.externalQuoteDataUpdatedAt ?? summary.quoteUpdatedAt ?? summary.quoteDataUpdatedAt,
+    valuationMethod: "traderepublic_current_external_quotes_display_v1",
+  } satisfies SourceSummaryDocument;
+}
+
+function formatQuoteNumber(value?: number | null, currency?: string | null) {
+  if (typeof value !== "number") return null;
+  const formatted = new Intl.NumberFormat("de-AT", { maximumFractionDigits: 2 }).format(value);
+  return currency ? `${formatted} ${currency}` : formatted;
+}
+
+function getTradeRepublicCurrentPosition(position: PortfolioPosition): PortfolioPosition {
+  if (position.source !== "traderepublic" || typeof position.externalQuoteValue !== "number") {
+    return position;
+  }
+
+  const performanceValue =
+    typeof position.costValue === "number"
+      ? roundMoneyValue(position.externalQuoteValue - position.costValue)
+      : position.performanceValue ?? null;
+  const quoteText = formatQuoteNumber(position.externalQuotePrice, position.externalQuoteCurrency);
+
+  return {
+    ...position,
+    currentValue: position.externalQuoteValue,
+    performanceValue,
+    performancePct:
+      typeof position.costValue === "number" && position.costValue > 0 && typeof performanceValue === "number"
+        ? performanceValue / position.costValue
+        : position.performancePct ?? null,
+    quoteText: quoteText ?? position.quoteText,
+    quotePrice: position.externalQuotePrice ?? position.quotePrice ?? null,
+    quoteCurrency: position.externalQuoteCurrency ?? position.quoteCurrency ?? null,
+    quotePriceEur: position.externalQuotePriceEur ?? position.quotePriceEur ?? null,
+    quoteProvider: position.externalQuoteProvider ?? "boerse-frankfurt",
+    quoteProviderSymbol: position.externalQuoteProviderSymbol ?? position.quoteProviderSymbol ?? null,
+    quoteAsOf: position.externalQuoteAsOf ?? position.quoteAsOf ?? null,
+    quoteUpdatedAt: position.externalQuoteUpdatedAt ?? position.quoteUpdatedAt ?? null,
+    quoteFetchedAt: position.externalQuoteUpdatedAt ?? position.quoteFetchedAt ?? null,
+    quoteVenue: position.externalQuoteVenue ?? position.quoteVenue ?? null,
+    priceSource: position.externalQuoteProvider ?? "boerse-frankfurt",
+    valuationMethod: "boerse-frankfurt_quote_display_v1",
+  };
+}
+
 function sourceUsesAuthoritativeSummary(sourceId: string) {
-  return sourceId === "bitget" || sourceId === "bank_accounts";
+  return [
+    "flatex",
+    "traderepublic",
+    "ginmon",
+    "intergold",
+    "bitget",
+    "vbv",
+    "equateplus",
+    "bank_accounts",
+  ].includes(sourceId);
 }
 
 function getAccountLabel(account: SourceSummaryAccount) {
+  const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
+  const provider = String(account.providerSource ?? "").trim().toLowerCase();
+  const label = account.label?.trim();
+  if ((bankKey === "bank99" || provider === "bank99") && (!label || label.toLowerCase().startsWith("bank99:"))) {
+    return "bank99 Konto";
+  }
   return (
-    account.label?.trim() ||
+    label ||
     account.strategy?.trim() ||
     account.accountNumber?.trim() ||
     account.customerId?.trim() ||
     "Depot"
   );
+}
+
+function getBankAccountAgentId(account: SourceSummaryAccount) {
+  const provider = String(account.providerSource ?? "").trim().toLowerCase();
+  if (provider === "amazon_visa" || provider === "tfbank") return provider;
+
+  const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
+  if (bankKey === "bank99") return "bank99";
+  if (bankKey === "erste" || bankKey === "revolut") return "bank_accounts";
+  if (bankKey === "amazon_visa" || bankKey === "tfbank") return bankKey;
+
+  const text = `${account.accountType ?? ""} ${account.bankName ?? ""} ${account.label ?? ""}`.toLowerCase();
+  if (text.includes("tf bank")) return "tfbank";
+  if (text.includes("amazon") || text.includes("visa")) return "amazon_visa";
+  return "bank_accounts";
+}
+
+function getBankAccountAgentLabel(agentId: string) {
+  return agentDisplayMeta[agentId]?.label ?? agentId;
+}
+
+function bankAccountAgentHasIssue(agentStatus?: AgentStatusDocument) {
+  return Boolean(agentStatus?.status && agentStatus.status !== "OK");
+}
+
+function getBankAccountStatusTone(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
+  if (!agentStatus) return "warn";
+  if (agentStatus?.status === "FEHLER") return "error";
+  if (agentStatus?.status === "WARNUNG" || agentStatus?.status === "RUNNING") return "warn";
+  if (account.status === "STALE") return "warn";
+  if (account.status === "MISSING" || account.status === "FEHLER" || account.status === "ERROR") return "error";
+  return "good";
+}
+
+function getBankAccountStatusLabel(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
+  if (!agentStatus) return "Kein Status";
+  if (agentStatus?.status && agentStatus.status !== "OK") {
+    const message = `${agentStatus.message ?? ""}`.toLowerCase();
+    if (message.includes("tan")) return "Wartet TAN";
+    if (agentStatus.status === "FEHLER") return "Fehler";
+    if (agentStatus.status === "RUNNING") return "Läuft";
+    return "Warnung";
+  }
+  if (account.status === "STALE") return "Letzter Stand";
+  if (account.status === "MISSING") return "Fehlt";
+  if (account.status === "FEHLER" || account.status === "ERROR") return "Fehler";
+  return "OK";
+}
+
+function hasTimeComponent(value?: string | Date | { toDate: () => Date } | { seconds: number } | null) {
+  if (!value) return false;
+  if (value instanceof Date) return true;
+  if (typeof value === "object") return true;
+  return /[tT]\d{2}:\d{2}| \d{2}:\d{2}/.test(value);
+}
+
+function getBankAccountUpdatedAt(account: SourceSummaryAccount) {
+  const dataTimestampWithTime = hasTimeComponent(account.sourceDataUpdatedAt)
+    ? account.sourceDataUpdatedAt
+    : null;
+  return (
+    dataTimestampWithTime ??
+    account.lastSeenAt ??
+    account.updatedAt ??
+    account.lastSkippedAt ??
+    account.sourceDataUpdatedAt ??
+    account.valuationDate ??
+    null
+  );
+}
+
+function getBankAccountIssueMessage(account: SourceSummaryAccount, agentStatus?: AgentStatusDocument) {
+  if (!agentStatus) {
+    return `${getBankAccountAgentLabel(getBankAccountAgentId(account))} hat noch keinen Laufstatus.`;
+  }
+  if (bankAccountAgentHasIssue(agentStatus)) {
+    return agentStatus?.message ?? "Agent meldet keinen OK-Status.";
+  }
+  if (account.status === "STALE" && account.staleReason) return account.staleReason;
+  return null;
+}
+
+function getStatusRank(status?: string | null) {
+  if (status === "FEHLER") return 3;
+  if (status === "WARNUNG") return 2;
+  if (status === "RUNNING") return 1;
+  if (status === "OK") return 0;
+  return -1;
+}
+
+function getWorseStatus(
+  first?: string | null,
+  second?: string | null,
+): string | undefined {
+  const worse = getStatusRank(second) > getStatusRank(first) ? second : first;
+  return worse ?? undefined;
+}
+
+function getBankAccountEffectiveStatus(
+  account: SourceSummaryAccount,
+  agentStatuses: Record<string, AgentStatusDocument>,
+): AgentUiStatus {
+  const agentStatus = agentStatuses[getBankAccountAgentId(account)];
+  const label = getBankAccountStatusLabel(account, agentStatus);
+  const tone = getBankAccountStatusTone(account, agentStatus);
+  if (tone === "error") return "FEHLER";
+  if (label === "Läuft") return "RUNNING";
+  if (tone === "warn") return "WARNUNG";
+  return "OK";
+}
+
+function getBankAccountsAggregateStatus(
+  accounts: SourceSummaryAccount[],
+  agentStatuses: Record<string, AgentStatusDocument>,
+): AgentUiStatus | undefined {
+  if (!accounts.length) return undefined;
+  return accounts.reduce<AgentUiStatus | undefined>(
+    (worstStatus, account) =>
+      getWorseStatus(worstStatus, getBankAccountEffectiveStatus(account, agentStatuses)) as AgentUiStatus | undefined,
+    undefined,
+  );
+}
+
+function getBankAccountsAggregateMessage(
+  accounts: SourceSummaryAccount[],
+  agentStatuses: Record<string, AgentStatusDocument>,
+) {
+  const issues = accounts
+    .map((account) => {
+      const agentStatus = agentStatuses[getBankAccountAgentId(account)];
+      const status = getBankAccountEffectiveStatus(account, agentStatuses);
+      if (status === "OK") return null;
+      return {
+        label: getAccountLabel(account),
+        statusLabel: getBankAccountStatusLabel(account, agentStatus),
+        message: getBankAccountIssueMessage(account, agentStatus),
+      };
+    })
+    .filter(Boolean) as Array<{ label: string; statusLabel: string; message?: string | null }>;
+
+  if (!issues.length) return null;
+  const firstIssue = issues[0];
+  const firstText = `${firstIssue.label}: ${firstIssue.statusLabel}${firstIssue.message ? ` - ${firstIssue.message}` : ""}`;
+  if (issues.length === 1) return firstText;
+  return `${numberFormatter.format(issues.length)} Bank-/Kreditkartenzeilen brauchen Aufmerksamkeit; zuerst ${firstText}`;
+}
+
+function isCreditCardAccount(account: SourceSummaryAccount) {
+  const text = `${account.accountType ?? ""} ${account.providerSource ?? ""} ${account.bankName ?? ""} ${account.label ?? ""}`.toLowerCase();
+  return text.includes("credit_card") || text.includes("kreditkarte") || text.includes("visa") || text.includes("tf bank");
 }
 
 function getBankLedgerCategoryLabel(category?: string | null) {
@@ -472,6 +749,7 @@ function isCashPosition(position: PortfolioPosition) {
   const category = position.category?.trim().toLowerCase() ?? "";
   return (
     category.includes("cash") ||
+    category.includes("credit_card") ||
     name.includes("geldkonto") ||
     name.includes("kontostand") ||
     name === "eur" ||
@@ -514,6 +792,8 @@ function SourceIcon({ source }: { source: SourceOverview }) {
       return <Wallet aria-hidden="true" />;
     case "metals":
       return <Archive aria-hidden="true" />;
+    case "credit_card":
+      return <CreditCard aria-hidden="true" />;
     default:
       return <Database aria-hidden="true" />;
   }
@@ -582,6 +862,16 @@ function getAgentSuccessTimestamp(status?: AgentStatusDocument) {
 function getAgentDetailLines(status?: AgentStatusDocument) {
   if (!status) return [];
   const lines: string[] = [];
+  for (const skippedBank of status.skippedBanks ?? []) {
+    const label = skippedBank.label ?? skippedBank.bank ?? "Bank";
+    const reason = skippedBank.reason ? `: ${skippedBank.reason}` : "";
+    lines.push(`${label} ohne Abruf${reason}`);
+  }
+  for (const bankError of status.bankErrors ?? []) {
+    const label = bankError.label ?? bankError.bank ?? "Bank";
+    const message = bankError.message ? `: ${bankError.message}` : "";
+    lines.push(`${label} Fehler${message}`);
+  }
   if (typeof status.portalDocumentUnresolvedFailureCount === "number" && status.portalDocumentUnresolvedFailureCount > 0) {
     lines.push(`${status.portalDocumentUnresolvedFailureCount} Portal-Dokumentfehler ungelöst`);
   } else if (typeof status.portalDocumentFailedCount === "number" && status.portalDocumentFailedCount > 0) {
@@ -607,6 +897,7 @@ function getSourceDisplayName(sourceId: string) {
 }
 
 function getDocumentInboxDecisionLabel(item: DocumentInboxItem) {
+  if (item.rawStatus === "PARSED") return "Verarbeitet";
   const decision = item.reviewDecision?.decision;
   if (decision === "covered") return "Abgedeckt";
   if (decision === "not_relevant") return "Nicht relevant";
@@ -616,13 +907,19 @@ function getDocumentInboxDecisionLabel(item: DocumentInboxItem) {
 }
 
 function getDocumentInboxDecisionTone(item: DocumentInboxItem) {
+  if (item.rawStatus === "PARSED") return "info";
   if (item.reviewDecision?.decision === "covered" || item.reviewDecision?.decision === "not_relevant") return "good";
   if (item.reviewDecision?.decision === "needs_parser" || item.reviewDecision?.decision === "deferred") return "info";
   return item.severity === "error" ? "warn" : "warn";
 }
 
 function isOpenDocumentInboxItem(item: DocumentInboxItem) {
+  if (isProcessedDocumentInboxItem(item)) return false;
   return !item.reviewDecision || item.reviewDecision.decision === "needs_parser";
+}
+
+function isProcessedDocumentInboxItem(item: DocumentInboxItem) {
+  return item.rawStatus === "PARSED";
 }
 
 function DocumentInbox({
@@ -643,7 +940,7 @@ function DocumentInbox({
   pendingOpenDocumentId: string | null;
 }) {
   const openItems = items.filter(isOpenDocumentInboxItem);
-  const visibleItems = openItems;
+  const processedItems = items.filter(isProcessedDocumentInboxItem);
 
   if (!items.length) return null;
 
@@ -654,7 +951,7 @@ function DocumentInbox({
         <strong>{numberFormatter.format(openItems.length)}</strong>
       </summary>
       <div className="document-inbox__list">
-        {visibleItems.map((item) => {
+        {openItems.map((item) => {
           const isPending = pendingDecisionId === item.id;
           const isOpening = pendingOpenDocumentId === item.id;
           const isClosed = Boolean(item.reviewDecision && item.reviewDecision.decision !== "needs_parser");
@@ -768,6 +1065,62 @@ function DocumentInbox({
           );
         })}
       </div>
+      {processedItems.length ? (
+        <details className="document-inbox document-inbox--archive">
+          <summary>
+            <span>Verarbeitete Dokumente</span>
+            <strong>{numberFormatter.format(processedItems.length)}</strong>
+          </summary>
+          <div className="document-inbox__list">
+            {processedItems.map((item) => {
+              const isOpening = pendingOpenDocumentId === item.id;
+              const hasDocumentAccess = Boolean(item.documentStoragePath || item.documentUrl);
+              return (
+                <article className="document-inbox__row document-inbox__row--closed" key={item.id}>
+                  <div className="document-inbox__main">
+                    <div className="document-inbox__title">
+                      <strong>{item.title}</strong>
+                      <span className={`status-badge status-badge--${getDocumentInboxDecisionTone(item)}`}>
+                        {getDocumentInboxDecisionLabel(item)}
+                      </span>
+                    </div>
+                    <p>{item.message}</p>
+                    <div className="document-inbox__meta">
+                      <span>{getSourceDisplayName(item.source)}</span>
+                      <span>{formatUpdatedAt(item.date)}</span>
+                      {item.label ? <span>{item.label}</span> : null}
+                      {item.sourceChannel ? <span>{item.sourceChannel}</span> : null}
+                    </div>
+                  </div>
+                  {hasDocumentAccess ? (
+                    <div className="document-inbox__actions">
+                      {item.documentStoragePath ? (
+                        <button
+                          type="button"
+                          className="secondary-button document-inbox__button"
+                          disabled={isOpening}
+                          onClick={() => onOpenDocument(item)}
+                        >
+                          {isOpening ? "Öffne PDF" : "PDF öffnen"}
+                        </button>
+                      ) : item.documentUrl ? (
+                        <a
+                          className="secondary-button document-inbox__button document-inbox__button--link"
+                          href={item.documentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          PDF öffnen
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
     </details>
   );
 }
@@ -783,6 +1136,143 @@ function AgentStatusBadge({
   if (!meta) return <span className="status-badge status-badge--neutral">{emptyLabel}</span>;
 
   return <span className={`status-badge status-badge--${meta.tone}`}>{meta.label}</span>;
+}
+
+function BankAccountGroup({
+  title,
+  accounts,
+  agentStatuses,
+  bankLedgerEntries,
+  privacyMode,
+  accountHeader,
+}: {
+  title: string;
+  accounts: SourceSummaryAccount[];
+  agentStatuses: Record<string, AgentStatusDocument>;
+  bankLedgerEntries: BankLedgerEntryDocument[];
+  privacyMode: boolean;
+  accountHeader: string;
+}) {
+  if (!accounts.length) return null;
+  const groupStatus = getBankAccountsAggregateStatus(accounts, agentStatuses);
+  const groupIssueCount = accounts.filter(
+    (account) => getBankAccountEffectiveStatus(account, agentStatuses) !== "OK",
+  ).length;
+
+  return (
+    <details className="source-accounts-details source-accounts-details--bank">
+      <summary>
+        <span className="source-accounts-details__summary-title">
+          <span>{title}</span>
+          {groupIssueCount > 0 ? (
+            <small>{numberFormatter.format(groupIssueCount)} Hinweis{groupIssueCount === 1 ? "" : "e"}</small>
+          ) : null}
+        </span>
+        <span className="source-accounts-details__summary-status">
+          <AgentStatusBadge status={groupStatus} emptyLabel="Kein Status" />
+          <strong>{numberFormatter.format(accounts.length)}</strong>
+        </span>
+      </summary>
+      <div className="source-account-list source-account-list--bank">
+        <div className="source-account-list__header">
+          <span>{accountHeader}</span>
+          <span>Geldstand</span>
+          <span>Verfügbar</span>
+          <span>Kreditlinie</span>
+        </div>
+        {accounts.map((account) => {
+          const accountKey =
+            account.providerAccountId ??
+            account.accountNumber ??
+            `${account.bankName ?? "bank"}-${getAccountLabel(account)}`;
+          const accountLedgerEntries = bankLedgerEntries
+            .filter(
+              (entry) =>
+                entry.accountId === account.accountId ||
+                entry.providerAccountId === account.providerAccountId,
+            )
+            .slice(0, 8);
+          const accountAgentId = getBankAccountAgentId(account);
+          const accountAgentStatus = agentStatuses[accountAgentId];
+          const accountAgentRunText = formatUpdatedAt(getAgentRunTimestamp(accountAgentStatus));
+          const accountAgentSuccessText = formatUpdatedAt(getAgentSuccessTimestamp(accountAgentStatus));
+          const showAccountAgentSuccess =
+            accountAgentSuccessText && accountAgentSuccessText !== accountAgentRunText;
+          const accountStatusTone = getBankAccountStatusTone(account, accountAgentStatus);
+          const accountUpdatedAt = formatUpdatedAt(getBankAccountUpdatedAt(account));
+          const accountIssueMessage = getBankAccountIssueMessage(account, accountAgentStatus);
+          return (
+            <details className="source-account-details" key={accountKey}>
+              <summary className="source-account-row source-account-row--bank">
+                <div className="source-account-row__main">
+                  <strong>{getAccountLabel(account)}</strong>
+                  <span className="source-account-row__meta">
+                    <span className={`source-account-row__status source-account-row__status--${accountStatusTone}`}>
+                      {getBankAccountStatusLabel(account, accountAgentStatus)}
+                    </span>
+                    <span>{account.bankName ?? accountHeader}</span>
+                    <span className="source-account-row__agent">
+                      Agent {getBankAccountAgentLabel(accountAgentId)}{" "}
+                      <AgentStatusBadge status={accountAgentStatus?.status} emptyLabel="Kein Status" />
+                    </span>
+                    {account.accountNumber ? <span>{account.accountNumber}</span> : null}
+                    <span>Update {accountUpdatedAt || "Noch offen"}</span>
+                    <span>Agent-Lauf {accountAgentRunText || "Noch offen"}</span>
+                    {showAccountAgentSuccess ? <span>Agent-Erfolg {accountAgentSuccessText}</span> : null}
+                    {typeof account.transactionCount === "number" ? (
+                      <span>{numberFormatter.format(account.transactionCount)} Umsätze</span>
+                    ) : null}
+                    {account.latestTransactionDate ? (
+                      <span>letzter Umsatz {formatUpdatedAt(account.latestTransactionDate)}</span>
+                    ) : null}
+                  </span>
+                  {accountIssueMessage ? (
+                    <span className="source-account-row__warning">{accountIssueMessage}</span>
+                  ) : null}
+                </div>
+                <div className="source-account-row__value" data-label="Geldstand">
+                  <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
+                </div>
+                <div className="source-account-row__value" data-label="Verfügbar">
+                  <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
+                </div>
+                <div className="source-account-row__value" data-label="Kreditlinie">
+                  <strong>{privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}</strong>
+                </div>
+              </summary>
+              {accountLedgerEntries.length ? (
+                <div className="bank-ledger-list">
+                  {accountLedgerEntries.map((entry) => {
+                    const ledgerTone = getBankLedgerTone(entry);
+                    return (
+                      <div className="bank-ledger-row" key={entry.id}>
+                        <div className="bank-ledger-row__main">
+                          <strong>{entry.bookingText ?? "Bankumsatz"}</strong>
+                          <span>
+                            {formatUpdatedAt(entry.date)}
+                            {" · "}
+                            {getBankLedgerCategoryLabel(entry.category)}
+                            {entry.counterpartyName ? ` · ${entry.counterpartyName}` : ""}
+                          </span>
+                        </div>
+                        <div className={`bank-ledger-row__amount performance-value--${ledgerTone}`}>
+                          {privacyMode ? maskSignedMoney(entry.amount) : formatSignedMoney(entry.amount, entry.currency ?? "EUR")}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="source-account-transactions-placeholder">
+                  Keine Umsätze im aktuell geladenen Zeitraum.
+                </div>
+              )}
+            </details>
+          );
+        })}
+      </div>
+    </details>
+  );
 }
 
 function PositionsTable({
@@ -970,6 +1460,88 @@ function VbvAccountInformationDetails({
   );
 }
 
+function EquatePlusManualPanel({
+  draft,
+  manualInput,
+  position,
+  privacyMode,
+  saveStatus,
+  saveError,
+  onDraftChange,
+  onSubmit,
+}: {
+  draft: EquatePlusDraft;
+  manualInput: EquatePlusManualInputDocument | null;
+  position?: PortfolioPosition;
+  privacyMode: boolean;
+  saveStatus: EquatePlusSaveStatus;
+  saveError: string | null;
+  onDraftChange: (field: keyof EquatePlusDraft, value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const saveLabel =
+    saveStatus === "saving"
+      ? "Speichert"
+      : saveStatus === "saved"
+        ? "Gespeichert"
+        : "Speichern";
+  const performanceTone = getPerformanceTone(position?.performanceValue);
+
+  return (
+    <form className="source-card__manual-panel" onSubmit={onSubmit}>
+      <div className="source-card__manual-heading">
+        <strong>Novartis</strong>
+        <span>CH0012005267 · SIX Swiss Exchange</span>
+      </div>
+      <div className="source-card__manual-grid">
+        <label>
+          <span>Anteile</span>
+          <input
+            inputMode="decimal"
+            value={draft.quantity}
+            onChange={(event) => onDraftChange("quantity", event.target.value)}
+            placeholder="16,2"
+          />
+        </label>
+        <label>
+          <span>Einstand EUR</span>
+          <input
+            inputMode="decimal"
+            value={draft.entryValueEur}
+            onChange={(event) => onDraftChange("entryValueEur", event.target.value)}
+            placeholder="1500"
+          />
+        </label>
+        <button type="submit" disabled={saveStatus === "saving"}>
+          {saveLabel}
+        </button>
+      </div>
+      <dl className="source-card__manual-facts">
+        <div>
+          <dt>Kurs</dt>
+          <dd>{formatMoney(position?.quotePrice, position?.quoteCurrency ?? "CHF")}</dd>
+        </div>
+        <div>
+          <dt>Wert</dt>
+          <dd>{privacyMode ? maskMoney(position?.currentValue) : formatCurrency(position?.currentValue ?? undefined)}</dd>
+        </div>
+        <div>
+          <dt>G/V</dt>
+          <dd className={`performance-value performance-value--${performanceTone}`}>
+            {privacyMode ? maskSignedMoney(position?.performanceValue) : formatSignedMoney(position?.performanceValue)}
+            <small>{formatSignedPercent(position?.performancePct)}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>Eingabe</dt>
+          <dd>{formatUpdatedAt(manualInput?.updatedAt)}</dd>
+        </div>
+      </dl>
+      {saveError ? <p className="source-card__manual-error">{saveError}</p> : null}
+    </form>
+  );
+}
+
 function App() {
   const [sourceSummaries, setSourceSummaries] = useState<
     Record<string, SourceSummaryDocument>
@@ -978,6 +1550,12 @@ function App() {
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [bankLedgerEntries, setBankLedgerEntries] = useState<BankLedgerEntryDocument[]>([]);
   const [documentInboxItems, setDocumentInboxItems] = useState<DocumentInboxItem[]>([]);
+  const [equatePlusManualInput, setEquatePlusManualInput] =
+    useState<EquatePlusManualInputDocument | null>(null);
+  const [equatePlusDraft, setEquatePlusDraft] = useState<EquatePlusDraft>(emptyEquatePlusDraft);
+  const [equatePlusSaveStatus, setEquatePlusSaveStatus] =
+    useState<EquatePlusSaveStatus>("idle");
+  const [equatePlusSaveError, setEquatePlusSaveError] = useState<string | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -993,6 +1571,32 @@ function App() {
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
   const [privacyMode, setPrivacyMode] = useState(false);
+  const [collapsedSourceCards, setCollapsedSourceCards] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("finanztool-collapsed-source-cards") ?? "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((item) => typeof item === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const [tradeRepublicDisplayMode, setTradeRepublicDisplayMode] =
+    useState<TradeRepublicDisplayMode>(() => {
+      if (typeof window === "undefined") return "current";
+      const saved = window.localStorage.getItem("finanztool-traderepublic-display-mode");
+      return saved === "broker" || saved === "current" ? saved : "current";
+    });
+
+  useEffect(() => {
+    window.localStorage.setItem("finanztool-traderepublic-display-mode", tradeRepublicDisplayMode);
+  }, [tradeRepublicDisplayMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "finanztool-collapsed-source-cards",
+      JSON.stringify([...collapsedSourceCards]),
+    );
+  }, [collapsedSourceCards]);
 
   useEffect(() => {
     const services = getFirebaseServices();
@@ -1008,6 +1612,8 @@ function App() {
         setPositions([]);
         setBankLedgerEntries([]);
         setDocumentInboxItems([]);
+        setEquatePlusManualInput(null);
+        setEquatePlusDraft(emptyEquatePlusDraft);
         setSystemHealth(null);
         setDataStatus("auth-required");
       } else {
@@ -1029,15 +1635,26 @@ function App() {
       loadSourcePositions(services.db),
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
+      loadEquatePlusManualInput(services.db),
       loadSystemHealth(services.db),
     ])
-      .then(([summaries, loadedAgentStatuses, loadedPositions, loadedBankLedgerEntries, loadedDocumentInboxItems, health]) => {
+      .then(([
+        summaries,
+        loadedAgentStatuses,
+        loadedPositions,
+        loadedBankLedgerEntries,
+        loadedDocumentInboxItems,
+        loadedEquatePlusManualInput,
+        health,
+      ]) => {
         if (!isMounted) return;
         setSourceSummaries(summaries);
         setAgentStatuses(loadedAgentStatuses);
         setPositions(loadedPositions);
         setBankLedgerEntries(loadedBankLedgerEntries);
         setDocumentInboxItems(loadedDocumentInboxItems);
+        setEquatePlusManualInput(loadedEquatePlusManualInput);
+        setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
         setSystemHealth(health);
         setDataStatus("live");
       })
@@ -1071,15 +1688,36 @@ function App() {
     await signOut(services.auth);
   }
 
+  function toggleSourceCard(sourceId: string) {
+    setCollapsedSourceCards((current) => {
+      const next = new Set(current);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+      } else {
+        next.add(sourceId);
+      }
+      return next;
+    });
+  }
+
   async function refreshPortfolioData() {
     const services = getFirebaseServices();
     if (!services) return;
-    const [summaries, loadedAgentStatuses, loadedPositions, loadedBankLedgerEntries, loadedDocumentInboxItems, health] = await Promise.all([
+    const [
+      summaries,
+      loadedAgentStatuses,
+      loadedPositions,
+      loadedBankLedgerEntries,
+      loadedDocumentInboxItems,
+      loadedEquatePlusManualInput,
+      health,
+    ] = await Promise.all([
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
+      loadEquatePlusManualInput(services.db),
       loadSystemHealth(services.db),
     ]);
     setSourceSummaries(summaries);
@@ -1087,7 +1725,61 @@ function App() {
     setPositions(loadedPositions);
     setBankLedgerEntries(loadedBankLedgerEntries);
     setDocumentInboxItems(loadedDocumentInboxItems);
+    setEquatePlusManualInput(loadedEquatePlusManualInput);
+    setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
     setSystemHealth(health);
+  }
+
+  function handleEquatePlusDraftChange(field: keyof EquatePlusDraft, value: string) {
+    setEquatePlusDraft((current) => ({ ...current, [field]: value }));
+    setEquatePlusSaveStatus("idle");
+    setEquatePlusSaveError(null);
+  }
+
+  async function handleSaveEquatePlusInput(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    const quantity = parseEditableNumber(equatePlusDraft.quantity);
+    const entryValueEur = parseEditableNumber(equatePlusDraft.entryValueEur);
+    if (typeof quantity !== "number" || quantity <= 0) {
+      setEquatePlusSaveStatus("error");
+      setEquatePlusSaveError("Bitte eine positive Anzahl eingeben.");
+      return;
+    }
+    if (typeof entryValueEur !== "number" || entryValueEur <= 0) {
+      setEquatePlusSaveStatus("error");
+      setEquatePlusSaveError("Bitte einen positiven Einstandswert in EUR eingeben.");
+      return;
+    }
+
+    try {
+      setEquatePlusSaveStatus("saving");
+      setEquatePlusSaveError(null);
+      await saveEquatePlusManualInput(services.db, { quantity, entryValueEur }, authUser.email);
+      const localInput: EquatePlusManualInputDocument = {
+        id: "equateplus_novartis",
+        source: "equateplus",
+        instrumentId: "novartis",
+        isin: "CH0012005267",
+        name: "Novartis",
+        quantity,
+        entryValueEur,
+        entryValueCurrency: "EUR",
+        discountPct: 0.15,
+        updatedBy: authUser.email,
+        updatedAt: new Date(),
+      };
+      setEquatePlusManualInput(localInput);
+      setEquatePlusDraft(equatePlusDraftFromInput(localInput));
+      await requestQuoteSync(services.db, authUser.email);
+      setQuoteRequestStatus("requested");
+      setEquatePlusSaveStatus("saved");
+    } catch (error) {
+      setEquatePlusSaveStatus("error");
+      setEquatePlusSaveError(error instanceof Error ? error.message : "EquatePlus-Eingabe konnte nicht gespeichert werden.");
+    }
   }
 
   async function handleDocumentDecision(
@@ -1228,12 +1920,30 @@ function App() {
     }
   }
 
+  const valuationSummaries = useMemo<Record<string, SourceSummaryDocument>>(() => {
+    if (tradeRepublicDisplayMode !== "current") return sourceSummaries;
+    const tradeRepublicCurrentSummary = getTradeRepublicCurrentSummary(sourceSummaries.traderepublic);
+    if (!tradeRepublicCurrentSummary) return sourceSummaries;
+    return {
+      ...sourceSummaries,
+      traderepublic: tradeRepublicCurrentSummary,
+    };
+  }, [sourceSummaries, tradeRepublicDisplayMode]);
+
+  const valuationPositions = useMemo(
+    () =>
+      tradeRepublicDisplayMode === "current"
+        ? positions.map(getTradeRepublicCurrentPosition)
+        : positions,
+    [positions, tradeRepublicDisplayMode],
+  );
+
   const positionStatsBySource = useMemo(() => {
     const stats: Record<
       string,
       { count: number; valuedCount: number; value: number; cashValue: number; cashCount: number }
     > = {};
-    for (const position of positions) {
+    for (const position of valuationPositions) {
       const current =
         stats[position.source] ?? { count: 0, valuedCount: 0, value: 0, cashValue: 0, cashCount: 0 };
       current.count += 1;
@@ -1249,13 +1959,24 @@ function App() {
       stats[position.source] = current;
     }
     return stats;
-  }, [positions]);
+  }, [valuationPositions]);
 
   const sources = useMemo(
     () =>
       sourceOverviews.map((source) => {
-        const summary = sourceSummaries[source.summaryId ?? source.id];
+        const summary = valuationSummaries[source.summaryId ?? source.id];
         const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
+        const bankAccounts = source.id === "bank_accounts" ? (summary?.accounts ?? []) : [];
+        const bankAccountStatus = getBankAccountsAggregateStatus(bankAccounts, agentStatuses);
+        const bankAccountMessage =
+          bankAccountStatus && bankAccountStatus !== "OK"
+            ? getBankAccountsAggregateMessage(bankAccounts, agentStatuses)
+            : null;
+        const combinedAgentStatus = getWorseStatus(agentStatus?.status, bankAccountStatus);
+        const combinedAgentMessage =
+          bankAccountMessage && getStatusRank(bankAccountStatus) >= getStatusRank(agentStatus?.status)
+            ? bankAccountMessage
+            : agentStatus?.message ?? bankAccountMessage;
         const positionStats = positionStatsBySource[source.id];
         const useAuthoritativeSummary = sourceUsesAuthoritativeSummary(source.id);
         const positionDerivedValue =
@@ -1280,8 +2001,8 @@ function App() {
             cashValue: positionCashValue ?? source.cashValue,
             netValue: useAuthoritativeSummary ? source.netValue : positionDerivedValue ?? source.netValue,
             lastAgentSuccessAt: agentStatus?.lastAgentSuccessAt ?? agentStatus?.lastSuccessAt ?? source.lastAgentSuccessAt,
-            agentStatus: agentStatus?.status,
-            agentMessage: agentStatus?.message,
+            agentStatus: combinedAgentStatus,
+            agentMessage: combinedAgentMessage,
             updatedAt: agentStatus?.lastSuccessAt ?? source.updatedAt,
             positionCount: positionStats?.count || source.positionCount,
           };
@@ -1310,6 +2031,10 @@ function App() {
           quoteDataUpdatedAt: summary.quoteDataUpdatedAt ?? source.quoteDataUpdatedAt,
           quoteDataProvider: summary.quoteDataProvider ?? source.quoteDataProvider,
           quoteDataChangedAt: summary.quoteDataChangedAt ?? source.quoteDataChangedAt,
+          externalQuoteDepotValue: summary.externalQuoteDepotValue ?? source.externalQuoteDepotValue,
+          externalQuoteDifference: summary.externalQuoteDifference ?? source.externalQuoteDifference,
+          externalQuoteDataUpdatedAt: summary.externalQuoteDataUpdatedAt ?? source.externalQuoteDataUpdatedAt,
+          externalQuoteDataProvider: summary.externalQuoteDataProvider ?? source.externalQuoteDataProvider,
           lastAgentRunAt: summary.lastAgentRunAt ?? agentStatus?.lastAgentRunAt ?? source.lastAgentRunAt,
           lastAgentSuccessAt:
             summary.lastAgentSuccessAt ?? agentStatus?.lastAgentSuccessAt ?? agentStatus?.lastSuccessAt ?? source.lastAgentSuccessAt,
@@ -1318,8 +2043,8 @@ function App() {
           oldestQuoteAsOf: summary.oldestQuoteAsOf ?? null,
           quoteUpdatedAt: summary.quoteUpdatedAt ?? null,
           quoteFreshness: summary.quoteFreshness ?? null,
-          agentStatus: agentStatus?.status,
-          agentMessage: agentStatus?.message,
+          agentStatus: combinedAgentStatus,
+          agentMessage: combinedAgentMessage,
           updatedAt:
             summary.latestQuoteAsOf ??
             summary.valuationDate ??
@@ -1332,18 +2057,17 @@ function App() {
             source.positionCount,
         };
       }),
-    [agentStatuses, positionStatsBySource, sourceSummaries],
+    [agentStatuses, positionStatsBySource, valuationSummaries],
   );
 
   const trackedTotal = getTrackedTotal(sources);
-  const portfolioPerformanceBase = positions.reduce(
-    (totals, position) => {
-      if (position.accountValueIncluded === false || isCashPosition(position)) return totals;
-      const performance = getPositionPerformance(position);
-      if (typeof performance.performance !== "number") return totals;
+  const portfolioPerformanceBase = sources.reduce(
+    (totals, source) => {
+      const summary = valuationSummaries[source.summaryId ?? source.id];
+      if (typeof summary?.performanceValue !== "number") return totals;
       return {
-        cost: totals.cost + (typeof performance.cost === "number" ? performance.cost : 0),
-        performance: totals.performance + performance.performance,
+        cost: totals.cost + (typeof summary.costValue === "number" ? summary.costValue : 0),
+        performance: totals.performance + summary.performanceValue,
         count: totals.count + 1,
       };
     },
@@ -1355,7 +2079,7 @@ function App() {
     portfolioPerformanceBase.cost && portfolioPerformance !== null
       ? portfolioPerformance / portfolioPerformanceBase.cost
       : null;
-  const portfolioDayChangeBase = positions.reduce((totals, position) => {
+  const portfolioDayChangeBase = valuationPositions.reduce((totals, position) => {
     if (position.accountValueIncluded === false) return totals;
     const { value } = getPositionDayChange(position);
     if (typeof value !== "number") return totals;
@@ -1381,7 +2105,7 @@ function App() {
   );
   const displayedPositions = useMemo(
     () =>
-      positions
+      valuationPositions
         .sort((left, right) => {
           const sourceDelta = getPositionSortValue(left) - getPositionSortValue(right);
           if (sourceDelta !== 0) return sourceDelta;
@@ -1391,7 +2115,7 @@ function App() {
           if (accountDelta !== 0) return accountDelta;
           return (right.currentValue ?? 0) - (left.currentValue ?? 0);
         }),
-    [positions],
+    [valuationPositions],
   );
   const displayedPositionsBySource = useMemo(() => {
     const grouped: Record<string, PortfolioPosition[]> = {};
@@ -1403,7 +2127,6 @@ function App() {
     return grouped;
   }, [displayedPositions]);
   const visibleAlerts = systemHealth?.alerts?.slice(0, 3) ?? [];
-  const openDocumentInboxItems = documentInboxItems.filter(isOpenDocumentInboxItem);
   const healthTone =
     systemHealth?.status === "ERROR"
       ? "error"
@@ -1455,13 +2178,13 @@ function App() {
             <span>
               {quoteRequestStatus === "requesting"
                 ? "Aktualisierung wird angefordert"
-                : quoteRequestStatus === "requested"
-                  ? "Aktualisierung angefordert"
+                  : quoteRequestStatus === "requested"
+                  ? "Kurs-Sync angefordert"
                   : quoteRequestStatus === "running"
-                    ? "Alles wird aktualisiert"
+                    ? "Kurse werden aktualisiert"
                   : quoteRequestStatus === "error"
-                    ? "Sync fehlgeschlagen"
-                    : "Alles aktualisieren"}
+                    ? "Kurs-Sync fehlgeschlagen"
+                    : "Kurse aktualisieren"}
             </span>
           </button>
         ) : null}
@@ -1539,14 +2262,14 @@ function App() {
             <Archive aria-hidden="true" />
           </div>
           <p className="document-inbox-panel__intro">
-            Offene Dokumente, die ein Agent nicht klassifizieren oder verarbeiten konnte.
+            Offene Dokumente zur Entscheidung und verarbeitete Dokumente zur Kontrolle.
           </p>
           {documentDecisionError ? (
             <p className="document-inbox-panel__error">{documentDecisionError}</p>
           ) : null}
-          {openDocumentInboxItems.length ? (
+          {documentInboxItems.length ? (
             <DocumentInbox
-              items={openDocumentInboxItems}
+              items={documentInboxItems}
               pendingDecisionId={pendingDocumentDecisionId}
               pendingOpenDocumentId={pendingDocumentOpenId}
               onOpenDocument={handleOpenDocument}
@@ -1554,7 +2277,7 @@ function App() {
             />
           ) : (
             <div className="document-inbox-panel__empty">
-              Keine offenen Dokumentprobleme.
+              Keine offenen Dokumentprobleme und kein Dokumentarchiv geladen.
             </div>
           )}
         </section>
@@ -1602,11 +2325,25 @@ function App() {
 
           <div className="source-list">
             {displaySources.map((source) => {
-              const sourceSummary = sourceSummaries[source.summaryId ?? source.id];
+              const sourceSummary = valuationSummaries[source.summaryId ?? source.id];
+              const rawSourceSummary = sourceSummaries[source.summaryId ?? source.id];
               const performanceTone = getPerformanceTone(sourceSummary?.performanceValue);
               const sourcePositionsForCard = displayedPositionsBySource[source.id] ?? [];
               const usedCreditValue = getUsedCreditValue(source);
               const sourcePrimaryTimestamp = getSourcePrimaryTimestamp(source);
+              const isTradeRepublicSource = source.id === "traderepublic";
+              const tradeRepublicHasCurrentQuotes =
+                isTradeRepublicSource && typeof rawSourceSummary?.externalQuoteDepotValue === "number";
+              const tradeRepublicBrokerTimestamp =
+                rawSourceSummary?.sourceDataUpdatedAt ??
+                rawSourceSummary?.quoteDataUpdatedAt ??
+                source.sourceDataUpdatedAt ??
+                source.quoteDataUpdatedAt;
+              const tradeRepublicFrankfurtTimestamp =
+                rawSourceSummary?.externalQuoteDataUpdatedAt ??
+                rawSourceSummary?.quoteUpdatedAt ??
+                source.externalQuoteDataUpdatedAt ??
+                source.quoteUpdatedAt;
               const vbvAccountInformation =
                 source.id === "vbv" ? sourceSummary?.accountInformation ?? null : null;
               const sourceDayChangeBase = sourcePositionsForCard.reduce(
@@ -1629,15 +2366,28 @@ function App() {
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
               const isBankAccountsSource = source.id === "bank_accounts";
+              const isCreditCardSource = source.kind === "credit_card";
               const bankAccounts = isBankAccountsSource ? (sourceSummary?.accounts ?? []) : [];
+              const creditCardAccounts = bankAccounts.filter(isCreditCardAccount);
+              const checkingAccounts = bankAccounts.filter((account) => !isCreditCardAccount(account));
               const sourceAgentRuns = getSourceAgentRunViews(source.id, agentStatuses);
+              const equatePlusPosition =
+                source.id === "equateplus"
+                  ? sourcePositionsForCard.find(
+                      (position) => position.id === "equateplus_novartis" || position.isin === "CH0012005267",
+                    )
+                  : undefined;
               const tradeRepublicPortalButtonLabel = getTradeRepublicPortalButtonLabel(
                 tradeRepublicPortalRequestStatus,
                 agentStatuses.traderepublic_portal,
               );
+              const isSourceCollapsed = collapsedSourceCards.has(source.id);
 
               return (
-                <article className="source-card" key={source.id}>
+                <article
+                  className={`source-card${isSourceCollapsed ? " source-card--collapsed" : ""}`}
+                  key={source.id}
+                >
                   <div className="source-card__icon">
                     <SourceIcon source={source} />
                   </div>
@@ -1649,20 +2399,114 @@ function App() {
                       </div>
                       <div className="source-card__header-actions">
                         <AgentStatusBadge status={source.agentStatus} />
+                        <button
+                          type="button"
+                          className={`source-card__collapse-button${isSourceCollapsed ? " is-collapsed" : ""}`}
+                          onClick={() => toggleSourceCard(source.id)}
+                          aria-expanded={!isSourceCollapsed}
+                          aria-label={
+                            isSourceCollapsed
+                              ? `${source.name} ausklappen`
+                              : `${source.name} einklappen`
+                          }
+                        >
+                          <ChevronDown aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
 
-                    {source.id === "traderepublic" ? (
+                    {isSourceCollapsed ? (
+                      <dl className="source-card__compact-metrics" aria-label={`${source.name} Kurzüberblick`}>
+                        <div>
+                          <dt>Depotwert</dt>
+                          <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
+                        </div>
+                        <div>
+                          <dt>G/V</dt>
+                          <dd className={`performance-value performance-value--${performanceTone}`}>
+                            {privacyMode ? maskSignedMoney(sourceSummary?.performanceValue) : formatSignedMoney(sourceSummary?.performanceValue)}
+                            <span>{formatSignedPercent(sourceSummary?.performancePct)}</span>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Heute</dt>
+                          <dd>
+                            {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
+                            <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Fehler</dt>
+                          <dd>
+                            <AgentStatusBadge status={source.agentStatus} emptyLabel="—" />
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Update</dt>
+                          <dd>
+                            <span className="source-card__timestamp-inline">
+                              {formatUpdatedAt(sourcePrimaryTimestamp.value) || "Noch offen"}
+                            </span>
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <>
+                    {isTradeRepublicSource ? (
                       <div className="source-card__portal-action source-card__portal-action--primary">
-                        <button
-                          type="button"
-                          className="source-card__refresh-button source-card__refresh-button--wide"
-                          onClick={handleRequestTradeRepublicPortalRefresh}
-                          disabled={["requesting", "requested", "running"].includes(tradeRepublicPortalRequestStatus)}
-                        >
-                          <RefreshCcw aria-hidden="true" />
-                          <span>Trade Republic: {tradeRepublicPortalButtonLabel}</span>
-                        </button>
+                        <div className="source-card__portal-action-row">
+                          <button
+                            type="button"
+                            className="source-card__refresh-button source-card__refresh-button--wide"
+                            onClick={handleRequestTradeRepublicPortalRefresh}
+                            disabled={["requesting", "requested", "running"].includes(tradeRepublicPortalRequestStatus)}
+                          >
+                            <RefreshCcw aria-hidden="true" />
+                            <span>Trade Republic: {tradeRepublicPortalButtonLabel}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="source-card__refresh-button source-card__refresh-button--wide"
+                            onClick={handleRequestQuoteSync}
+                            disabled={["requesting", "requested", "running"].includes(quoteRequestStatus)}
+                          >
+                            <RefreshCcw aria-hidden="true" />
+                            <span>
+                              {quoteRequestStatus === "running"
+                                ? "Kurse laufen"
+                                : quoteRequestStatus === "requested"
+                                  ? "Kurse angefordert"
+                                  : quoteRequestStatus === "error"
+                                    ? "Kurse fehlgeschlagen"
+                                    : "Nur Kurse"}
+                            </span>
+                          </button>
+                        </div>
+                        <div className="source-card__value-mode" role="group" aria-label="Trade-Republic-Wertmodus">
+                          <button
+                            type="button"
+                            className={`source-card__value-mode-button${
+                              tradeRepublicDisplayMode === "current" ? " is-active" : ""
+                            }`}
+                            onClick={() => setTradeRepublicDisplayMode("current")}
+                            disabled={!tradeRepublicHasCurrentQuotes}
+                            aria-pressed={tradeRepublicDisplayMode === "current"}
+                          >
+                            <span>Aktuell</span>
+                            <small>Frankfurt</small>
+                          </button>
+                          <button
+                            type="button"
+                            className={`source-card__value-mode-button${
+                              tradeRepublicDisplayMode === "broker" ? " is-active" : ""
+                            }`}
+                            onClick={() => setTradeRepublicDisplayMode("broker")}
+                            aria-pressed={tradeRepublicDisplayMode === "broker"}
+                          >
+                            <span>Broker</span>
+                            <small>Trade Republic</small>
+                          </button>
+                        </div>
                         {tradeRepublicPortalRequestStatus === "error" && tradeRepublicPortalRequestError ? (
                           <div className="source-card__portal-error">
                             {tradeRepublicPortalRequestError}
@@ -1671,7 +2515,7 @@ function App() {
                       </div>
                     ) : null}
 
-                    <dl className={`source-card__metrics${isBankAccountsSource ? " source-card__metrics--bank" : ""}`}>
+                    <dl className={`source-card__metrics${isBankAccountsSource || isCreditCardSource ? " source-card__metrics--bank" : ""}`}>
                       {isBankAccountsSource ? (
                         <>
                           <div>
@@ -1684,6 +2528,35 @@ function App() {
                           </div>
                           <div>
                             <dt>Kreditlinie</dt>
+                            <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                          </div>
+                          <div>
+                            <dt>{sourcePrimaryTimestamp.label}</dt>
+                            <dd>
+                              <span className="source-card__timestamp-inline">
+                                {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                              </span>
+                            </dd>
+                          </div>
+                          {source.agentStatus && source.agentStatus !== "OK" ? (
+                            <div>
+                              <dt>Status</dt>
+                              <dd>{source.agentMessage ?? "Agent meldet keinen OK-Status."}</dd>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : isCreditCardSource ? (
+                        <>
+                          <div>
+                            <dt>Saldo</dt>
+                            <dd>{privacyMode ? maskMoney(source.currentValue) : formatCurrency(source.currentValue)}</dd>
+                          </div>
+                          <div>
+                            <dt>Verfügbar</dt>
+                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
+                          </div>
+                          <div>
+                            <dt>Kreditlimit</dt>
                             <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
                           </div>
                           <div>
@@ -1715,14 +2588,35 @@ function App() {
                             <dt>Einstand</dt>
                             <dd>{privacyMode ? maskMoney(sourceSummary?.costValue) : formatCurrency(sourceSummary?.costValue)}</dd>
                           </div>
-                          <div>
-                            <dt>{sourcePrimaryTimestamp.label}</dt>
-                            <dd>
-                              <span className="source-card__timestamp-inline">
-                                {formatUpdatedAt(sourcePrimaryTimestamp.value)}
-                              </span>
-                            </dd>
-                          </div>
+                          {isTradeRepublicSource ? (
+                            <>
+                              <div>
+                                <dt>TR Stand</dt>
+                                <dd>
+                                  <span className="source-card__timestamp-inline">
+                                    {formatUpdatedAt(tradeRepublicBrokerTimestamp)}
+                                  </span>
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Frankfurt</dt>
+                                <dd>
+                                  <span className="source-card__timestamp-inline">
+                                    {formatUpdatedAt(tradeRepublicFrankfurtTimestamp)}
+                                  </span>
+                                </dd>
+                              </div>
+                            </>
+                          ) : (
+                            <div>
+                              <dt>{sourcePrimaryTimestamp.label}</dt>
+                              <dd>
+                                <span className="source-card__timestamp-inline">
+                                  {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                                </span>
+                              </dd>
+                            </div>
+                          )}
                           <div>
                             <dt>G/V</dt>
                             <dd className={`performance-value performance-value--${performanceTone}`}>
@@ -1746,7 +2640,19 @@ function App() {
                         </>
                       )}
                     </dl>
-                    {!isBankAccountsSource && (typeof source.saleValue === "number" ||
+                    {source.id === "equateplus" ? (
+                      <EquatePlusManualPanel
+                        draft={equatePlusDraft}
+                        manualInput={equatePlusManualInput}
+                        position={equatePlusPosition}
+                        privacyMode={privacyMode}
+                        saveStatus={equatePlusSaveStatus}
+                        saveError={equatePlusSaveError}
+                        onDraftChange={handleEquatePlusDraftChange}
+                        onSubmit={handleSaveEquatePlusInput}
+                      />
+                    ) : null}
+                    {!isBankAccountsSource && !isCreditCardSource && (typeof source.saleValue === "number" ||
                     typeof source.availableWithCredit === "number" ||
                     typeof source.creditLineEstimate === "number" ||
                     typeof usedCreditValue === "number") ? (
@@ -1778,7 +2684,7 @@ function App() {
                       </dl>
                     ) : null}
 
-                    {sourceAgentRuns.length ? (
+                    {sourceAgentRuns.length && !isBankAccountsSource ? (
                       <div className="source-card__agent-panel">
                         <div className="source-card__agent-panel-title">Agenten</div>
                         <div className="source-card__agent-list">
@@ -1829,91 +2735,25 @@ function App() {
                       </div>
                     ) : null}
 
-                    {bankAccounts.length ? (
-                      <details className="source-accounts-details source-accounts-details--bank">
-                        <summary>
-                          <span>Bankkonten</span>
-                          <strong>{numberFormatter.format(bankAccounts.length)}</strong>
-                        </summary>
-                        <div className="source-account-list source-account-list--bank">
-                          <div className="source-account-list__header">
-                            <span>Konto</span>
-                            <span>Geldstand</span>
-                            <span>Verfügbar</span>
-                            <span>Kreditlinie</span>
-                          </div>
-                          {bankAccounts.map((account) => {
-                            const accountKey =
-                              account.providerAccountId ??
-                              account.accountNumber ??
-                              `${account.bankName ?? "bank"}-${getAccountLabel(account)}`;
-                            const accountLedgerEntries = bankLedgerEntries
-                              .filter(
-                                (entry) =>
-                                  entry.accountId === account.accountId ||
-                                  entry.providerAccountId === account.providerAccountId,
-                              )
-                              .slice(0, 8);
-                            return (
-                              <details className="source-account-details" key={accountKey}>
-                                <summary className="source-account-row source-account-row--bank">
-                                  <div className="source-account-row__main">
-                                    <strong>{getAccountLabel(account)}</strong>
-                                    <span>
-                                      {[
-                                        account.bankName,
-                                        account.accountNumber,
-                                        typeof account.transactionCount === "number"
-                                          ? `${numberFormatter.format(account.transactionCount)} Umsätze`
-                                          : null,
-                                        account.latestTransactionDate
-                                          ? `letzter Umsatz ${formatUpdatedAt(account.latestTransactionDate)}`
-                                          : null,
-                                      ].filter(Boolean).join(" · ") || "Bankkonto"}
-                                    </span>
-                                  </div>
-                                  <div className="source-account-row__value" data-label="Geldstand">
-                                    <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
-                                  </div>
-                                  <div className="source-account-row__value" data-label="Verfügbar">
-                                    <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
-                                  </div>
-                                  <div className="source-account-row__value" data-label="Kreditlinie">
-                                    <strong>{privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}</strong>
-                                  </div>
-                                </summary>
-                                {accountLedgerEntries.length ? (
-                                  <div className="bank-ledger-list">
-                                    {accountLedgerEntries.map((entry) => {
-                                      const ledgerTone = getBankLedgerTone(entry);
-                                      return (
-                                        <div className="bank-ledger-row" key={entry.id}>
-                                          <div className="bank-ledger-row__main">
-                                            <strong>{entry.bookingText ?? "Bankumsatz"}</strong>
-                                            <span>
-                                              {formatUpdatedAt(entry.date)}
-                                              {" · "}
-                                              {getBankLedgerCategoryLabel(entry.category)}
-                                              {entry.counterpartyName ? ` · ${entry.counterpartyName}` : ""}
-                                            </span>
-                                          </div>
-                                          <div className={`bank-ledger-row__amount performance-value--${ledgerTone}`}>
-                                            {privacyMode ? maskSignedMoney(entry.amount) : formatSignedMoney(entry.amount, entry.currency ?? "EUR")}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <div className="source-account-transactions-placeholder">
-                                    Keine Umsätze im aktuell geladenen Zeitraum.
-                                  </div>
-                                )}
-                              </details>
-                            );
-                          })}
-                        </div>
-                      </details>
+                    {isBankAccountsSource ? (
+                      <>
+                        <BankAccountGroup
+                          title="Bankkonten"
+                          accounts={checkingAccounts}
+                          agentStatuses={agentStatuses}
+                          bankLedgerEntries={bankLedgerEntries}
+                          privacyMode={privacyMode}
+                          accountHeader="Konto"
+                        />
+                        <BankAccountGroup
+                          title="Kreditkarten"
+                          accounts={creditCardAccounts}
+                          agentStatuses={agentStatuses}
+                          bankLedgerEntries={bankLedgerEntries}
+                          privacyMode={privacyMode}
+                          accountHeader="Kreditkarte"
+                        />
+                      </>
                     ) : ginmonAccounts.length ? (
                       <details className="source-accounts-details">
                         <summary>
@@ -1978,6 +2818,8 @@ function App() {
                         <PositionsTable positions={sourcePositionsForCard} privacyMode={privacyMode} />
                       </details>
                     ) : null}
+                      </>
+                    )}
                   </div>
                 </article>
               );

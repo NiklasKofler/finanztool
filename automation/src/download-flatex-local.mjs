@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -17,7 +18,11 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requestedPeriod = readArg("--period") ?? process.env.FLATEX_EXPORT_PERIOD ?? "zwei Wochen";
 const writeFirestore = process.argv.includes("--write");
-const reconcileAfterDownload = writeFirestore || process.argv.includes("--reconcile");
+const snapshotOnly = process.argv.includes("--snapshot-only");
+const headless =
+  process.argv.includes("--headless") ||
+  ["1", "true", "yes"].includes(String(process.env.FLATEX_HEADLESS ?? "").toLowerCase());
+const reconcileAfterDownload = !snapshotOnly && (writeFirestore || process.argv.includes("--reconcile"));
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
 const driveRoot =
   process.env.DEPOT_DRIVE_ROOT ??
@@ -33,6 +38,18 @@ const driveRoot =
 const inboxDirectories = {
   depot: path.join(driveRoot, "00_Inbox", "Flatex", "Depotumsaetze"),
   cash: path.join(driveRoot, "00_Inbox", "Flatex", "Kontoumsaetze"),
+};
+const flatexSearchDirectories = {
+  depot: [
+    path.join(driveRoot, "00_Inbox", "Flatex", "Depotumsaetze"),
+    path.join(driveRoot, "01_Originale", "Flatex", "Depotumsaetze"),
+    path.join(driveRoot, "02_Archiviert", "Flatex", "Depotumsaetze"),
+  ],
+  cash: [
+    path.join(driveRoot, "00_Inbox", "Flatex", "Kontoumsaetze"),
+    path.join(driveRoot, "01_Originale", "Flatex", "Kontoumsaetze"),
+    path.join(driveRoot, "02_Archiviert", "Flatex", "Kontoumsaetze"),
+  ],
 };
 
 function readArg(name) {
@@ -90,7 +107,29 @@ async function activateTab(page, name) {
   await page.waitForTimeout(2500);
 }
 
-async function exportCurrentCsv(page, targetPath) {
+async function listCsvFiles(directory) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) return listCsvFiles(filePath);
+      return entry.isFile() && entry.name.toLowerCase().endsWith(".csv") ? [filePath] : [];
+    }),
+  );
+  return nested.flat();
+}
+
+async function sha256File(filePath) {
+  return crypto.createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
+}
+
+async function exportCurrentCsvDeduped(page, targetPath, existingDirectories, runtimeDirectory) {
   await acceptNecessaryCookies(page);
   const actionIcon = page.locator(".ActionButton:not(.Disabled) .IconButton[aria-label=\"Aktionen\"]").last();
   if ((await actionIcon.count()) === 0) return { status: "empty" };
@@ -103,8 +142,24 @@ async function exportCurrentCsv(page, targetPath) {
   const downloadPromise = page.waitForEvent("download", { timeout: 20000 });
   await exportCsv.click({ timeout: 10000, force: true });
   const download = await downloadPromise;
-  await download.saveAs(targetPath);
-  return { status: "downloaded", suggestedFilename: download.suggestedFilename() };
+  const tempPath = path.join(runtimeDirectory, `${path.basename(targetPath)}.${process.pid}.tmp`);
+  await download.saveAs(tempPath);
+  const newHash = await sha256File(tempPath);
+  const existingFiles = (await Promise.all(existingDirectories.map(listCsvFiles))).flat();
+  for (const existingFile of existingFiles) {
+    if ((await sha256File(existingFile).catch(() => null)) === newHash) {
+      await fs.rm(tempPath, { force: true });
+      return {
+        status: "skipped",
+        reason: "duplicate-content",
+        duplicateOf: existingFile,
+        suggestedFilename: download.suggestedFilename(),
+      };
+    }
+  }
+
+  await fs.rename(tempPath, targetPath);
+  return { status: "downloaded", sha256: newHash, suggestedFilename: download.suggestedFilename() };
 }
 
 async function cleanupRuntimeDownloads(directory) {
@@ -115,6 +170,27 @@ async function cleanupRuntimeDownloads(directory) {
       return fs.rm(path.join(directory, entry.name), { force: true });
     }),
   );
+}
+
+async function acquireRunLock(lockPath, { maxAgeMs = 10 * 60 * 1000 } = {}) {
+  const existing = await fs.stat(lockPath).catch(() => null);
+  if (existing && Date.now() - existing.mtimeMs > maxAgeMs) {
+    await fs.rm(lockPath, { force: true }).catch(() => {});
+  }
+
+  let handle;
+  try {
+    handle = await fs.open(lockPath, "wx");
+  } catch (error) {
+    if (error?.code === "EEXIST") return null;
+    throw error;
+  }
+
+  await handle.writeFile(`${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`);
+  return async () => {
+    await handle?.close().catch(() => {});
+    await fs.rm(lockPath, { force: true }).catch(() => {});
+  };
 }
 
 async function reconcile() {
@@ -153,6 +229,42 @@ function positionIdForIsin(isin) {
   return `flatex_${String(isin).toUpperCase()}`;
 }
 
+function historyDateId(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: process.env.FINANZTOOL_TIME_ZONE ?? "Europe/Vienna" }).format(
+    date,
+  );
+}
+
+function safeId(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function positionHistoryId(positionId) {
+  return `position_${safeId(positionId)}`;
+}
+
+function latestPreviousFlatexHistory(priceHistory, historyKey, currentHistoryDate) {
+  return (
+    priceHistory
+      .filter((entry) => {
+        const entryDate = String(entry.historyDate ?? "");
+        const provider = String(entry.provider ?? "");
+        return (
+          entry.historyKey === historyKey &&
+          entry.status === "OK" &&
+          entryDate &&
+          entryDate < currentHistoryDate &&
+          ["flatex", "flatex_broker_snapshot_v1"].includes(provider) &&
+          isNumber(parseMaybeNumber(entry.currentValue))
+        );
+      })
+      .sort((left, right) => String(right.historyDate ?? "").localeCompare(String(left.historyDate ?? "")))[0] ?? null
+  );
+}
+
 function positionQuantityText(quantity) {
   return isNumber(quantity)
     ? `${new Intl.NumberFormat("de-AT", { maximumFractionDigits: 6 }).format(quantity)} Stk.`
@@ -170,6 +282,19 @@ function brokerDayChange(position) {
   return { dayChangeValue, dayChangePct, previousCloseValue };
 }
 
+function historyDayChange({ currentValue, priceHistory, positionId, now }) {
+  if (!isNumber(currentValue)) return null;
+  const previous = latestPreviousFlatexHistory(priceHistory, positionHistoryId(positionId), historyDateId(now));
+  const previousCloseValue = parseMaybeNumber(previous?.currentValue);
+  if (!isNumber(previousCloseValue)) return null;
+  const dayChangeValue = roundCurrency(currentValue - previousCloseValue);
+  return {
+    previousCloseValue: roundCurrency(previousCloseValue),
+    dayChangeValue,
+    dayChangePct: previousCloseValue ? dayChangeValue / previousCloseValue : null,
+  };
+}
+
 async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requestedPeriod }) {
   const accessToken = await getFirebaseCliAccessToken();
   const firestore = new FirestoreRest({ projectId, accessToken });
@@ -177,9 +302,21 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
   const importId = "flatex_broker_snapshot_latest";
   const brokerPositions = brokerSnapshot.positions.filter((position) => position.isin);
   const overview = brokerSnapshot.overview;
-  const existingPositions = (await firestore.listDocuments("sourcePositions")).filter(
-    (position) => position.source === "flatex",
-  );
+  const hasOverviewValue = [
+    overview.depotValue,
+    overview.cashBalance,
+    overview.availableCash,
+    overview.availableWithCredit,
+    overview.totalAssets,
+  ].some(isNumber);
+  if (!brokerPositions.length && !hasOverviewValue) {
+    throw new Error("Flatex-Broker-Snapshot ohne Positionen und ohne Uebersichtswerte verworfen.");
+  }
+  const [allPositions, priceHistory] = await Promise.all([
+    firestore.listDocuments("sourcePositions"),
+    firestore.listDocuments("priceHistory"),
+  ]);
+  const existingPositions = allPositions.filter((position) => position.source === "flatex");
   const existingById = new Map(existingPositions.map((position) => [position.id, position]));
   const existingByIsin = new Map(
     existingPositions
@@ -193,7 +330,9 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     const id = positionIdForIsin(isin);
     const existing = existingById.get(id) ?? existingByIsin.get(isin) ?? {};
     const { id: _existingId, ...existingData } = existing;
-    const dayChange = brokerDayChange(position);
+    const currentValue = roundCurrency(parseMaybeNumber(position.currentValue));
+    const dayChange =
+      historyDayChange({ currentValue, priceHistory, positionId: id, now }) ?? brokerDayChange(position);
     brokerIds.add(id);
 
     await firestore.setDocument("sourcePositions", id, {
@@ -206,7 +345,7 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
       category: existing.category ?? "Wertpapier",
       quantity: parseMaybeNumber(position.quantity),
       quantityText: positionQuantityText(parseMaybeNumber(position.quantity)),
-      currentValue: roundCurrency(parseMaybeNumber(position.currentValue)),
+      currentValue,
       costValue: roundCurrency(parseMaybeNumber(position.costValue)),
       performanceValue: roundCurrency(parseMaybeNumber(position.performanceValue)),
       performancePct: parseMaybeNumber(position.performancePct),
@@ -228,10 +367,12 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     });
   }
 
-  for (const existing of existingPositions) {
-    if (isCashPosition(existing)) continue;
-    if (existing.isin && !brokerIds.has(positionIdForIsin(existing.isin))) {
-      await firestore.deleteDocument("sourcePositions", existing.id);
+  if (brokerPositions.length) {
+    for (const existing of existingPositions) {
+      if (isCashPosition(existing)) continue;
+      if (existing.isin && !brokerIds.has(positionIdForIsin(existing.isin))) {
+        await firestore.deleteDocument("sourcePositions", existing.id);
+      }
     }
   }
 
@@ -301,6 +442,11 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     brokerPositionCount: brokerPositions.length,
     valuationMethod: "flatex_broker_snapshot_v1",
     valuationDate: now,
+    sourceDataProvider: "flatex_broker_snapshot",
+    sourceDataUpdatedAt: now,
+    quoteDataProvider: "flatex",
+    quoteDataUpdatedAt: now,
+    lastAgentSuccessAt: now,
     brokerSnapshotImportId: importId,
     updatedAt: now,
   });
@@ -338,6 +484,9 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
         } EUR`
       : "Flatex-Broker-Snapshot ohne Positionen gelesen",
     lastSuccessAt: now,
+    lastAgentRunAt: now,
+    lastAgentSuccessAt: now,
+    updatedAt: now,
     positionCount: brokerPositions.length,
     cashValue: roundCurrency(cashValue),
     depotValue,
@@ -360,44 +509,67 @@ async function writeBrokerSnapshotFailure(error) {
   await firestore.setDocument("agentStatus", "flatex", {
     source: "flatex",
     status: "WARNUNG",
-    message: `Umsaetze abgeglichen, aber Broker-Snapshot konnte nicht gelesen werden: ${
+    message: `Flatex-Broker-Snapshot konnte nicht gelesen werden: ${
       error instanceof Error ? error.message : String(error)
     }`,
     updatedAt: now,
   });
 }
 
-await Promise.all(Object.values(inboxDirectories).map((directory) => fs.mkdir(directory, { recursive: true })));
+if (!snapshotOnly) {
+  await Promise.all(Object.values(inboxDirectories).map((directory) => fs.mkdir(directory, { recursive: true })));
+}
 
 const runtimeDownloadPath =
   process.env.FLATEX_DOWNLOAD_PATH ??
   path.resolve(__dirname, "..", "runtime", "flatex-browser-downloads");
 process.env.FLATEX_DOWNLOAD_PATH = runtimeDownloadPath;
 await fs.mkdir(runtimeDownloadPath, { recursive: true });
+const releaseRunLock = await acquireRunLock(path.resolve(__dirname, "..", "runtime", "flatex-sync.lock"));
+if (!releaseRunLock) {
+  console.log("[info] Flatex-Sync laeuft bereits. Dieser Lauf wird uebersprungen.");
+  process.exit(0);
+}
 await cleanupRuntimeDownloads(runtimeDownloadPath);
 
 const stamp = timestampForFilename();
 const periodSlug = periodForFilename(requestedPeriod);
-const targets = {
-  depot: path.join(inboxDirectories.depot, `${stamp}_Flatex_Depotumsaetze_${periodSlug}.csv`),
-  cash: path.join(inboxDirectories.cash, `${stamp}_Flatex_Kontoumsaetze_${periodSlug}.csv`),
-};
+const targets = snapshotOnly
+  ? {}
+  : {
+      depot: path.join(inboxDirectories.depot, `${stamp}_Flatex_Depotumsaetze_${periodSlug}.csv`),
+      cash: path.join(inboxDirectories.cash, `${stamp}_Flatex_Kontoumsaetze_${periodSlug}.csv`),
+    };
 
-const { context, page } = await launchFlatexBrowser();
-const results = {};
+const { context, page } = await launchFlatexBrowser({ headless });
+const results = snapshotOnly ? { mode: "snapshot-only" } : {};
 let brokerSnapshot = null;
 let brokerSnapshotError = null;
+let fatalPortalError = null;
 try {
   await ensureFlatexLogin(page);
   await page.waitForTimeout(1000);
-  await waitForPostings(page);
-  await selectPeriod(page, requestedPeriod);
 
-  await activateTab(page, "Depotumsätze");
-  results.depot = await exportCurrentCsv(page, targets.depot);
+  if (!snapshotOnly) {
+    await waitForPostings(page);
+    await selectPeriod(page, requestedPeriod);
 
-  await activateTab(page, "Kontoumsätze");
-  results.cash = await exportCurrentCsv(page, targets.cash);
+    await activateTab(page, "Depotumsätze");
+    results.depot = await exportCurrentCsvDeduped(
+      page,
+      targets.depot,
+      flatexSearchDirectories.depot,
+      runtimeDownloadPath,
+    );
+
+    await activateTab(page, "Kontoumsätze");
+    results.cash = await exportCurrentCsvDeduped(
+      page,
+      targets.cash,
+      flatexSearchDirectories.cash,
+      runtimeDownloadPath,
+    );
+  }
 
   try {
     const overview = await readFlatexOverviewSummary(page);
@@ -406,9 +578,17 @@ try {
   } catch (error) {
     brokerSnapshotError = error;
   }
+} catch (error) {
+  fatalPortalError = error;
+  brokerSnapshotError = error;
+  results.portal = {
+    status: "error",
+    message: error instanceof Error ? error.message : String(error),
+  };
 } finally {
   await context.close().catch(() => {});
   await cleanupRuntimeDownloads(runtimeDownloadPath);
+  await releaseRunLock();
 }
 
 console.log(
@@ -436,7 +616,16 @@ console.log(
 
 if (reconcileAfterDownload) await reconcile();
 if (writeFirestore && brokerSnapshot) {
-  await writeBrokerSnapshot({ brokerSnapshot, targets, results, requestedPeriod });
+  try {
+    await writeBrokerSnapshot({ brokerSnapshot, targets, results, requestedPeriod });
+  } catch (error) {
+    await writeBrokerSnapshotFailure(error);
+    throw error;
+  }
 } else if (writeFirestore && brokerSnapshotError) {
   await writeBrokerSnapshotFailure(brokerSnapshotError);
+}
+
+if (fatalPortalError && !writeFirestore) {
+  throw fatalPortalError;
 }

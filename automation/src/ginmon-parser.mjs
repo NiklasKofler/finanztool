@@ -16,10 +16,19 @@ export function parseSignedGermanNumber(value) {
 
 function parseMoneyNumber(value) {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\s+/g, "");
   if (!trimmed) return null;
-  if (trimmed.includes(",")) return parseGermanNumber(trimmed);
-  const parsed = Number.parseFloat(trimmed.replace(/[^\d.-]/g, ""));
+  const cleaned = trimmed.replace(/[^\d,.-]/g, "");
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  let normalized = cleaned;
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized =
+      lastComma > lastDot ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  }
+  const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -58,6 +67,20 @@ export function parseGermanDate(value) {
 
 export function classifyGinmonDocument(fileName, text) {
   const haystack = `${fileName} ${text}`;
+  if (/WELCOME_LETTER|welcome_letter/i.test(fileName) || /Willkommensbrief/i.test(text.slice(0, 1000))) {
+    return "welcome_letter";
+  }
+  if (/VL_FORM|vl_form/i.test(fileName)) return "account_form";
+  if (/BASIC_INFORMATION|basic_information/i.test(fileName) || /Allgemeine Informationen zu ETFs/i.test(text.slice(0, 1000))) {
+    return "basic_information";
+  }
+  if (/DEPOSITOR_INFO_DOCUMENT|Einlagensicherung/i.test(fileName)) return "basic_information";
+  if (
+    /TERMS_AND_CONDITIONS|CONTRACT_TERMS|DATA_PROTECTION_DECLARATION|AGB|Vertragsbedingungen|Datenschutz/i.test(fileName) ||
+    /Ginmon.*(?:AGB|Allgemeine Geschäftsbedingungen|Vertragsbedingungen)/i.test(text.slice(0, 1000))
+  ) {
+    return "legal_terms";
+  }
   if (/Vermögensstatus|ASSET_STATUS_REPORT|Depotwert gesamt|Gesamtvermögen/i.test(haystack)) {
     return "asset_status";
   }
@@ -198,24 +221,32 @@ export function parseGinmonInvoice(text, filePath = "") {
     normalized.match(/\b(GM\d+)\b/)?.[1] ??
     normalized.match(/Kundennummer\s*\/\s*Customer ID\s*:\s*(GM\d+)/i)?.[1] ??
     null;
-  const period = normalized.match(/Zeitraum vom\s*(\d{2}\.\d{2}\.\d{4}\s*[–-]\s*\d{2}\.\d{2}\.\d{4})/i)?.[1] ?? null;
-  const baseFee = parseMoneyNumber(
-    normalized.match(/([-\d.,]+)\s*€\s+0\.7500%\s*p\.a\./i)?.[1] ?? "",
+  const period = normalized.match(/Zeitraum vom\s*(\d{1,2}\.\d{1,2}\.\d{4}\s*[–-]\s*\d{1,2}\.\d{1,2}\.\d{4})/i)?.[1] ?? null;
+  const baseFeeLine = normalized.match(
+    /Grundgebühr\s+([\d.,]+)\s*€\s+0[.,]75(?:00)?%\s*p\.a\.\s+([\d.,]+)\s*€/i,
   );
+  const baseFee = parseMoneyNumber(
+    baseFeeLine?.[2] ?? normalized.match(/0[.,]75(?:00)?%\s*p\.a\.\s+([\d.,]+)\s*€/i)?.[1] ?? "",
+  );
+  const calculationBasis = parseMoneyNumber(baseFeeLine?.[1] ?? "");
   const discount = parseMoneyNumber(normalized.match(/(-?[\d.,]+)\s*€\s+Discount/i)?.[1] ?? "");
   const totalAmount = parseMoneyNumber(
     normalized.match(/Rechnungsbetrag\s+Total amount\s+[\d.,]+\s*€\s+(-?[\d.,]+)\s*€/i)?.[1] ??
       normalized.match(/Total amount\s+[\d.,]+\s*€\s+(-?[\d.,]+)\s*€/i)?.[1] ??
+      normalized.match(/Rechnungsbetrag\s+([\d.,]+)\s*€\s+Total amount/i)?.[1] ??
       "",
   );
   const vatIncluded = parseMoneyNumber(
-    normalized.match(/VAT included of 19%\s+MwSt\. inkl\. von 19%\s+(-?[\d.,]+)\s*€/i)?.[1] ?? "",
+    normalized.match(/VAT included of 19%\s+MwSt\. inkl\. von 19%\s+(-?[\d.,]+)\s*€/i)?.[1] ??
+      normalized.match(/MwSt\. inkl\. von 19%\s+(-?[\d.,]+)\s*€/i)?.[1] ??
+      "",
   );
   return {
     invoiceDate,
     invoiceNumber,
     customerId,
     period,
+    calculationBasis,
     baseFee,
     discount,
     totalAmount,
@@ -232,21 +263,30 @@ export function parseGinmonTrade(text, filePath = "") {
     null;
   const settlement =
     normalized.match(/Abrechnungs-Nr\.\s*([0-9]+)\s*\/\s*(\d{2}\.\d{2}\.\d{4})/i) ??
-    normalized.match(/Ausführungs-Nr\.\s*([0-9]+)\s*\/\s*(\d{2}\.\d{2}\.\d{4})/i);
+    normalized.match(/Ausführungs-Nr\.\s*([0-9]+)\s*\/\s*(\d{2}\.\d{2}\.\d{4})/i) ??
+    normalized.match(/\b([0-9]{6,})\s*\/\s*(\d{2}\.\d{2}\.\d{4})/i);
   const actionText = normalized.match(/Wertpapierabrechnung\s+(Kauf|Verkauf)/i)?.[1] ?? null;
   const side = actionText?.toLowerCase() === "verkauf" ? "sell" : actionText ? "buy" : null;
-  const name = normalized.match(/Gattungsbezeichnung\s+(.+?)\s+ISIN\s+[A-Z]{2}[A-Z0-9]{10}/i)?.[1]?.trim() ?? null;
-  const isin = normalized.match(/\bISIN\s+([A-Z]{2}[A-Z0-9]{10})\b/i)?.[1] ?? null;
-  const quantity = parseGermanNumber(normalized.match(/Nominal\s+STK\s+([\d.,]+)/i)?.[1] ?? "");
-  const price = parseGermanNumber(normalized.match(/\bKurs\s+EUR\s+([\d.,]+)/i)?.[1] ?? "");
+  const securityLine =
+    normalized.match(/Gattungsbezeichnung\s+ISIN\s+(.+?)\s+([A-Z]{2}[A-Z0-9]{10})\s+Nominal/i) ??
+    normalized.match(/Gattungsbezeichnung\s+(.+?)\s+ISIN\s+([A-Z]{2}[A-Z0-9]{10})/i);
+  const name = securityLine?.[1]?.trim() ?? null;
+  const isin =
+    securityLine?.[2] ?? normalized.match(/\bISIN\s+([A-Z]{2}[A-Z0-9]{10})\b/i)?.[1] ?? null;
+  const quantityAndPrice = normalized.match(/Nominal\s+(?:Kurs\s+)?STK\s+([\d.,]+)\s+EUR\s+([\d.,]+)/i);
+  const quantity = parseGermanNumber(quantityAndPrice?.[1] ?? normalized.match(/Nominal\s+STK\s+([\d.,]+)/i)?.[1] ?? "");
+  const price = parseGermanNumber(quantityAndPrice?.[2] ?? normalized.match(/\bKurs\s+EUR\s+([\d.,]+)/i)?.[1] ?? "");
   const tradeDate = parseGermanDate(normalized.match(/Handelstag\s+(\d{2}\.\d{2}\.\d{4})/i)?.[1]);
   const tradeTime = normalized.match(/Handelszeit\s+([0-9:]+)\*?/i)?.[1] ?? null;
   const exchange = normalized.match(/Börse\s+(.+?)\s+Verwahrart/i)?.[1]?.trim() ?? null;
-  const settlementDate = parseGermanDate(normalized.match(/\bWert\s+(\d{2}\.\d{2}\.\d{4})/i)?.[1]);
+  const settlementDate = parseGermanDate(
+    normalized.match(/\bWert\s+Konto-Nr\.?.*?(\d{2}\.\d{2}\.\d{4})/i)?.[1] ??
+      normalized.match(/\bWert\s+(\d{2}\.\d{2}\.\d{4})/i)?.[1],
+  );
   const grossAmount = parseSignedGermanNumber(normalized.match(/Kurswert\s+EUR\s+([-\d.,+]+)/i)?.[1] ?? "");
   const cashAmount =
-    parseSignedGermanNumber(normalized.match(/Betrag zu Ihren Lasten\s+EUR\s+([-\d.,+]+)/i)?.[1] ?? "") ??
-    parseSignedGermanNumber(normalized.match(/Betrag zu Ihren Gunsten\s+EUR\s+([-\d.,+]+)/i)?.[1] ?? "");
+    parseSignedGermanNumber(normalized.match(/Betrag zu Ihren Lasten.*?EUR\s+([-\d.,+]+)/i)?.[1] ?? "") ??
+    parseSignedGermanNumber(normalized.match(/Betrag zu Ihren Gunsten.*?EUR\s+([-\d.,+]+)/i)?.[1] ?? "");
 
   return {
     accountNumber,

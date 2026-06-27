@@ -9,6 +9,7 @@ import {
   classifyFlatexDocument,
   parseFlatexDocumentByType,
 } from "./flatex-document-parser.mjs";
+import { replaceFlatexEvents } from "./flatex-event-normalizer.mjs";
 import { extractPdfText } from "./pdf-text.mjs";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "finanzperformance-tool";
@@ -280,6 +281,58 @@ function buildDocumentRecords(documents) {
       });
     }
 
+    if (document.type === "cash_adjustment") {
+      facts.push({
+        id: sourceDocumentFactId(documentId, "cash_adjustment"),
+        ...factBase(document, documentId, "cash_adjustment"),
+        title: parsed.title ?? null,
+        adjustmentType: parsed.adjustmentType ?? null,
+        valuationDate: parsed.valuationDate ?? null,
+        name: parsed.name ?? null,
+        isin: parsed.isin ?? null,
+        wkn: parsed.wkn ?? null,
+        quantity: parsed.quantity ?? null,
+        grossAmount: parsed.grossAmount ?? null,
+        amount: parsed.amount ?? null,
+        cashAmount: parsed.cashAmount ?? null,
+        currency: parsed.currency ?? "EUR",
+      });
+    }
+
+    if (document.type === "cost_information") {
+      facts.push({
+        id: sourceDocumentFactId(documentId, "cost_information"),
+        ...factBase(document, documentId, "cost_information"),
+        title: parsed.title ?? null,
+        costYear: parsed.costYear ?? null,
+        totalCosts: parsed.totalCosts ?? null,
+        serviceCosts: parsed.serviceCosts ?? null,
+        otherCosts: parsed.otherCosts ?? null,
+        productCosts: parsed.productCosts ?? null,
+        fxCosts: parsed.fxCosts ?? null,
+        rebates: parsed.rebates ?? null,
+        ancillaryCosts: parsed.ancillaryCosts ?? null,
+        productCount: parsed.products?.length ?? 0,
+        currency: parsed.currency ?? "EUR",
+      });
+      parsed.products?.forEach((product, index) => {
+        facts.push({
+          id: sourceDocumentFactId(documentId, "cost_information_product", index),
+          ...factBase(document, documentId, "cost_information_product"),
+          costYear: parsed.costYear ?? null,
+          name: product.name ?? null,
+          isin: product.isin ?? null,
+          totalCosts: product.totalCosts ?? null,
+          serviceCosts: product.serviceCosts ?? null,
+          otherCosts: product.otherCosts ?? null,
+          productCosts: product.productCosts ?? null,
+          fxCosts: product.fxCosts ?? null,
+          rebates: product.rebates ?? null,
+          currency: product.currency ?? "EUR",
+        });
+      });
+    }
+
     if (![
       "security_trade",
       "income_distribution",
@@ -288,6 +341,8 @@ function buildDocumentRecords(documents) {
       "depot_statement",
       "corporate_action",
       "tax_certificate",
+      "cash_adjustment",
+      "cost_information",
     ].includes(document.type)) {
       facts.push({
         id: sourceDocumentFactId(documentId, document.type),
@@ -395,15 +450,21 @@ for (const fact of facts) {
   });
 }
 
+const normalizedEvents = await replaceFlatexEvents(firestore, facts, now);
+
 await firestore.setDocument("agentStatus", "flatex_documents", {
   source: "flatex",
   status: records.some((record) => record.parseStatus === "UNKNOWN" || record.parseStatus === "UNPARSED")
     ? "WARNUNG"
     : "OK",
-  message: `${records.length} Flatex-Dokumente, ${facts.length} generische Dokumentfakten gespeichert`,
+  message: `${records.length} Flatex-Dokumente, ${facts.length} Fakten, ${normalizedEvents.written.transactions} Transaktionen, ${normalizedEvents.written.costEvents} Kosten, ${normalizedEvents.written.incomeEvents} Ertraege gespeichert`,
   lastSuccessAt: now,
   documentCount: records.length,
   factCount: facts.length,
+  normalizedTransactions: normalizedEvents.written.transactions,
+  normalizedLedgerEntries: normalizedEvents.written.ledgerEntries,
+  normalizedCostEvents: normalizedEvents.written.costEvents,
+  normalizedIncomeEvents: normalizedEvents.written.incomeEvents,
   unknownCount: records.filter((record) => record.parseStatus === "UNKNOWN").length,
   warningCount: warnings.length,
   warnings: warnings.slice(0, 20),

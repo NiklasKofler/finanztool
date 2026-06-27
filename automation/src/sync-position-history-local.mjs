@@ -32,13 +32,19 @@ function positionHistoryId(position) {
   return `position_${safeId(position.id)}`;
 }
 
-function latestPreviousHistory(priceHistory, historyKey, currentHistoryDate) {
+function isCompatiblePreviousHistory(entry, position) {
+  if (position.source !== "flatex") return true;
+  return ["flatex", "flatex_broker_snapshot_v1"].includes(String(entry.provider ?? ""));
+}
+
+function latestPreviousHistory(priceHistory, historyKey, currentHistoryDate, position) {
   return priceHistory
     .filter((entry) => {
       const entryDate = String(entry.historyDate ?? "");
       return (
         entry.historyKey === historyKey &&
         entry.status === "OK" &&
+        isCompatiblePreviousHistory(entry, position) &&
         typeof parseMaybeNumber(entry.currentValue) === "number" &&
         entryDate &&
         entryDate < currentHistoryDate
@@ -79,7 +85,7 @@ async function main() {
     if (typeof currentValue !== "number") continue;
 
     const historyKey = positionHistoryId(position);
-    const previous = latestPreviousHistory(priceHistory, historyKey, currentHistoryDate);
+    const previous = latestPreviousHistory(priceHistory, historyKey, currentHistoryDate, position);
     const previousCloseValue = parseMaybeNumber(previous?.currentValue);
     const dayChangeValue =
       typeof previousCloseValue === "number" ? roundCurrency(currentValue - previousCloseValue) : null;

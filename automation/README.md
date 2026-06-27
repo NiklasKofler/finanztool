@@ -25,6 +25,8 @@ Das vollstaendige 1:1 Runbook liegt unter
   - `instruments`
   - `quotesCurrent`
   - aktualisierte `sourcePositions` und `sourceSummaries`
+- EquatePlus/Novartis wird mit manuellen Anteilen, Einstandswert EUR und SIX
+  Swiss Exchange Kurs bewertet.
 
 ## Setup
 
@@ -174,6 +176,30 @@ Capital.com nach Firestore importieren:
 npm run import:capitalcom:local
 ```
 
+Stand 2026-06-27: Die technische Anbindung ist vorbereitet, der aktuell lokal
+gespeicherte Capital.com-Key ist aber ungueltig (`401 error.invalid.api.key`).
+Vor aktiver Nutzung zuerst einen neuen API-Key in Capital.com erzeugen und mit
+`npm run setup:capitalcom` im Schluesselbund speichern.
+
+Der Import schreibt bei gueltigem Key:
+
+- `sourceSummaries/capitalcom`
+- `sourcePositions/capitalcom_*`
+- `ledgerEntries/capitalcom_*`
+- `sourceDocumentFacts/capitalcom_*`
+- `costEvents/capitalcom_*`
+- `incomeEvents/capitalcom_*`
+- `rawDocuments/api_capitalcom_latest`
+
+History wird inkrementell gelesen: initial standardmaessig 30 Tage
+(`CAPITALCOM_HISTORY_DAYS`), danach ab letztem `lastHistorySyncEndAt` mit
+2 Tagen Ueberlappung (`CAPITALCOM_HISTORY_OVERLAP_DAYS`). Fuer einen vollen
+neuen History-Lauf:
+
+```bash
+npm run import:capitalcom:local -- --backfill
+```
+
 Stuendlichen Agent auf dem aktuellen Mac installieren:
 
 ```bash
@@ -218,6 +244,123 @@ Der VBV-Agent prueft taeglich den Portal-Stichtag. Die PDF-Kontoinformation
 wird nur neu heruntergeladen/geparst, wenn der Stichtag neu ist oder fuer diesen
 Stichtag noch keine Kontoinformation in Firestore liegt.
 
+## EquatePlus / Novartis
+
+EquatePlus ist vorerst keine Dokumenten- oder Portalautomation. Fuer den
+aktuellen Gesamtwert werden nur die Novartis-Anteile und der gesamte
+Einstandswert in EUR manuell gepflegt. Der Kurs kommt von SIX Swiss Exchange
+und wird nach EUR umgerechnet.
+
+Die App schreibt die manuelle Eingabe nach:
+
+```text
+manualInputs/equateplus_novartis
+```
+
+Agent dry-run:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool
+npm --prefix automation run reconcile:equateplus
+```
+
+Aktuelle Bewertung nach Firestore schreiben:
+
+```bash
+npm --prefix automation run sync:equateplus
+```
+
+Einmaliger Startwert aus Screenshot/Nutzerangabe kann bei Bedarf lokal gesetzt
+werden:
+
+```bash
+node automation/src/sync-equateplus-manual-local.mjs --write --seed-manual --quantity=16.2 --entry-value-eur=1500
+```
+
+Der normale Kurs-Sync (`npm --prefix automation run sync:quotes:current`) ruft
+EquatePlus automatisch mit auf.
+
+## Kreditkarten-Portale
+
+Kreditkarten werden als Unterkonten der Quelle `bank_accounts` gespeichert,
+nicht als eigene Depotkarten. Der offene Kreditkartensaldo wird als negativer
+Vermoegenswert geschrieben; verfuegbarer Kredit und Kreditlimit sind nur
+Transparenzwerte.
+
+### Amazon Visa
+
+Secrets liegen ausschliesslich im macOS-Schluesselbund:
+
+- `finanztool-amazon-visa-email`
+- `finanztool-amazon-visa-pin`
+
+Aktuellen Amazon-Visa-Saldo abrufen und in Firestore schreiben:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool
+npm --prefix automation run sync:amazon-visa
+```
+
+Der Agent schreibt als Bank-Unterkonto nach
+`sourceSummaries/bank_accounts`,
+`sourcePositions/bank_accounts_amazon_visa_card`,
+`sourceAccounts/bank_accounts_amazon_visa_card`, `imports` und
+`agentStatus/amazon_visa`.
+
+### TF Bank Kreditkarte
+
+Secrets liegen ausschliesslich im macOS-Schluesselbund:
+
+- `finanztool-tfbank-customer-number`
+- `finanztool-tfbank-birthdate`
+
+Aktuellen TF-Bank-Saldo abrufen:
+
+```bash
+cd /Users/niklaskofler/Documents/finanztool
+npm --prefix automation run sync:tfbank
+```
+
+Wenn das Portal eine SMS-TAN verlangt, wartet der Agent standardmaessig bis zu
+300 Sekunden auf eine neue TAN. Primaer versucht er, die neue TF-Bank-SMS aus
+der lokalen macOS-Nachrichten-App zu lesen. Dafuer nutzt er den lokalen Swift-
+Helper `automation/src/read-messages-tan.swift` und akzeptiert nur einen Code,
+der neuer ist als der zuletzt sichtbare Code vor dem Login.
+
+Voraussetzungen fuer die automatische TAN-Erkennung:
+
+- Nachrichten/iMessage-SMS-Sync empfaengt die TF-Bank-SMS auf dem Mac Studio.
+- macOS erlaubt dem ausfuehrenden Prozess Accessibility-Zugriff auf Messages.
+- Falls die automatische Erkennung nicht klappt, bleibt die TAN-Datei als
+  Fallback.
+
+Fallback per lokaler TAN-Datei. Die Datei wird nach dem Lesen geloescht.
+
+```bash
+mkdir -p ~/.finanztool
+printf "123456" > ~/.finanztool/tfbank-tan.txt
+```
+
+Mit TAN kann der Login auch direkt so abgeschlossen werden:
+
+```bash
+node automation/src/sync-tfbank-local.mjs --write --tan=123456
+```
+
+Wenn der Code erst nach Start des Logins aus Nachrichten gelesen wird, muss
+derselbe Prozess offen bleiben:
+
+```bash
+node automation/src/sync-tfbank-local.mjs --write --tan-stdin
+```
+
+Die TAN wird nicht gespeichert.
+
+Der Agent meldet sich nach erfolgreichem Lesen des Saldos standardmaessig aus
+TF Bank ab. Dadurch wird beim naechsten Lauf wieder eine frische SMS-TAN
+erwartet. Fuer Debug-Laeufe kann der Logout mit `--no-logout` deaktiviert
+werden.
+
 ## Flatex Browser-Export
 
 Flatex wird lokal ueber ein eigenes Chrome-Profil automatisiert. Die Zugangsdaten
@@ -248,23 +391,37 @@ Download plus Firestore-Abgleich ausfuehren:
 npm run sync:flatex
 ```
 
+Nur aktuellen Broker-Snapshot inklusive Flatex-Kursen schreiben:
+
+```bash
+npm run sync:flatex-snapshot
+```
+
 Automatische Aktualisierung auf dem aktuellen Mac installieren:
 
 ```bash
 npm run install:flatex-agent
 ```
 
-Der Flatex-Agent laeuft taeglich um 08:00, 10:00, 13:00, 17:00 und 22:00.
-Der Export nutzt standardmaessig den Zeitraum `zwei Wochen`. Die Daten werden
-beim Abgleich anhand `TA.-Nr.` bzw. stabilem Zeilenhash dedupliziert, damit
-ueberlappende Exporte keine doppelten Positionen erzeugen.
-Flatex liefert Stueckzahlen, Einstandswerte und Cash/Kontoumsaetze. Aktuelle
-Wertpapierkurse kommen aus dem allgemeinen Boerse-Frankfurt-Kursabgleich.
+Der Flatex-Broker-Snapshot laeuft alle 5 Minuten headless und liest die
+aktuellen Flatex-Positionen, Kurse, Einstandswerte, Cash und Kreditfelder
+direkt aus der Flatex-Oberflaeche. Dieser Lauf erzeugt keine CSV-Dateien.
+
+Der Flatex-Dokumentexport laeuft getrennt taeglich um 22:10 headless und nutzt
+standardmaessig den Zeitraum `zwei Wochen`. Die Daten werden beim Abgleich
+anhand `TA.-Nr.` bzw. stabilem Zeilenhash dedupliziert, damit ueberlappende
+Exporte keine doppelten Positionen erzeugen.
+
+Boerse Frankfurt ist fuer Flatex nicht mehr die primaere Kursquelle. Externe
+Kurse duerfen Flatex-Brokerwerte nur als explizite Vergleichswerte ergaenzen,
+nicht still ersetzen.
 
 ## Warnsystem
 
 Der Health-Check schreibt `systemHealth/current` nach Firestore. Die App zeigt
-diese Meldungen oben rechts in der Warnkarte an.
+diese Meldungen oben rechts in der Warnkarte an. Im produktiven LaunchAgent
+laeuft der Health-Check alle 30 Minuten und nicht mehr bei jedem 5-Minuten-
+Kurslauf.
 
 ```bash
 npm run sync:health
@@ -296,13 +453,13 @@ Kurse in Firestore schreiben:
 npm run sync:quotes
 ```
 
-Lokaler Kurs-Sync inklusive Health-Check und Agentstatus:
+Lokaler Kurs-Sync inklusive Agentstatus:
 
 ```bash
 npm run sync:quotes:local
 ```
 
-Stuendliche Aktualisierung auf dem aktuellen Mac installieren:
+Aktualisierung alle 5 Minuten auf dem aktuellen Mac installieren:
 
 ```bash
 npm run install:quote-agent
@@ -322,17 +479,49 @@ Fuer Tests kann die Anzahl begrenzt werden:
 npm run reconcile:quotes -- --max-instruments=5
 ```
 
-Bekannter Sonderfall: Trade Republic Private Equity `LU3176111881` ist bei Boerse
-Frankfurt nicht auffindbar und bleibt deshalb auf dem zuletzt aus dem Net-Worth-PDF
-importierten Wert.
+Der allgemeine externe Kurs-Sync bewertet standardmaessig nur noch Trade
+Republic-Wertpapiere. Flatex kommt aus dem Flatex-Broker-Snapshot, Ginmon aus
+der Ginmon-API, Bitget aus Bitget und EquatePlus aus SIX.
 
-## Trade Republic Mail-PDFs
+Bekannter Sonderfall: Trade Republic Private Equity `LU3176111881` ist bei
+Boerse Frankfurt nicht auffindbar und bleibt deshalb auf dem zuletzt aus dem
+Net-Worth-/Portalwert importierten Wert.
 
-Trade Republic wird nicht per Login automatisiert, weil die 2FA auf dem Handy
-bleibt. Stattdessen liest der lokale Agent Apple Mail aus, speichert neue
-Abrechnungs-PDFs aus den `Duplicates customer ...` Mails, entsperrt sie mit dem
-Passwort aus der letzten `Password for duplicates ...` Mail und bucht nur neue
-Dokument-IDs auf den Bestand.
+## Trade Republic Portal und Legacy-Mail
+
+Trade Republic wird produktiv nicht mehr ueber den alten Manual-/Mail-Export-
+Agenten aktualisiert. Zielquelle ist der Portal-Agent
+`download-traderepublic-local.mjs`, der bei Bedarf headless startet und auf die
+App-Freigabe wartet. Der alte Mail-PDF-Agent bleibt nur als Legacy-Fallback im
+Code, ist aber in `install:all-agents` deaktiviert.
+
+Der App-Button in der Trade-Republic-Karte nutzt bewusst den schnellen
+Snapshot-Modus:
+
+```bash
+npm --prefix automation run sync:traderepublic-portal-fast
+```
+
+Dieser Lauf liest den aktuellen Portal-Snapshot fuer Depotwert, Cash,
+Positionen und Broker-Kursstand und ueberspringt den langsamen
+Dokument-/Transaktionsdetailscan. Dadurch kommt die App-Freigabe schneller zum
+eigentlichen Ziel: aktuelle Werte in der GUI. Der volle Portal-Lauf bleibt fuer
+gezielte Dokument-/PDF- und Transaktionspruefungen erhalten:
+
+```bash
+npm --prefix automation run sync:traderepublic-portal
+```
+
+Auch dieser Lauf arbeitet inkrementell: Sobald mehrere neueste Transaktionen
+hintereinander bereits bekannte Dokument-Signaturen haben, bricht der Agent ab.
+Fuer eine vollstaendige Neu-Inventarisierung gibt es den expliziten Full-Scan:
+
+```bash
+npm --prefix automation run sync:traderepublic-portal-full
+```
+
+Der zweite Button `Nur Kurse` in der Trade-Republic-Karte startet nur den
+allgemeinen Kurs-Sync und benoetigt keinen Trade-Republic-Login.
 
 Die Dateien landen hier:
 
@@ -343,24 +532,10 @@ Die Dateien landen hier:
 - extrahierter Text:
   `/Users/niklaskofler/Library/CloudStorage/GoogleDrive-niklas.kofler@gmail.com/My Drive/Depot/02_Archiviert/TradeRepublic/Abrechnungen/Text`
 
-Trockenlauf ohne Firestore-Schreibzugriff:
-
-```bash
-cd /Users/niklaskofler/Documents/finanztool
-npm --prefix automation run reconcile:traderepublic-mail -- --no-firestore
-```
-
-PDFs verarbeiten, neue Dokumente auf Positionen anwenden und danach Kurse
-aktualisieren:
-
-```bash
-cd /Users/niklaskofler/Documents/finanztool
-npm --prefix automation run sync:traderepublic-mail
-```
-
-Der Agent ist idempotent: derselbe PDF-Import wird in `imports` anhand
-`tr_settlement_<document-id>` erkannt und nicht erneut auf `sourcePositions`
-angewendet.
+Der alte Trade-Republic-Mail-Agent fuer Duplicates-PDFs ist nicht mehr als
+produktiver Agent installierbar. Die aktive Quelle ist der Portal-Agent; alte
+Statusdokumente `traderepublic_mail` und `traderepublic_manual_exports` werden
+im Health-Check ignoriert.
 
 ## Mac Studio Dauerbetrieb (launchd)
 
