@@ -11,7 +11,12 @@ service cloud.firestore {
     match /automationCommands/{commandId} {
       allow read: if isOwner();
       allow create, update: if isOwner()
-        && commandId in ["sync_quotes_manual", "traderepublic_portal_refresh"]
+        && commandId in [
+          "sync_quotes_manual",
+          "traderepublic_portal_refresh",
+          "tfbank_manual_refresh",
+          "capitalcom_manual_refresh"
+        ]
         && request.resource.data.keys().hasOnly([
           "type",
           "status",
@@ -25,6 +30,12 @@ service cloud.firestore {
           ||
           (commandId == "traderepublic_portal_refresh"
             && request.resource.data.type == "traderepublic_portal_refresh")
+          ||
+          (commandId == "tfbank_manual_refresh"
+            && request.resource.data.type == "tfbank_refresh")
+          ||
+          (commandId == "capitalcom_manual_refresh"
+            && request.resource.data.type == "capitalcom_refresh")
         )
         && request.resource.data.status == "REQUESTED";
       allow delete: if false;

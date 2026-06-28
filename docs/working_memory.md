@@ -97,6 +97,22 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   TF-Bank-Agenten ueber `automationCommands/tfbank_manual_refresh` startet.
   Sicherer Fallback bleibt die TAN-Datei `~/.finanztool/tfbank-tan.txt`, falls
   automatisches Messages-Lesen wieder fehlschlaegt.
+- Fix 2026-06-28: Die Firestore-Regeln erlauben jetzt auch
+  `tfbank_manual_refresh` (`tfbank_refresh`) und `capitalcom_manual_refresh`
+  (`capitalcom_refresh`). Wenn die GUI bei einem Reparaturbutton
+  `Missing or insufficient permissions` zeigt, ist das zuerst ein
+  Firestore-Rules-Thema und nicht automatisch ein SMS-/Portalproblem.
+- Stand Quellenzaehlung 2026-06-28: 16 integrierte Quellen = 9
+  Depot-/Brokerquellen plus 7 einzelne Bank-/Kreditkartenquellen. Nur
+  `tfbank` ist aktuell fachlich fehlerhaft; nach frischem Health-Sync muss die
+  Anzeige daher `15/16` lauten. Doppelte TF-Bank-Alerts reduzieren die aktive
+  Quellenzahl nur einmal.
+- TF Bank Debug-Regel: Erste Diagnosequelle ist
+  `automation/runtime/tfbank-debug.ndjson`. Der direkte SMS-Zugriff liest
+  `/Users/niklaskofler/Library/Messages/chat.db` ueber `sqlite3` und braucht
+  macOS Full Disk Access fuer die ausfuehrende Node-Binary
+  `/Users/niklaskofler/.nvm/versions/node/v22.22.3/bin/node`; bei manuellen
+  Laeufen zusaetzlich fuer Codex/Terminal.
 - Korrektur 2026-06-28: Capital.com war im Health-Check nur veraltet, nicht
   API-defekt. `check:capitalcom` war erfolgreich, anschliessend wurde
   `import:capitalcom:local` ausgefuehrt. Aktueller Stand: Live-Konto,
@@ -347,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 18:16 CEST
+- Stand: 2026-06-28 18:35 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `389707b`
-- Handoff-Commit: `105e566`
-- Firebase Deploy: 2026-06-28 18:17 CEST erfolgreich
+- Ausgangscommit: `96ea31b`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
