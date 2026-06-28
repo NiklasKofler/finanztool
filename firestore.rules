@@ -8,6 +8,12 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
 
+    function hasOwnerUpdatedBy() {
+      return !request.resource.data.keys().hasAny(["updatedBy"])
+        || request.resource.data.updatedBy == null
+        || request.resource.data.updatedBy == request.auth.token.email;
+    }
+
     match /automationCommands/{commandId} {
       allow read: if isOwner();
       allow create, update: if isOwner()
@@ -97,6 +103,7 @@ service cloud.firestore {
             && request.resource.data.entryValueEur >= 0
             && request.resource.data.entryValueCurrency == "EUR"
             && request.resource.data.discountPct is number
+            && hasOwnerUpdatedBy()
             && request.resource.data.updatedAt is timestamp
           )
           ||
@@ -113,6 +120,7 @@ service cloud.firestore {
             && request.resource.data.amountEur is number
             && request.resource.data.amountEur >= 0
             && request.resource.data.currency == "EUR"
+            && hasOwnerUpdatedBy()
             && request.resource.data.updatedAt is timestamp
           )
         );
@@ -125,10 +133,16 @@ service cloud.firestore {
         && preferenceId == "portfolio_overview"
         && request.resource.data.keys().hasOnly([
           "expandedSections",
+          "sourceOrder",
           "updatedBy",
           "updatedAt"
         ])
-        && request.resource.data.expandedSections is map
+        && request.resource.data.keys().hasAny(["expandedSections", "sourceOrder"])
+        && (!request.resource.data.keys().hasAny(["expandedSections"])
+          || request.resource.data.expandedSections is map)
+        && (!request.resource.data.keys().hasAny(["sourceOrder"])
+          || request.resource.data.sourceOrder is list)
+        && hasOwnerUpdatedBy()
         && request.resource.data.updatedAt is timestamp;
       allow delete: if false;
     }

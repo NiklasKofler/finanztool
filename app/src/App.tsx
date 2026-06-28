@@ -112,7 +112,6 @@ type TradeRepublicDisplayMode = "current" | "broker";
 type AgentUiStatus = "OK" | "WARNUNG" | "FEHLER" | "RUNNING";
 type AgentStatusTone = "good" | "warn" | "error" | "neutral" | "info";
 const emptyEquatePlusDraft: EquatePlusDraft = { quantity: "", entryValueEur: "" };
-const emptyCashHomeDraft: CashHomeDraft = { amountEur: "" };
 type UiExpandedSections = Record<string, boolean>;
 type UiSectionToggleHandler = (sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) => void;
 type UiSectionOpenGetter = (sectionKey: string, defaultOpen?: boolean) => boolean;
@@ -145,6 +144,7 @@ type AlertRepairAction = {
 };
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
 const sourceOrderStorageKey = "finanztool-source-order";
+const cashHomeStorageKey = "finanztool-cash-home";
 const documentAlertIds = new Set([
   "unclassified_documents",
   "unknown_document_facts",
@@ -204,6 +204,42 @@ function loadStoredSourceOrder(): string[] {
 function saveStoredSourceOrder(order: string[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(sourceOrderStorageKey, JSON.stringify(normalizeSourceOrder(order)));
+}
+
+function loadStoredCashHomeManualInput(): CashHomeManualInputDocument | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(cashHomeStorageKey) ?? "null");
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return null;
+    const rawAmount = (stored as CashHomeManualInputDocument).amountEur;
+    const amountEur = typeof rawAmount === "number" ? rawAmount : Number.parseFloat(String(rawAmount ?? "").replace(",", "."));
+    if (typeof amountEur !== "number" || amountEur < 0) return null;
+    return {
+      id: "cash_home",
+      source: "cash_home",
+      amountEur,
+      currency: "EUR",
+      updatedBy: typeof stored.updatedBy === "string" ? stored.updatedBy : null,
+      updatedAt: stored.updatedAt ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredCashHomeManualInput(input: CashHomeManualInputDocument) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    cashHomeStorageKey,
+    JSON.stringify({
+      id: "cash_home",
+      source: "cash_home",
+      amountEur: input.amountEur ?? 0,
+      currency: "EUR",
+      updatedBy: input.updatedBy ?? null,
+      updatedAt: input.updatedAt instanceof Date ? input.updatedAt.toISOString() : input.updatedAt ?? new Date().toISOString(),
+    }),
+  );
 }
 
 function sortSourcesByOrder(sources: SourceOverview[], order: string[]) {
@@ -2472,8 +2508,9 @@ function App() {
     useState<EquatePlusSaveStatus>("idle");
   const [equatePlusSaveError, setEquatePlusSaveError] = useState<string | null>(null);
   const [cashHomeManualInput, setCashHomeManualInput] =
-    useState<CashHomeManualInputDocument | null>(null);
-  const [cashHomeDraft, setCashHomeDraft] = useState<CashHomeDraft>(emptyCashHomeDraft);
+    useState<CashHomeManualInputDocument | null>(() => loadStoredCashHomeManualInput());
+  const [cashHomeDraft, setCashHomeDraft] =
+    useState<CashHomeDraft>(() => cashHomeDraftFromInput(loadStoredCashHomeManualInput()));
   const [cashHomeSaveStatus, setCashHomeSaveStatus] =
     useState<EquatePlusSaveStatus>("idle");
   const [cashHomeSaveError, setCashHomeSaveError] = useState<string | null>(null);
@@ -2494,7 +2531,7 @@ function App() {
   const [dataStatus, setDataStatus] = useState<
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
-  const [privacyMode, setPrivacyMode] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(true);
   const [expandedSections, setExpandedSections] = useState<UiExpandedSections>(() => loadStoredExpandedSections());
   const [sourceOrder, setSourceOrder] = useState<string[]>(() => loadStoredSourceOrder());
   const [depotSearchQuery, setDepotSearchQuery] = useState("");
@@ -2519,6 +2556,7 @@ function App() {
       setAuthReady(true);
       setAuthError(null);
       if (!user) {
+        const storedCashHomeManualInput = loadStoredCashHomeManualInput();
         setSourceSummaries({});
         setAgentStatuses({});
         setPositions([]);
@@ -2526,8 +2564,8 @@ function App() {
         setDocumentInboxItems([]);
         setEquatePlusManualInput(null);
         setEquatePlusDraft(emptyEquatePlusDraft);
-        setCashHomeManualInput(null);
-        setCashHomeDraft(emptyCashHomeDraft);
+        setCashHomeManualInput(storedCashHomeManualInput);
+        setCashHomeDraft(cashHomeDraftFromInput(storedCashHomeManualInput));
         setSystemHealth(null);
         setExpandedSections(loadStoredExpandedSections());
         setSourceOrder(loadStoredSourceOrder());
@@ -2575,8 +2613,10 @@ function App() {
         setDocumentInboxItems(loadedDocumentInboxItems);
         setEquatePlusManualInput(loadedEquatePlusManualInput);
         setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
-        setCashHomeManualInput(loadedCashHomeManualInput);
-        setCashHomeDraft(cashHomeDraftFromInput(loadedCashHomeManualInput));
+        const effectiveCashHomeManualInput = loadedCashHomeManualInput ?? loadStoredCashHomeManualInput();
+        if (loadedCashHomeManualInput) saveStoredCashHomeManualInput(loadedCashHomeManualInput);
+        setCashHomeManualInput(effectiveCashHomeManualInput);
+        setCashHomeDraft(cashHomeDraftFromInput(effectiveCashHomeManualInput));
         setSystemHealth(health);
         setExpandedSections((current) => ({
           ...current,
@@ -2707,8 +2747,10 @@ function App() {
     setDocumentInboxItems(loadedDocumentInboxItems);
     setEquatePlusManualInput(loadedEquatePlusManualInput);
     setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
-    setCashHomeManualInput(loadedCashHomeManualInput);
-    setCashHomeDraft(cashHomeDraftFromInput(loadedCashHomeManualInput));
+    const effectiveCashHomeManualInput = loadedCashHomeManualInput ?? loadStoredCashHomeManualInput();
+    if (loadedCashHomeManualInput) saveStoredCashHomeManualInput(loadedCashHomeManualInput);
+    setCashHomeManualInput(effectiveCashHomeManualInput);
+    setCashHomeDraft(cashHomeDraftFromInput(effectiveCashHomeManualInput));
     setSystemHealth(health);
     setExpandedSections((current) => ({
       ...current,
@@ -2782,7 +2824,6 @@ function App() {
   async function handleSaveCashHomeInput(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const services = getFirebaseServices();
-    if (!services || !authUser) return;
 
     const amountEur = parseEditableNumber(cashHomeDraft.amountEur);
     if (typeof amountEur !== "number" || amountEur < 0) {
@@ -2791,24 +2832,36 @@ function App() {
       return;
     }
 
+    const localInput: CashHomeManualInputDocument = {
+      id: "cash_home",
+      source: "cash_home",
+      amountEur,
+      currency: "EUR",
+      updatedBy: authUser?.email ?? "local",
+      updatedAt: new Date(),
+    };
+
     try {
       setCashHomeSaveStatus("saving");
       setCashHomeSaveError(null);
-      await saveCashHomeManualInput(services.db, { amountEur }, authUser.email);
-      const localInput: CashHomeManualInputDocument = {
-        id: "cash_home",
-        source: "cash_home",
-        amountEur,
-        currency: "EUR",
-        updatedBy: authUser.email,
-        updatedAt: new Date(),
-      };
+      saveStoredCashHomeManualInput(localInput);
       setCashHomeManualInput(localInput);
       setCashHomeDraft(cashHomeDraftFromInput(localInput));
+
+      if (!services || !authUser) {
+        setCashHomeSaveStatus("saved");
+        return;
+      }
+
+      await saveCashHomeManualInput(services.db, { amountEur }, authUser.email);
       setCashHomeSaveStatus("saved");
     } catch (error) {
-      setCashHomeSaveStatus("error");
-      setCashHomeSaveError(error instanceof Error ? error.message : "Bargeld-Eingabe konnte nicht gespeichert werden.");
+      setCashHomeSaveStatus("saved");
+      setCashHomeSaveError(
+        error instanceof Error
+          ? `Lokal gespeichert; Firestore-Sync fehlgeschlagen: ${error.message}`
+          : "Lokal gespeichert; Firestore-Sync fehlgeschlagen.",
+      );
     }
   }
 

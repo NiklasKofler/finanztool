@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 23:09 CEST
+- Stand: 2026-06-28 23:18 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `99df9db`
-- Handoff-Commit: `659eddc`
-- Firebase Deploy: 2026-06-28 23:09 CEST erfolgreich
+- Ausgangscommit: `891a3de`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3185,3 +3185,19 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Amazon Visa und TF Bank haben in diesem Tab keine gespeicherten Logos; sie
   bleiben vorerst beim Text-/Statuslayout, bis eigene Logos geliefert oder
   freigegeben sind.
+
+## 2026-06-28 Privatmodus, Bargeld-Speicher und Rules-Deploy
+
+- Die App startet standardmaessig im Privatmodus (`privacyMode=true`).
+- Bargeld (`manualInputs/cash_home`) wird beim Speichern zuerst lokal in
+  `localStorage` gesichert und anschliessend nach Firestore synchronisiert.
+  Dadurch funktioniert die Eingabe auch lokal/offline; wenn Firestore blockiert,
+  bleibt der lokale Wert sichtbar und die UI zeigt den Sync-Fehler.
+- Firestore-Regeln erlauben fuer `manualInputs/cash_home` nur Owner-Schreibzugriff,
+  `source=cash_home`, `amountEur >= 0`, `currency=EUR`, `updatedBy` als Owner-Mail
+  oder `null` und `updatedAt` als Timestamp.
+- `uiPreferences/portfolio_overview` darf neben `expandedSections` jetzt auch
+  `sourceOrder` speichern. Das ist noetig, damit Ausklappen/Reihenfolge lokal
+  und online konsistent funktionieren.
+- `ftp`/`ftu` deployed ab jetzt `hosting,firestore:rules`, damit App-Code und
+  Firestore-Regeln nicht auseinanderlaufen.
