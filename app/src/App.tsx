@@ -3294,6 +3294,7 @@ function App() {
   const portfolioDayChangePct =
     portfolioPreviousValue && portfolioDayChange ? portfolioDayChange / portfolioPreviousValue : null;
   const portfolioPerformanceTone = getPerformanceTone(portfolioPerformance);
+  const portfolioDayChangeTone = getPerformanceTone(portfolioDayChange);
   const bankAccountSourceUnits = valuationSummaries.bank_accounts?.accounts ?? [];
   const totalBankAccountSourceUnits = Math.max(bankAccountSourceUnits.length, 1);
   const portfolioValueBreakdown = getPortfolioValueBreakdown(sources, bankAccountSourceUnits);
@@ -3429,23 +3430,25 @@ function App() {
           <div className="metric-card__icon">
             <Wallet aria-hidden="true" />
           </div>
-          <p>Erfasster Wert</p>
-          <strong>{privacyMode ? maskMoney(trackedTotal) : formatCurrency(trackedTotal)}</strong>
+          <p>Depotwert</p>
+          <strong>
+            {privacyMode ? maskMoney(portfolioValueBreakdown.depotValue) : formatCurrency(portfolioValueBreakdown.depotValue)}
+          </strong>
           <div className="metric-card__details">
             <span className={`metric-chip metric-chip--${portfolioPerformanceTone}`}>
               G/V {privacyMode ? maskSignedMoney(portfolioPerformance) : formatSignedMoney(portfolioPerformance)}
               <small>{formatSignedPercent(portfolioPerformancePct)}</small>
             </span>
-            <span className="metric-chip metric-chip--neutral">
+            <span className={`metric-chip metric-chip--${portfolioDayChangeTone}`}>
               Heute {privacyMode ? maskSignedMoney(portfolioDayChange) : formatSignedMoney(portfolioDayChange)}
               <small>{formatSignedPercent(portfolioDayChangePct)}</small>
             </span>
           </div>
           <dl className="metric-card__breakdown" aria-label="Vermoegensaufteilung">
             <div>
-              <dt>Depotwerte</dt>
+              <dt>Erfasster Wert</dt>
               <dd>
-                {privacyMode ? maskMoney(portfolioValueBreakdown.depotValue) : formatCurrency(portfolioValueBreakdown.depotValue)}
+                {privacyMode ? maskMoney(trackedTotal) : formatCurrency(trackedTotal)}
               </dd>
             </div>
             <div>

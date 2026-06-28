@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 23:18 CEST
+- Stand: 2026-06-29 00:05 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `891a3de`
-- Handoff-Commit: `0987563`
-- Firebase Deploy: 2026-06-28 23:18 CEST erfolgreich
+- Ausgangscommit: `2435550`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3201,3 +3201,18 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   und online konsistent funktionieren.
 - `ftp`/`ftu` deployed ab jetzt `hosting,firestore:rules`, damit App-Code und
   Firestore-Regeln nicht auseinanderlaufen.
+
+## 2026-06-29 Top-Kennzahl Depotwert / Erfasster Wert
+
+- Oben in der Hauptkarte steht jetzt prominent `Depotwert`.
+- `Depotwert` ist die Summe der Depot-/Positionswerte aus den Quellen:
+  `getSourceDepotDisplayValue(source)`.
+  - Normalfall: Quelle liefert Depotwert/Netto-Anzeigewert.
+  - Wenn Depotwert plus Cash getrennt vorhanden ist, bleibt Cash separat.
+  - Flatex-Sonderfall: genutzter Kredit wird zum sichtbaren Depotwert addiert,
+    damit Depotwert und finanzierende Cash-/Kreditposition getrennt lesbar sind.
+- `Erfasster Wert` steht in der Aufteilung und entspricht weiter dem bisherigen
+  `trackedTotal`: Summe aller erfassten Quellenwerte inklusive Cash, Bargeld,
+  Kreditkarten-/Kontostand und Vorsorgewerten.
+- G/V und Heute in der Hauptkarte werden anhand des Vorzeichens gruen, rot oder
+  neutral gefaerbt.
