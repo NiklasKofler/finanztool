@@ -33,6 +33,7 @@ import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
   loadAgentStatuses,
   loadBankLedgerEntries,
+  loadCashHomeManualInput,
   loadDocumentInboxItems,
   loadEquatePlusManualInput,
   loadAutomationCommand,
@@ -48,10 +49,12 @@ import {
   requestHealthCheck,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
+  saveCashHomeManualInput,
   saveEquatePlusManualInput,
   saveUiPreferences,
   type AgentStatusDocument,
   type BankLedgerEntryDocument,
+  type CashHomeManualInputDocument,
   type DocumentInboxItem,
   type EquatePlusManualInputDocument,
   type SourceSummaryAccount,
@@ -77,6 +80,17 @@ const percentFormatter = new Intl.NumberFormat("de-AT", {
   maximumFractionDigits: 1,
 });
 
+const privacyValueMultiplier = 35;
+const privacyValueFormatter = new Intl.NumberFormat("de-DE", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatPrivacyMoney(value: number) {
+  const formattedValue = privacyValueFormatter.format(Math.abs(value) * privacyValueMultiplier);
+  return value < 0 ? `-€ ${formattedValue}` : `€ ${formattedValue}`;
+}
+
 const sourceSortOrder = [
   "flatex",
   "traderepublic",
@@ -93,10 +107,12 @@ const ownerEmail = "niklas.kofler@gmail.com";
 type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
 type EquatePlusSaveStatus = "idle" | "saving" | "saved" | "error";
 type EquatePlusDraft = { quantity: string; entryValueEur: string };
+type CashHomeDraft = { amountEur: string };
 type TradeRepublicDisplayMode = "current" | "broker";
 type AgentUiStatus = "OK" | "WARNUNG" | "FEHLER" | "RUNNING";
 type AgentStatusTone = "good" | "warn" | "error" | "neutral" | "info";
 const emptyEquatePlusDraft: EquatePlusDraft = { quantity: "", entryValueEur: "" };
+const emptyCashHomeDraft: CashHomeDraft = { amountEur: "" };
 type UiExpandedSections = Record<string, boolean>;
 type UiSectionToggleHandler = (sectionKey: string, isExpanded: boolean, defaultOpen?: boolean) => void;
 type UiSectionOpenGetter = (sectionKey: string, defaultOpen?: boolean) => boolean;
@@ -357,14 +373,14 @@ function formatCurrency(value?: number | null) {
 }
 
 function maskMoney(value?: number | null) {
-  return typeof value === "number" ? "€€€€" : "—";
+  return typeof value === "number" ? formatPrivacyMoney(value) : "—";
 }
 
 function maskSignedMoney(value?: number | null) {
   if (typeof value !== "number") return "—";
-  if (value > 0) return "+€€€€";
-  if (value < 0) return "-€€€€";
-  return "±€€€€";
+  if (value === 0) return `±€ ${privacyValueFormatter.format(0)}`;
+  const sign = value > 0 ? "+" : "-";
+  return `${sign}€ ${privacyValueFormatter.format(Math.abs(value) * privacyValueMultiplier)}`;
 }
 
 function formatMoney(value?: number | null, currency = "EUR") {
@@ -507,6 +523,12 @@ function equatePlusDraftFromInput(input?: EquatePlusManualInputDocument | null):
   return {
     quantity: draftNumber(input?.quantity),
     entryValueEur: draftNumber(input?.entryValueEur),
+  };
+}
+
+function cashHomeDraftFromInput(input?: CashHomeManualInputDocument | null): CashHomeDraft {
+  return {
+    amountEur: draftNumber(input?.amountEur),
   };
 }
 
@@ -812,6 +834,7 @@ function getUsedCreditValue(source: SourceOverview) {
 }
 
 function getSourceDepotDisplayValue(source: SourceOverview) {
+  if (source.id === "cash_home") return source.depotValue ?? 0;
   const usedCreditValue = getUsedCreditValue(source);
   const displayValue = getSourceDisplayValue(source);
   if (typeof displayValue === "number" && typeof usedCreditValue === "number") {
@@ -820,8 +843,22 @@ function getSourceDepotDisplayValue(source: SourceOverview) {
   return displayValue ?? source.depotValue;
 }
 
+function getSourceCardPrimaryValue(source: SourceOverview) {
+  return source.id === "cash_home" ? getSourceDisplayValue(source) : getSourceDepotDisplayValue(source);
+}
+
+function getSourceCardPrimaryLabel(source: SourceOverview) {
+  if (source.id === "cash_home") return "Barbestand";
+  return "Depotwert";
+}
+
 function roundMoneyValue(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function addMoneyValue(value: number | null | undefined, addition: number): number | undefined {
+  if (typeof value !== "number") return addition ? roundMoneyValue(addition) : undefined;
+  return roundMoneyValue(value + addition);
 }
 
 function getTradeRepublicCurrentSummary(summary?: SourceSummaryDocument) {
@@ -901,6 +938,7 @@ function sourceUsesAuthoritativeSummary(sourceId: string) {
     "vbv",
     "equateplus",
     "bank_accounts",
+    "cash_home",
   ].includes(sourceId);
 }
 
@@ -1360,7 +1398,26 @@ function getPositionAccountLabel(position: PortfolioPosition) {
   );
 }
 
+const sourceLogoPaths: Partial<Record<string, string>> = {
+  bank_accounts: "/source-logos/cash.jpg",
+  bitget: "/source-logos/bitget.png",
+  capitalcom: "/source-logos/capitalcom.jpg",
+  cash_home: "/source-logos/cash.jpg",
+  equateplus: "/source-logos/equateplus.png",
+  flatex: "/source-logos/flatex.png",
+  ginmon: "/source-logos/ginmon.png",
+  intergold: "/source-logos/intergold.jpg",
+  traderepublic: "/source-logos/traderepublic.png",
+  trading212: "/source-logos/trading212.jpg",
+  vbv: "/source-logos/vbv.jpg",
+};
+
 function SourceIcon({ source }: { source: SourceOverview }) {
+  const logoPath = sourceLogoPaths[source.id];
+  if (logoPath) {
+    return <img className="source-card__logo" src={logoPath} alt="" aria-hidden="true" />;
+  }
+
   switch (source.kind) {
     case "broker":
       return <TrendingUp aria-hidden="true" />;
@@ -1372,6 +1429,8 @@ function SourceIcon({ source }: { source: SourceOverview }) {
       return <Archive aria-hidden="true" />;
     case "credit_card":
       return <CreditCard aria-hidden="true" />;
+    case "cash":
+      return <Wallet aria-hidden="true" />;
     default:
       return <Database aria-hidden="true" />;
   }
@@ -2296,6 +2355,66 @@ function EquatePlusManualPanel({
   );
 }
 
+function CashHomeManualPanel({
+  draft,
+  manualInput,
+  privacyMode,
+  saveStatus,
+  saveError,
+  onDraftChange,
+  onSubmit,
+}: {
+  draft: CashHomeDraft;
+  manualInput: CashHomeManualInputDocument | null;
+  privacyMode: boolean;
+  saveStatus: EquatePlusSaveStatus;
+  saveError: string | null;
+  onDraftChange: (field: keyof CashHomeDraft, value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const amount = typeof manualInput?.amountEur === "number" ? manualInput.amountEur : null;
+  const saveLabel =
+    saveStatus === "saving"
+      ? "Speichert"
+      : saveStatus === "saved"
+        ? "Gespeichert"
+        : "Speichern";
+
+  return (
+    <form className="source-card__manual-panel" onSubmit={onSubmit}>
+      <div className="source-card__manual-heading">
+        <strong>Bargeld zu Hause</strong>
+        <span>Manuelle Cash-Position · EUR</span>
+      </div>
+      <div className="source-card__manual-grid source-card__manual-grid--compact">
+        <label>
+          <span>Barbestand EUR</span>
+          <input
+            inputMode="decimal"
+            value={draft.amountEur}
+            onChange={(event) => onDraftChange("amountEur", event.target.value)}
+            placeholder="0"
+          />
+        </label>
+        <button type="submit" disabled={saveStatus === "saving"}>
+          {saveLabel}
+        </button>
+      </div>
+      <dl className="source-card__manual-facts">
+        <div>
+          <dt>Gespeichert</dt>
+          <dd>{privacyMode ? maskMoney(amount) : formatCurrency(amount)}</dd>
+        </div>
+        <div>
+          <dt>Eingabe</dt>
+          <dd>{formatUpdatedAt(manualInput?.updatedAt)}</dd>
+        </div>
+      </dl>
+      {saveError ? <p className="source-card__manual-error">{saveError}</p> : null}
+    </form>
+  );
+}
+
 function App() {
   const [sourceSummaries, setSourceSummaries] = useState<
     Record<string, SourceSummaryDocument>
@@ -2310,6 +2429,12 @@ function App() {
   const [equatePlusSaveStatus, setEquatePlusSaveStatus] =
     useState<EquatePlusSaveStatus>("idle");
   const [equatePlusSaveError, setEquatePlusSaveError] = useState<string | null>(null);
+  const [cashHomeManualInput, setCashHomeManualInput] =
+    useState<CashHomeManualInputDocument | null>(null);
+  const [cashHomeDraft, setCashHomeDraft] = useState<CashHomeDraft>(emptyCashHomeDraft);
+  const [cashHomeSaveStatus, setCashHomeSaveStatus] =
+    useState<EquatePlusSaveStatus>("idle");
+  const [cashHomeSaveError, setCashHomeSaveError] = useState<string | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -2359,6 +2484,8 @@ function App() {
         setDocumentInboxItems([]);
         setEquatePlusManualInput(null);
         setEquatePlusDraft(emptyEquatePlusDraft);
+        setCashHomeManualInput(null);
+        setCashHomeDraft(emptyCashHomeDraft);
         setSystemHealth(null);
         setExpandedSections(loadStoredExpandedSections());
         setSourceOrder(loadStoredSourceOrder());
@@ -2383,6 +2510,7 @@ function App() {
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
+      loadCashHomeManualInput(services.db),
       loadSystemHealth(services.db),
       loadUiPreferences(services.db),
     ])
@@ -2393,6 +2521,7 @@ function App() {
         loadedBankLedgerEntries,
         loadedDocumentInboxItems,
         loadedEquatePlusManualInput,
+        loadedCashHomeManualInput,
         health,
         uiPreferences,
       ]) => {
@@ -2404,6 +2533,8 @@ function App() {
         setDocumentInboxItems(loadedDocumentInboxItems);
         setEquatePlusManualInput(loadedEquatePlusManualInput);
         setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
+        setCashHomeManualInput(loadedCashHomeManualInput);
+        setCashHomeDraft(cashHomeDraftFromInput(loadedCashHomeManualInput));
         setSystemHealth(health);
         setExpandedSections((current) => ({
           ...current,
@@ -2513,6 +2644,7 @@ function App() {
       loadedBankLedgerEntries,
       loadedDocumentInboxItems,
       loadedEquatePlusManualInput,
+      loadedCashHomeManualInput,
       health,
       uiPreferences,
     ] = await Promise.all([
@@ -2522,6 +2654,7 @@ function App() {
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
+      loadCashHomeManualInput(services.db),
       loadSystemHealth(services.db),
       loadUiPreferences(services.db),
     ]);
@@ -2532,6 +2665,8 @@ function App() {
     setDocumentInboxItems(loadedDocumentInboxItems);
     setEquatePlusManualInput(loadedEquatePlusManualInput);
     setEquatePlusDraft(equatePlusDraftFromInput(loadedEquatePlusManualInput));
+    setCashHomeManualInput(loadedCashHomeManualInput);
+    setCashHomeDraft(cashHomeDraftFromInput(loadedCashHomeManualInput));
     setSystemHealth(health);
     setExpandedSections((current) => ({
       ...current,
@@ -2548,6 +2683,12 @@ function App() {
     setEquatePlusDraft((current) => ({ ...current, [field]: value }));
     setEquatePlusSaveStatus("idle");
     setEquatePlusSaveError(null);
+  }
+
+  function handleCashHomeDraftChange(field: keyof CashHomeDraft, value: string) {
+    setCashHomeDraft((current) => ({ ...current, [field]: value }));
+    setCashHomeSaveStatus("idle");
+    setCashHomeSaveError(null);
   }
 
   async function handleSaveEquatePlusInput(event: FormEvent<HTMLFormElement>) {
@@ -2593,6 +2734,39 @@ function App() {
     } catch (error) {
       setEquatePlusSaveStatus("error");
       setEquatePlusSaveError(error instanceof Error ? error.message : "EquatePlus-Eingabe konnte nicht gespeichert werden.");
+    }
+  }
+
+  async function handleSaveCashHomeInput(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    const amountEur = parseEditableNumber(cashHomeDraft.amountEur);
+    if (typeof amountEur !== "number" || amountEur < 0) {
+      setCashHomeSaveStatus("error");
+      setCashHomeSaveError("Bitte einen Betrag ab 0 EUR eingeben.");
+      return;
+    }
+
+    try {
+      setCashHomeSaveStatus("saving");
+      setCashHomeSaveError(null);
+      await saveCashHomeManualInput(services.db, { amountEur }, authUser.email);
+      const localInput: CashHomeManualInputDocument = {
+        id: "cash_home",
+        source: "cash_home",
+        amountEur,
+        currency: "EUR",
+        updatedBy: authUser.email,
+        updatedAt: new Date(),
+      };
+      setCashHomeManualInput(localInput);
+      setCashHomeDraft(cashHomeDraftFromInput(localInput));
+      setCashHomeSaveStatus("saved");
+    } catch (error) {
+      setCashHomeSaveStatus("error");
+      setCashHomeSaveError(error instanceof Error ? error.message : "Bargeld-Eingabe konnte nicht gespeichert werden.");
     }
   }
 
@@ -2865,7 +3039,31 @@ function App() {
   const sources = useMemo(
     () =>
       sourceOverviews.map((source) => {
-        const summary = valuationSummaries[source.summaryId ?? source.id];
+        const baseSummary = valuationSummaries[source.summaryId ?? source.id];
+        const cashHomeValue =
+          source.id === "bank_accounts" && typeof cashHomeManualInput?.amountEur === "number"
+            ? cashHomeManualInput.amountEur
+            : 0;
+        const summary =
+          source.id === "bank_accounts" && cashHomeValue
+            ? ({
+                ...(baseSummary ?? { source: "bank_accounts" }),
+                currentValue: addMoneyValue(
+                  baseSummary?.currentValue ?? baseSummary?.netValue ?? baseSummary?.cashValue,
+                  cashHomeValue,
+                ),
+                cashValue: addMoneyValue(
+                  baseSummary?.cashValue ?? baseSummary?.currentValue ?? baseSummary?.netValue,
+                  cashHomeValue,
+                ),
+                netValue: addMoneyValue(
+                  baseSummary?.netValue ?? baseSummary?.currentValue ?? baseSummary?.cashValue,
+                  cashHomeValue,
+                ),
+                availableCash: addMoneyValue(baseSummary?.availableCash, cashHomeValue),
+                availableWithCredit: addMoneyValue(baseSummary?.availableWithCredit, cashHomeValue),
+              } satisfies SourceSummaryDocument)
+            : baseSummary;
         const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
         const agentDisplayStatus = getAgentDisplayStatus(agentStatus);
         const sourceHealthStatus = getHealthStatusForSource(source.id, systemHealth);
@@ -2966,7 +3164,7 @@ function App() {
             source.positionCount,
         };
       }),
-    [agentStatuses, positionStatsBySource, systemHealth, valuationSummaries],
+    [agentStatuses, cashHomeManualInput, positionStatsBySource, systemHealth, valuationSummaries],
   );
 
   const trackedTotal = getTrackedTotal(sources);
@@ -3400,6 +3598,7 @@ function App() {
               const ginmonAccounts =
                 source.id === "ginmon" ? (sourceSummary?.accounts ?? []) : [];
               const isBankAccountsSource = source.id === "bank_accounts";
+              const isCashHomeSource = source.id === "cash_home";
               const isCreditCardSource = source.kind === "credit_card";
               const bankAccounts = isBankAccountsSource ? (sourceSummary?.accounts ?? []) : [];
               const creditCardAccounts = bankAccounts.filter(isCreditCardAccount);
@@ -3447,8 +3646,8 @@ function App() {
                           aria-label={`${source.name} Kurzüberblick`}
                         >
                           <div className="source-card__compact-metric source-card__compact-metric--value">
-                            <dt>Depotwert</dt>
-                            <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
+                            <dt>{getSourceCardPrimaryLabel(source)}</dt>
+                            <dd>{privacyMode ? maskMoney(getSourceCardPrimaryValue(source)) : formatCurrency(getSourceCardPrimaryValue(source))}</dd>
                           </div>
                           <div className="source-card__compact-metric source-card__compact-metric--performance">
                             <dt>
@@ -3589,7 +3788,22 @@ function App() {
                     ) : null}
 
                     <dl className={`source-card__metrics${isBankAccountsSource || isCreditCardSource ? " source-card__metrics--bank" : ""}`}>
-                      {isBankAccountsSource ? (
+                      {isCashHomeSource ? (
+                        <>
+                          <div>
+                            <dt>Barbestand</dt>
+                            <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
+                          </div>
+                          <div>
+                            <dt>{sourcePrimaryTimestamp.label}</dt>
+                            <dd>
+                              <span className="source-card__timestamp-inline">
+                                {formatUpdatedAt(sourcePrimaryTimestamp.value)}
+                              </span>
+                            </dd>
+                          </div>
+                        </>
+                      ) : isBankAccountsSource ? (
                         <>
                           <div>
                             <dt>Geldstand</dt>
@@ -3650,8 +3864,8 @@ function App() {
                       ) : (
                         <>
                           <div>
-                            <dt>Depotwert</dt>
-                            <dd>{privacyMode ? maskMoney(getSourceDepotDisplayValue(source)) : formatCurrency(getSourceDepotDisplayValue(source))}</dd>
+                            <dt>{getSourceCardPrimaryLabel(source)}</dt>
+                            <dd>{privacyMode ? maskMoney(getSourceCardPrimaryValue(source)) : formatCurrency(getSourceCardPrimaryValue(source))}</dd>
                           </div>
                           <div>
                             <dt>Cash</dt>
@@ -3757,7 +3971,7 @@ function App() {
                       </dl>
                     ) : null}
 
-                    {sourceAgentRuns.length && !isBankAccountsSource ? (
+                    {sourceAgentRuns.length && !isBankAccountsSource && !isCashHomeSource ? (
                       <div className="source-card__agent-panel">
                         <div className="source-card__agent-panel-title">Agenten</div>
                         <div className="source-card__agent-list">
@@ -3835,6 +4049,29 @@ function App() {
                           isSectionOpen={getUiSectionOpen}
                           onSectionToggle={setUiSectionOpen}
                         />
+                        <details
+                          className="source-accounts-details source-accounts-details--manual"
+                          open={getUiSectionOpen("source:bank_accounts:group:cash_home", false)}
+                          onToggle={(event) => handleDetailsToggle("source:bank_accounts:group:cash_home", event, false)}
+                        >
+                          <summary>
+                            <span>Bargeld</span>
+                            <strong>
+                              {privacyMode
+                                ? maskMoney(cashHomeManualInput?.amountEur)
+                                : formatCurrency(cashHomeManualInput?.amountEur ?? null)}
+                            </strong>
+                          </summary>
+                          <CashHomeManualPanel
+                            draft={cashHomeDraft}
+                            manualInput={cashHomeManualInput}
+                            privacyMode={privacyMode}
+                            saveStatus={cashHomeSaveStatus}
+                            saveError={cashHomeSaveError}
+                            onDraftChange={handleCashHomeDraftChange}
+                            onSubmit={handleSaveCashHomeInput}
+                          />
+                        </details>
                       </>
                     ) : ginmonAccounts.length ? (
                       <details

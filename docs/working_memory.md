@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 21:51 CEST
+- Stand: 2026-06-28 22:59 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `6dc9dc9`
-- Handoff-Commit: `3f7940b`
-- Firebase Deploy: 2026-06-28 21:51 CEST erfolgreich
+- Ausgangscommit: `2e44ad4`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3116,3 +3116,56 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Geprueft:
   - `npm --prefix automation run sync:trading212-snapshot`: OK
   - `npm --prefix automation run sync:health`: OK, 0 Fehler, 0 Warnungen
+
+## 2026-06-28 Privatmodus / Wertverschleierung
+
+- Der Privat-Schalter ersetzt absolute Geldwerte nicht mehr durch `€€€€`.
+- Stattdessen werden alle ueber `maskMoney`/`maskSignedMoney` laufenden
+  absoluten Werte mit Faktor `35` angezeigt.
+- Im Privatmodus wird das Eurozeichen angezeigt, aber der Wert bleibt mit
+  Faktor `35` verschleiert.
+- Die verschleierten Zahlen nutzen deutsche Tausenderpunkte, z. B.
+  `1.234.567,89`.
+- Prozentwerte bleiben sichtbar.
+- Signed-Werte behalten ihr Vorzeichen, z. B. `+...`, `-...`, `±0,00`.
+
+## 2026-06-28 Bargeld / Barbestand zu Hause
+
+- Manuelle Eingabe `cash_home` fuer Bargeld, das zu Hause liegt.
+- Eingabe wird in Firestore unter `manualInputs/cash_home` gespeichert.
+- Felder:
+  - `amountEur`
+  - `currency = EUR`
+  - `updatedBy`
+  - `updatedAt`
+- In der UI gibt es keine eigene Depotkarte `Bargeld`.
+- Die fruehere Sammelkarte `Bankkonten` heisst jetzt `Cash`.
+- In der aufgeklappten `Cash`-Karte steht unter `Kreditkarten` der Bereich
+  `Bargeld`; dort kann der Barbestand geaendert werden.
+- Die App addiert `cash_home.amountEur` zur Cash-Karte.
+- Bewertungslogik:
+  - zaehlt zum erfassten Gesamtwert
+  - zaehlt zu Cash
+  - zaehlt nicht als Depotwert/Wertpapierdepot
+- Es gibt bewusst keinen Agenten, keine Transaktionen und keine operative
+  Health-Warnung fuer diese Eingabe.
+
+## 2026-06-28 Depotkarten-Logos
+
+- Die Depotkarten verwenden jetzt lokale Logo-Dateien aus
+  `app/public/source-logos/`.
+- Quelle der Auswahl war die Google-Saved-Liste `Broker`; die Bilder wurden
+  lokal kopiert, damit die App nicht von Google-Thumbnail-URLs abhaengt.
+- Zuordnung:
+  - `flatex` -> Flatex
+  - `traderepublic` -> Trade Republic
+  - `ginmon` -> Ginmon
+  - `intergold` -> Edelmetalle/Intergold
+  - `bitget` -> Bitget
+  - `capitalcom` -> Capital.com
+  - `trading212` -> Trading 212
+  - `vbv` -> VBV
+  - `equateplus` -> EquateMobile/EquatePlus
+  - `bank_accounts` / Cash -> Euro-Symbol
+- Das Revolut-Logo aus der Liste wird aktuell nicht als Depotkarten-Logo
+  verwendet, weil Revolut ein Unterkonto der Cash-Karte ist.

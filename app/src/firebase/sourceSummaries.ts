@@ -243,6 +243,15 @@ export interface EquatePlusManualInputDocument {
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
+export interface CashHomeManualInputDocument {
+  id: string;
+  source?: "cash_home" | string;
+  amountEur?: number | null;
+  currency?: "EUR" | string;
+  updatedBy?: string | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+}
+
 export interface UiPreferencesDocument {
   id: string;
   expandedSections?: Record<string, boolean>;
@@ -577,6 +586,33 @@ export async function saveEquatePlusManualInput(
     entryValueEur: input.entryValueEur,
     entryValueCurrency: "EUR",
     discountPct: 0.15,
+    updatedBy: updatedBy ?? null,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function loadCashHomeManualInput(
+  db: Firestore,
+): Promise<CashHomeManualInputDocument | null> {
+  const snapshot = await getDoc(doc(db, "manualInputs", "cash_home"));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data() as Omit<CashHomeManualInputDocument, "id">;
+  return {
+    id: snapshot.id,
+    ...data,
+    amountEur: parseMaybeNumber(data.amountEur) as number | null,
+  };
+}
+
+export async function saveCashHomeManualInput(
+  db: Firestore,
+  input: { amountEur: number },
+  updatedBy?: string | null,
+) {
+  await setDoc(doc(db, "manualInputs", "cash_home"), {
+    source: "cash_home",
+    amountEur: input.amountEur,
+    currency: "EUR",
     updatedBy: updatedBy ?? null,
     updatedAt: serverTimestamp(),
   });

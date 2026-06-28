@@ -72,30 +72,50 @@ service cloud.firestore {
     match /manualInputs/{inputId} {
       allow read: if isOwner();
       allow create, update: if isOwner()
-        && inputId == "equateplus_novartis"
-        && request.resource.data.keys().hasOnly([
-          "source",
-          "instrumentId",
-          "isin",
-          "name",
-          "quantity",
-          "entryValueEur",
-          "entryValueCurrency",
-          "discountPct",
-          "updatedBy",
-          "updatedAt"
-        ])
-        && request.resource.data.source == "equateplus"
-        && request.resource.data.instrumentId == "novartis"
-        && request.resource.data.isin == "CH0012005267"
-        && request.resource.data.name == "Novartis"
-        && request.resource.data.quantity is number
-        && request.resource.data.quantity >= 0
-        && request.resource.data.entryValueEur is number
-        && request.resource.data.entryValueEur >= 0
-        && request.resource.data.entryValueCurrency == "EUR"
-        && request.resource.data.discountPct is number
-        && request.resource.data.updatedAt is timestamp;
+        && (
+          (
+            inputId == "equateplus_novartis"
+            && request.resource.data.keys().hasOnly([
+              "source",
+              "instrumentId",
+              "isin",
+              "name",
+              "quantity",
+              "entryValueEur",
+              "entryValueCurrency",
+              "discountPct",
+              "updatedBy",
+              "updatedAt"
+            ])
+            && request.resource.data.source == "equateplus"
+            && request.resource.data.instrumentId == "novartis"
+            && request.resource.data.isin == "CH0012005267"
+            && request.resource.data.name == "Novartis"
+            && request.resource.data.quantity is number
+            && request.resource.data.quantity >= 0
+            && request.resource.data.entryValueEur is number
+            && request.resource.data.entryValueEur >= 0
+            && request.resource.data.entryValueCurrency == "EUR"
+            && request.resource.data.discountPct is number
+            && request.resource.data.updatedAt is timestamp
+          )
+          ||
+          (
+            inputId == "cash_home"
+            && request.resource.data.keys().hasOnly([
+              "source",
+              "amountEur",
+              "currency",
+              "updatedBy",
+              "updatedAt"
+            ])
+            && request.resource.data.source == "cash_home"
+            && request.resource.data.amountEur is number
+            && request.resource.data.amountEur >= 0
+            && request.resource.data.currency == "EUR"
+            && request.resource.data.updatedAt is timestamp
+          )
+        );
       allow delete: if false;
     }
 

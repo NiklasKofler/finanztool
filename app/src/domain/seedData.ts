@@ -84,11 +84,11 @@ export const sourceOverviews: SourceOverview[] = [
   },
   {
     id: "bank_accounts",
-    name: "Bankkonten",
+    name: "Cash",
     kind: "bank",
-    purpose: "Geldstand, Kreditkarten, Kreditlinien, Transaktionen",
+    purpose: "Bankkonten, Kreditkarten, Bargeld, Kreditlinien",
     status: "automated",
-    importMethod: "Read-only Open Banking plus Kreditkarten-Portal-Agenten",
-    nextStep: "Kreditkarten-Umsaetze/Abrechnungen ergaenzen und Kosten/Zinsen klassifizieren",
+    importMethod: "Read-only Open Banking, Kreditkarten-Portal-Agenten und manueller Barbestand",
+    nextStep: "Cash-Bestand, Kreditkarten-Umsaetze und Kosten/Zinsen klassifizieren",
   },
 ];

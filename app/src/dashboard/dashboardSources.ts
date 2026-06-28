@@ -129,12 +129,12 @@ export const dashboardSourceConfigs: Record<string, DashboardSourceConfig> = {
   },
   bank_accounts: {
     id: "bank_accounts",
-    label: "Bankkonten",
+    label: "Cash",
     group: "bank",
     dashboardBlocking: true,
     allowEmpty: true,
     nonBlockingAgentIds: ["bank99", "n26"],
-    expectedData: ["Geldstand", "Kreditlinien", "Kreditkarten", "Transaktionen"],
+    expectedData: ["Geldstand", "Bargeld", "Kreditlinien", "Kreditkarten", "Transaktionen"],
     knownLimits: "bank99 und N26 sind niedrig priorisiert und hart limitiert; Fehler dort blockieren Portfolio-Dashboards nicht.",
   },
 };

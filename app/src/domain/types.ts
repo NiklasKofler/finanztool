@@ -6,7 +6,8 @@ export type SourceKind =
   | "equity_plan"
   | "pension"
   | "bank"
-  | "credit_card";
+  | "credit_card"
+  | "cash";
 
 export type SourceStatus = "automated" | "ready" | "manual" | "planned" | "blocked";
 
