@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 20:16 CEST
+- Stand: 2026-06-28 21:43 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `07c5ac9`
-- Handoff-Commit: `a4c8f5f`
-- Firebase Deploy: 2026-06-28 20:16 CEST erfolgreich
+- Ausgangscommit: `aef6355`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3099,3 +3099,20 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Technischer Test: `automationCommands/health_check_manual` wurde lokal auf
   `REQUESTED` gesetzt, der Command-Runner hat `check-health-local.mjs --write`
   ausgefuehrt, danach stand der Command auf `DONE` und Health war `OK`.
+
+## 2026-06-28 Trading 212 5-Minuten-Agent
+
+- Trading 212 ist als eigener Snapshot-Agent installiert:
+  `com.niklas.finanztool.trading212-sync`.
+- Der installierte LaunchAgent hat `StartInterval=300`, also alle 5 Minuten.
+- History/Orders/Dividenden/Cash-Bewegungen laufen weiterhin ueber
+  `com.niklas.finanztool.trading212-history` stuendlich, damit der
+  5-Minuten-Lauf schnell bleibt.
+- Sichtbarer Fehler `fetch failed` war ein transienter Netzwerkfehler aus dem
+  API-Request, nicht ein fehlender Agent.
+- `automation/src/trading212-client.mjs` retryt Netzwerkfehler jetzt bis zu 5x
+  und schreibt im echten Fehlerfall eine verstaendlichere Meldung
+  `Trading 212 Netzwerkfehler ...`.
+- Geprueft:
+  - `npm --prefix automation run sync:trading212-snapshot`: OK
+  - `npm --prefix automation run sync:health`: OK, 0 Fehler, 0 Warnungen

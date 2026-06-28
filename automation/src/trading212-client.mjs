@@ -34,6 +34,15 @@ export class Trading212ApiError extends Error {
   }
 }
 
+export class Trading212NetworkError extends Error {
+  constructor({ message, requestPath, cause }) {
+    super(`Trading 212 Netzwerkfehler bei ${requestPath}: ${message}`);
+    this.name = "Trading212NetworkError";
+    this.requestPath = requestPath;
+    this.cause = cause;
+  }
+}
+
 export class Trading212Client {
   constructor({ apiKey, apiSecret, demo = false, baseUrl = null } = {}) {
     if (!apiKey || !apiSecret) {
@@ -57,18 +66,33 @@ export class Trading212Client {
       if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
     }
 
-    const maxAttempts = 3;
+    const maxAttempts = Math.max(
+      1,
+      Number.parseInt(process.env.TRADING212_REQUEST_MAX_ATTEMPTS ?? "5", 10) || 5,
+    );
     let lastError = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          Accept: "application/json",
-          ...(body ? { "Content-Type": "application/json" } : {}),
-          Authorization: basicAuthHeader(this.apiKey, this.apiSecret),
-        },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
+      let response;
+      try {
+        response = await fetch(url, {
+          method,
+          headers: {
+            Accept: "application/json",
+            ...(body ? { "Content-Type": "application/json" } : {}),
+            Authorization: basicAuthHeader(this.apiKey, this.apiSecret),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+      } catch (error) {
+        lastError = new Trading212NetworkError({
+          message: error instanceof Error ? error.message : String(error),
+          requestPath: path,
+          cause: error,
+        });
+        if (attempt === maxAttempts) throw lastError;
+        await sleep(Math.min(10_000, 1000 * 2 ** (attempt - 1)));
+        continue;
+      }
       const rateLimit = {
         limit: response.headers.get("x-ratelimit-limit"),
         period: response.headers.get("x-ratelimit-period"),

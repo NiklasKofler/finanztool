@@ -3140,7 +3140,16 @@
   .topbar__status-group {
     grid-column: 1 / -1;
     grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .topbar__status {
     justify-content: center;
+    width: 100%;
   }
 
   .quote-sync-button {
