@@ -20,13 +20,15 @@
       <key>FIREBASE_PROJECT_ID</key>
       <string>finanzperformance-tool</string>
       <key>TFBANK_TAN_WAIT_SECONDS</key>
-      <string>60</string>
+      <string>120</string>
       <key>TFBANK_TAN_POLL_MS</key>
       <string>1000</string>
+      <key>TFBANK_TAN_SETTLE_MS</key>
+      <string>0</string>
       <key>TFBANK_MESSAGES_DB</key>
       <string>1</string>
       <key>TFBANK_MESSAGES_UI_FALLBACK</key>
-      <string>0</string>
+      <string>1</string>
       <key>TFBANK_DEBUG</key>
       <string>1</string>
     </dict>

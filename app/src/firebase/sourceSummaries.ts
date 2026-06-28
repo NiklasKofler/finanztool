@@ -221,6 +221,13 @@ export interface AutomationCommandDocument {
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
+export type AutomationCommandType =
+  | "sync_quotes"
+  | "full_refresh"
+  | "traderepublic_portal_refresh"
+  | "tfbank_refresh"
+  | "capitalcom_refresh";
+
 export interface EquatePlusManualInputDocument {
   id: string;
   source?: "equateplus" | string;
@@ -721,42 +728,46 @@ export async function markDocumentInboxItemDecision(
   });
 }
 
-export async function requestQuoteSync(db: Firestore, requestedBy?: string | null) {
-  const commandRef = doc(db, "automationCommands", "sync_quotes_manual");
+export async function requestAutomationCommand(
+  db: Firestore,
+  commandId: string,
+  type: AutomationCommandType,
+  requestedBy?: string | null,
+) {
+  const commandRef = doc(db, "automationCommands", commandId);
   await setDoc(commandRef, {
-    type: "sync_quotes",
+    type,
     status: "REQUESTED",
     requestedBy: requestedBy ?? null,
     requestedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function requestQuoteSync(db: Firestore, requestedBy?: string | null) {
+  await requestAutomationCommand(db, "sync_quotes_manual", "sync_quotes", requestedBy);
 }
 
 export async function requestTradeRepublicPortalRefresh(db: Firestore, requestedBy?: string | null) {
-  const commandRef = doc(db, "automationCommands", "traderepublic_portal_refresh");
-  await setDoc(commandRef, {
-    type: "traderepublic_portal_refresh",
-    status: "REQUESTED",
-    requestedBy: requestedBy ?? null,
-    requestedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  await requestAutomationCommand(db, "traderepublic_portal_refresh", "traderepublic_portal_refresh", requestedBy);
+}
+
+export async function loadAutomationCommand(
+  db: Firestore,
+  commandId: string,
+): Promise<AutomationCommandDocument | null> {
+  const snapshot = await getDoc(doc(db, "automationCommands", commandId));
+  if (!snapshot.exists()) return null;
+  return {
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<AutomationCommandDocument, "id">),
+  };
 }
 
 export async function loadQuoteSyncCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
-  const snapshot = await getDoc(doc(db, "automationCommands", "sync_quotes_manual"));
-  if (!snapshot.exists()) return null;
-  return {
-    id: snapshot.id,
-    ...(snapshot.data() as Omit<AutomationCommandDocument, "id">),
-  };
+  return loadAutomationCommand(db, "sync_quotes_manual");
 }
 
 export async function loadTradeRepublicPortalCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
-  const snapshot = await getDoc(doc(db, "automationCommands", "traderepublic_portal_refresh"));
-  if (!snapshot.exists()) return null;
-  return {
-    id: snapshot.id,
-    ...(snapshot.data() as Omit<AutomationCommandDocument, "id">),
-  };
+  return loadAutomationCommand(db, "traderepublic_portal_refresh");
 }

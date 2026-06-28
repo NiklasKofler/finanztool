@@ -57,6 +57,10 @@ export interface PortfolioPosition {
   source: string;
   name: string;
   category?: string | null;
+  assetClass?: string | null;
+  assetClassLabel?: string | null;
+  assetClassConfidence?: "high" | "medium" | "low" | string | null;
+  assetClassSource?: string | null;
   isin?: string | null;
   wkn?: string | null;
   quantity?: number | null;

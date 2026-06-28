@@ -10,12 +10,12 @@ deactivate_obsolete_agent() {
   rm -f "$HOME/Library/LaunchAgents/$label.plist"
 }
 
-deactivate_obsolete_agent "com.niklas.finanztool.capitalcom-import"
 deactivate_obsolete_agent "com.niklas.finanztool.traderepublic-mail"
 deactivate_obsolete_agent "com.niklas.finanztool.traderepublic-manual-exports"
 
 npm run install:bitget-agent
 npm run install:bitget-ledger-agent
+npm run install:capitalcom-agent
 npm run install:flatex-agent
 npm run install:ginmon-agent
 npm run install:bank-accounts-agent

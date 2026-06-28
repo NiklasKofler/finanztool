@@ -244,6 +244,42 @@
   color: #66716e;
 }
 
+.metric-card__breakdown {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 0;
+  border-top: 1px solid rgba(210, 219, 216, 0.82);
+  padding: 12px 0 0;
+}
+
+.metric-card__breakdown div {
+  min-width: 0;
+}
+
+.metric-card__breakdown dt {
+  overflow: hidden;
+  color: #66716e;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.metric-card__breakdown dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #17201e;
+  font-size: 0.93rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .metric-card--system {
   display: flex;
   flex-direction: column;
@@ -302,8 +338,16 @@
 }
 
 .alert-list__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   border-left: 3px solid #d2a13c;
   padding-left: 10px;
+}
+
+.alert-list__item-main {
+  min-width: 0;
 }
 
 .alert-list__item--error {
@@ -322,12 +366,47 @@
 }
 
 .alert-list__item span,
+.alert-list__item em,
 .health-ok {
   display: block;
   margin-top: 3px;
   color: #687572;
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+.alert-list__item em {
+  color: #a13a1b;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.alert-list__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid #d7e8e2;
+  border-radius: 8px;
+  background: #f7fbf8;
+  color: #245d50;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.alert-list__action:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.alert-list__action svg {
+  width: 13px;
+  height: 13px;
 }
 
 .panel {
@@ -2145,12 +2224,29 @@
     font-size: 0.72rem;
   }
 
+  .metric-card__breakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 10px;
+    margin-top: 9px;
+    padding-top: 9px;
+  }
+
+  .metric-card__breakdown dt {
+    font-size: 0.56rem;
+  }
+
+  .metric-card__breakdown dd {
+    font-size: 0.78rem;
+  }
+
   .alert-list {
     gap: 6px;
     margin-top: 8px;
   }
 
   .alert-list__item {
+    flex-direction: column;
+    gap: 6px;
     padding-left: 7px;
   }
 
@@ -2159,9 +2255,17 @@
   }
 
   .alert-list__item span,
+  .alert-list__item em,
   .health-ok {
     font-size: 0.7rem;
     line-height: 1.25;
+  }
+
+  .alert-list__action {
+    align-self: flex-start;
+    min-height: 28px;
+    font-size: 0.68rem;
+    padding: 0 8px;
   }
 
   .section-heading {

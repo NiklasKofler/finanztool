@@ -18,6 +18,58 @@ Wichtig:
 2. Quellen mit stabiler Automatisierung vor manuellen Sonderfaellen
 3. Erst saubere Datenbasis, dann feinere Bewertungen und spaeter KI
 
+## Dashboard-Datenvertrag
+
+Bevor neue Dashboards gebaut werden, muessen sie aus einer einheitlichen
+Dashboard-Datenbasis lesen. Diese Schicht liegt in
+`app/src/dashboard/dashboardSources.ts`.
+
+Regeln:
+
+- Eine Quelle kann fuer Dashboards `bereit`, `leer akzeptiert`,
+  `nicht-blockierend auffaellig`, `blockierend` oder `pausiert` sein.
+- Operative Fehler bleiben Fehler in der Health-/Agentenlogik, auch wenn sie
+  ein Dashboard fachlich nicht blockieren.
+- Capital.com und Trading 212 sind aktuell optionale beziehungsweise
+  leere Quellen und duerfen Standard-Dashboards nicht blockieren.
+- bank99 und N26 sind wegen geringem Wert und strengem API-Limit sichtbar,
+  aber nicht dashboard-blockierend.
+- Die sichtbare Quellenabdeckung im ersten Dashboard zaehlt alle integrierten
+  Quellen. Optional/leere Quellen werden nicht herausgerechnet, sondern als
+  leer akzeptiert markiert.
+- Die Kachel `Aktive Quellen` ist eine Quellen-/Health-Abdeckung: Eine Quelle
+  zaehlt aktiv, wenn sie operativ gesund ist und nicht blockiert ist. Ein
+  aktueller Wert von 0 EUR macht eine Quelle nicht inaktiv, solange Agent/API
+  `OK` sind.
+- Operative Fehler aus `systemHealth/current` zaehlen gegen die betroffene
+  Quelle. Doppelte Fehler derselben Quelle werden im Fehlerzaehler angezeigt,
+  reduzieren `Aktive Quellen` aber nur einmal.
+- Reparierbare Health-Alerts duerfen Aktionsbuttons erhalten. Diese schreiben
+  nur einen Eintrag nach `automationCommands`; der Mac-Studio-Command-Runner
+  fuehrt dann den passenden lokalen Agenten aus.
+- Die Kern-Dashboards duerfen starten, sobald Flatex, Trade Republic,
+  Ginmon, Intergold, Bitget, VBV, EquatePlus und Bankkonten eine verwertbare
+  Sicht liefern.
+- Die GUI zeigt die Quellenabdeckung direkt im ersten Vermoegens-Dashboard,
+  bevor spaeter Performance-, Allokations-, Kosten- und Risiko-Dashboards
+  darauf aufbauen.
+- Allokations- und Positions-Dashboards verwenden die normalisierte
+  `Assetklasse`, nicht die rohe Broker-Kategorie. Die Rohkategorie bleibt
+  gespeichert und darf fuer Parser, Suche, Debugging und Tooltips genutzt
+  werden, ist aber nicht die sichtbare Auswertungsdimension. Spaetere Agents
+  und Backfills sollen die Felder `assetClass`, `assetClassLabel`,
+  `assetClassConfidence` und `assetClassSource` dauerhaft in Firestore
+  schreiben.
+- Assetklassen duerfen nur aus Positionsdaten, vorhandenen normalisierten
+  Feldern oder klaren Instrumentmerkmalen abgeleitet werden. Depotweite
+  Pauschalregeln wie `Ginmon = ETF` oder `Flatex = Aktie` sind nicht erlaubt,
+  weil einzelne Depots Cash, Aktien, ETFs, Fonds oder Sonderpositionen
+  enthalten koennen.
+- Eine rohe Kategorie `Wertpapier` wird fuer die sichtbare Tabelle nach
+  vorrangiger ETF-/Fonds-/Cash-Erkennung als `Aktie` behandelt. Das ist eine
+  UI-Normalisierung fuer aktuelle Einzelwerte und ersetzt nicht den spaeteren
+  Firestore-Backfill mit echten `assetClass*` Feldern.
+
 ## Architekturregel fuer Agents
 
 - Zuerst zaehlt die aktuelle Finanzlage in der App.
@@ -44,13 +96,13 @@ Wichtig:
 | Robo-Advisor | Ginmon | aktiv | hoch | API alle 5 Minuten, Dokumente taeglich | Headless Ginmon-API + Dokumentagent | Browser-/Dokumentabruf | produktiv |
 | Edelmetalle | Intergold | aktiv | hoch | Preise taeglich, Bestand bei neuem Beleg | Agent plus Preisimport | manueller Belegimport | teilweise produktiv |
 | Krypto | Bitget | aktiv | hoch | alle 5 Minuten | API | CSV/Datei nur Notfall | produktiv auf Mac Studio |
-| Mitarbeiteraktien | EquatePlus | zurueckgestellt | mittel | vorerst nur Kurs per Kurs-Sync, Eingabe bei Aenderung | manuelle Novartis-Anteile/Einstandswert EUR + SIX-Kurs | spaeter Dokumentparser falls Mehrdaten | im Datenbasis-Cleanup geparkt |
+| Mitarbeiteraktien | EquatePlus | aktiv einfach | mittel | Kurs per Kurs-Sync, Eingabe bei Aenderung | manuelle Novartis-Anteile/Einstandswert EUR + SIX-Kurs | spaeter Dokumentparser falls Mehrdaten | fuer Dashboard-Start ausreichend; keine Quelle `Quate Plus` |
 | Bank | Bankkonten via Enable Banking | aktiv | mittel | wenige Abrufe pro Tag, bank99/N26 max. 2/Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Erste/Sparkasse, Revolut, PayPal, N26 und bank99 angebunden; N26/bank99 strikt limitiert |
-| Kreditkarte | Amazon Visa | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent/Abrechnung | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
-| Kreditkarte | George Visa | zurueckgestellt | mittel | spaeter pruefen | Portal/PDF/CSV falls verfuegbar | manueller Export | pausiert; Erste/George-PSD2 liefert aktuell keine Kreditkarte |
-| Kreditkarte | TF Bank Kreditkarte | zurueckgestellt | mittel | bestehender Saldo darf sichtbar bleiben | spaeter Portal-Agent mit SMS-TAN | manueller Portalcheck | im Datenbasis-Cleanup geparkt |
+| Kreditkarte | Amazon Visa | aktiv einfach | mittel | Saldo/Kreditlinie stuendlich | Portal-Agent | manueller Portalcheck | fuer Dashboard-Start ausreichend; Details/Abrechnung spaeter |
+| Kreditkarte | George Visa | pausiert | niedrig | keine | kein belastbarer Weg verfuegbar | manuell falls Loesung entsteht | aktuell keine Loesung; Erste/George-PSD2 liefert keine Kreditkarte |
+| Kreditkarte | TF Bank Kreditkarte | aktiv einfach | mittel | Saldo/Kreditlinie alle 3 Stunden | Portal-Agent mit SMS-TAN | manueller Portalcheck | fuer Dashboard-Start ausreichend; Details/Abrechnung spaeter |
 | Bank | Revolut | aktiv | mittel | wenige Abrufe pro Tag | read-only Open Banking ueber Enable Banking | Export oder manueller Eintrag | Session aktiv, Saldo importiert, API liefert aktuell keine Umsaetze |
-| Broker | Trading 212 | wird angebunden | mittel | Snapshot alle 5 Minuten, History stuendlich | read-only Trading-212 Public API | CSV-Report-API spaeter fuer Interest-/Kontrollreports | Agent vorbereitet; API-Key/Secret noch lokal hinterlegen |
+| Broker | Trading 212 | aktiv | mittel | Snapshot alle 5 Minuten, History stuendlich | read-only Trading-212 Public API | CSV-Report-API spaeter fuer Interest-/Kontrollreports | angebunden; aktuell nur Cash relevant |
 | Trading | Capital.com | derzeit inaktiv | niedrig | bei Reaktivierung taeglich | Export/API falls verfuegbar | manuell | LaunchAgent pausiert |
 | Vorsorge | Betriebliche Altersvorsorge | passiv | niedrig | monatlich bis quartalsweise | manueller Eintrag in der App | manueller Belegimport | entschieden |
 
@@ -391,16 +443,19 @@ Aktuelle Hauptquellen:
 
 ## Empfohlene Umsetzungsreihenfolge
 
-### Phase 1 - Datenbasis der Kernquellen schliessen
+### Phase 1 - Dashboard-Vertrag und Datenqualitaet
 
-1. Flatex-Dokumentfakten in `transactions`, `ledgerEntries`, `costEvents`
-   und `incomeEvents` normalisieren
-2. Trade-Republic-Portal-/Tax-/Transaction-Fakten normalisieren
-3. Ginmon-Dokumentfakten je Depot und Produkt in Events ueberfuehren
-4. Intergold-Belege als `sourceDocuments`, `sourceDocumentFacts` und
-   Metall-`transactions` nachziehen
-5. Bitget-Ledger-Kategorien und Kosten-/Ertragsnormalisierung auditieren
-6. Bankkonten ohne Kreditkarten fuer Ausgaben-/Kostenanalyse stabilisieren
+1. Datenqualitaetsuebersicht bauen: je Quelle letzter Datenstand,
+   letzter Agentlauf, Status, Wert, Positionen, Transaktionen, Kosten und
+   Ertraege.
+2. Dashboard-Datenvertrag festlegen:
+   `sourceSummaries`, `sourcePositions`, `priceHistory`, `ledgerEntries`,
+   `costEvents`, `incomeEvents`, `agentStatus` und `systemHealth`.
+3. Importumfang fuer ersten Dashboard-Ausbau einfrieren:
+   alle aktuell vorhandenen Quellen sind ausreichend angebunden; George Visa
+   bleibt pausiert, weil keine Loesung verfuegbar ist.
+4. bank99/N26 nur beobachten, aber nicht blockieren: beide sind klein und
+   strikt limitiert.
 
 ### Phase 2 - Agenten effizient halten
 
@@ -413,18 +468,23 @@ Aktuelle Hauptquellen:
 
 ### Phase 3 - Dashboards
 
-1. Erst nach geschlossener Datenbasis Vermoegens-, Cash-, Kosten- und
-   Performance-Dashboards bauen
-2. Datenluecken je Quelle sichtbar anzeigen
-3. KI-Ueberwachung erst auf normalisierten Events aufsetzen
+1. Vermoegensuebersicht: Gesamtwert, Cash, Kredit, Depotwert, Tagesaenderung.
+2. Allokation: Quelle, Assetklasse, Waehrung, Einzelposition.
+3. Performance: G/V absolut/prozentual, Tagesveraenderung, Verlauf.
+4. Kosten/Ertraege: Fees, Steuern, Zinsen, Dividenden, Cashback/Bonus.
+5. Risiko/Transparenz: Datenstand, Quelle, Warnstatus und fehlende Daten.
+6. KI-Ueberwachung erst auf normalisierten Events und sichtbarer
+   Datenqualitaet aufsetzen.
 
 ### Phase 4 - Zurueckgestellte Quellen
 
-1. Kreditkarten-Umsaetze/Abrechnungen fuer Amazon Visa, TF Bank und George
-   Visa wieder aufnehmen
-2. EquatePlus-Dokumentparser nur ergaenzen, wenn echte Dokumente relevante
-   Zusatzdaten liefern
-3. optionale Quellen wie Trading 212, Capital.com
+1. George Visa nur wieder aufnehmen, falls ein belastbarer Weg entsteht.
+2. Kreditkarten-Abrechnungen/Detailtransaktionen fuer Amazon Visa und TF Bank
+   nur nachziehen, wenn sie fuer Kosten-/Abo-Dashboards gebraucht werden.
+3. EquatePlus-Dokumentparser nur ergaenzen, wenn echte Dokumente relevante
+   Zusatzdaten liefern.
+4. Capital.com bleibt beobachtbar, aber aktuell bei 0 und nicht
+   dashboard-blockierend.
 
 ## Wichtigste offene Entscheidungen
 
@@ -453,3 +513,22 @@ Zusatzregel Datenhaltung:
 - Aktuelle Werte muessen in `sourcePositions`/`sourceSummaries` landen.
 - Bewegungen, Kosten, Zinsen, Steuern und Dokumentfakten muessen historisch in
   den kanonischen Collections gespeichert werden.
+
+Zusatzregel Warnsystem und Reparatur:
+
+- `systemHealth/current` ist die zentrale Wahrheit fuer operative Fehler und
+  Warnungen.
+- Quellenkarten muessen Health-Fehler derselben Quelle uebernehmen; es darf
+  keine Quelle gleichzeitig in der Karte `OK` und oben im Systemstatus `Fehler`
+  sein.
+- `Aktive Quellen` zaehlt eindeutige Quellen, nicht einzelne Fehlermeldungen.
+  Mehrere Fehler derselben Quelle ziehen nur eine aktive Quelle ab.
+- Reparierbare Fehler sollen direkt in der Warnliste eine Aktion anbieten,
+  z. B. Trade-Republic-Portal-Refresh, TF-Bank-Refresh oder
+  Capital.com-Refresh.
+- TF Bank bekommt bei TAN-Problemen eine eigene Debugspur. Abgesendete TANs
+  werden nur als Hash lokal gemerkt, damit ein bereits verbrauchter SMS-Code
+  nie erneut verwendet wird. Feste Zusatzwartezeiten bleiben standardmaessig
+  deaktiviert; der Agent akzeptiert nur neue und nicht verwendete Codes.
+- Capital.com ist wieder als 5-Minuten-LaunchAgent aktiv. Stale-Fehler bei
+  Capital.com bedeuten kuenftig API-/Agentproblem, nicht mehr "Agent fehlt".

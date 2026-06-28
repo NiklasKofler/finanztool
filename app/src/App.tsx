@@ -35,6 +35,7 @@ import {
   loadBankLedgerEntries,
   loadDocumentInboxItems,
   loadEquatePlusManualInput,
+  loadAutomationCommand,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
@@ -42,6 +43,7 @@ import {
   loadTradeRepublicPortalCommand,
   loadUiPreferences,
   markDocumentInboxItemDecision,
+  requestAutomationCommand,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
   saveEquatePlusManualInput,
@@ -54,8 +56,9 @@ import {
   type SourceSummaryDocument,
   type SourceSummaryVbvAccountInformation,
 } from "./firebase/sourceSummaries";
+import { normalizePositionAssetClass } from "./domain/assetClasses";
 import { sourceOverviews } from "./domain/seedData";
-import type { PortfolioPosition, SourceOverview, SystemHealth } from "./domain/types";
+import type { PortfolioPosition, SourceOverview, SystemAlert, SystemHealth } from "./domain/types";
 
 const currencyFormatter = new Intl.NumberFormat("de-AT", {
   style: "currency",
@@ -105,12 +108,30 @@ type PositionSortKey =
   | "quantity"
   | "quote"
   | "cost"
-  | "category"
+  | "assetClass"
   | "updatedAt";
 type PositionSortDirection = "asc" | "desc";
 type PositionSortState = { key: PositionSortKey; direction: PositionSortDirection };
+type PortfolioValueBreakdown = {
+  depotValue: number;
+  cashValue: number;
+  creditLine: number;
+  usedCredit: number;
+  uninvestedCash: number;
+};
+type AlertRepairAction = {
+  id: "traderepublic" | "tfbank" | "capitalcom";
+  label: string;
+  commandId: string;
+  commandType: "traderepublic_portal_refresh" | "tfbank_refresh" | "capitalcom_refresh";
+};
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
 const sourceOrderStorageKey = "finanztool-source-order";
+const documentAlertIds = new Set([
+  "unclassified_documents",
+  "unknown_document_facts",
+  "traderepublic_portal_unresolved_document_failures",
+]);
 
 function loadStoredExpandedSections(): UiExpandedSections {
   if (typeof window === "undefined") return {};
@@ -286,6 +307,43 @@ function getTradeRepublicPortalButtonLabel(
   if (/telefon|land|login/i.test(message)) return "Login";
   if (/portal|snapshot|portfolio|transaction|download/i.test(message)) return "Liest Portal";
   return "Läuft";
+}
+
+function getAlertRepairAction(alert: SystemAlert): AlertRepairAction | null {
+  const text = `${alert.id} ${alert.source ?? ""} ${alert.title} ${alert.message}`.toLowerCase();
+  if (/traderepublic|trade republic/.test(text)) {
+    return {
+      id: "traderepublic",
+      label: "Trade Republic aktualisieren",
+      commandId: "traderepublic_portal_refresh",
+      commandType: "traderepublic_portal_refresh",
+    };
+  }
+  if (/tfbank|tf bank/.test(text)) {
+    return {
+      id: "tfbank",
+      label: "TF Bank neu starten",
+      commandId: "tfbank_manual_refresh",
+      commandType: "tfbank_refresh",
+    };
+  }
+  if (/capitalcom|capital\.com/.test(text)) {
+    return {
+      id: "capitalcom",
+      label: "Capital aktualisieren",
+      commandId: "capitalcom_manual_refresh",
+      commandType: "capitalcom_refresh",
+    };
+  }
+  return null;
+}
+
+function getRepairActionLabel(action: AlertRepairAction, status: CommandRequestStatus) {
+  if (status === "requesting") return "Anfrage";
+  if (status === "requested") return "Wartet";
+  if (status === "running") return "Läuft";
+  if (status === "error") return "Erneut starten";
+  return action.label;
 }
 
 function formatCurrency(value?: number | null) {
@@ -580,6 +638,40 @@ function getTrackedTotal(sources: SourceOverview[]) {
   return sources.reduce((sum, source) => sum + (getSourceDisplayValue(source) ?? 0), 0);
 }
 
+function getPortfolioValueBreakdown(sources: SourceOverview[], bankAccounts: SourceSummaryAccount[]) {
+  const totals: PortfolioValueBreakdown = {
+    depotValue: 0,
+    cashValue: 0,
+    creditLine: 0,
+    usedCredit: 0,
+    uninvestedCash: 0,
+  };
+
+  for (const account of bankAccounts) {
+    const accountValue = account.currentValue ?? account.cashValue ?? null;
+    if (isCreditCardAccount(account) && typeof accountValue === "number" && accountValue < 0) {
+      totals.usedCredit += Math.abs(accountValue);
+    }
+  }
+
+  for (const source of sources) {
+    const depotValue = getSourceDepotDisplayValue(source);
+    const cashValue = source.cashValue;
+    const creditLine = source.creditLineEstimate;
+    const usedCredit = getUsedCreditValue(source);
+
+    if (typeof depotValue === "number") totals.depotValue += depotValue;
+    if (typeof cashValue === "number") {
+      totals.cashValue += cashValue;
+      if (cashValue > 0) totals.uninvestedCash += cashValue;
+    }
+    if (typeof creditLine === "number") totals.creditLine += creditLine;
+    if (typeof usedCredit === "number") totals.usedCredit += usedCredit;
+  }
+
+  return totals;
+}
+
 function getSourceDisplayValue(source: SourceOverview) {
   if (typeof source.netValue === "number") return source.netValue;
   if (typeof source.depotValue === "number" && typeof source.cashValue === "number") {
@@ -588,15 +680,59 @@ function getSourceDisplayValue(source: SourceOverview) {
   return source.currentValue;
 }
 
-function isTrackedSourceActive(source: SourceOverview) {
+function hasFinancialFootprint(source: SourceOverview) {
   return Math.abs(getSourceDisplayValue(source) ?? 0) >= 0.005 || (source.positionCount ?? 0) > 0;
 }
 
-function isBankAccountSourceUnitActive(account: SourceSummaryAccount) {
-  return (
-    Math.abs(account.currentValue ?? 0) >= 0.005 ||
-    (account.transactionCount ?? 0) > 0
-  );
+function isDocumentAlert(alert: SystemAlert) {
+  return documentAlertIds.has(alert.id);
+}
+
+function sourceAliasesForHealth(sourceId: string) {
+  return new Set([sourceId, ...getSourceAgentStatusIds(sourceId)]);
+}
+
+function getWorstHealthAlertForSource(sourceId: string, health?: SystemHealth | null) {
+  if (!health?.alerts?.length) return null;
+  const aliases = sourceAliasesForHealth(sourceId);
+  const alerts = health.alerts
+    .filter((alert) => !isDocumentAlert(alert))
+    .filter((alert) => alert.source && aliases.has(alert.source));
+  if (!alerts.length) return null;
+  return [...alerts].sort((left, right) => {
+    const leftRank = left.severity === "error" ? 2 : left.severity === "warning" ? 1 : 0;
+    const rightRank = right.severity === "error" ? 2 : right.severity === "warning" ? 1 : 0;
+    return rightRank - leftRank;
+  })[0];
+}
+
+function getHealthStatusForSource(sourceId: string, health?: SystemHealth | null): AgentUiStatus | undefined {
+  const alert = getWorstHealthAlertForSource(sourceId, health);
+  if (!alert) return undefined;
+  if (alert.severity === "error") return "FEHLER";
+  if (alert.severity === "warning") return "WARNUNG";
+  return undefined;
+}
+
+function getHealthMessageForSource(sourceId: string, health?: SystemHealth | null) {
+  const alert = getWorstHealthAlertForSource(sourceId, health);
+  if (!alert) return null;
+  return `${alert.title}: ${alert.message}`;
+}
+
+function isSourceUnitHealthy(source: SourceOverview) {
+  return source.status !== "blocked" && source.agentStatus !== "FEHLER" && source.agentStatus !== "WARNUNG";
+}
+
+function isBankAccountSourceUnitHealthy(
+  account: SourceSummaryAccount,
+  agentStatuses: Record<string, AgentStatusDocument>,
+  health?: SystemHealth | null,
+) {
+  const accountStatus = getBankAccountEffectiveStatus(account, agentStatuses);
+  const healthStatus = getHealthStatusForSource(getBankAccountAgentId(account), health);
+  const status = getWorseStatus(accountStatus, healthStatus);
+  return status !== "FEHLER" && status !== "WARNUNG";
 }
 
 function getUsedCreditValue(source: SourceOverview) {
@@ -1009,11 +1145,15 @@ function dateToMillis(value?: string | Date | { toDate: () => Date } | { seconds
 }
 
 function getPositionSearchText(position: PortfolioPosition) {
+  const assetClassInfo = normalizePositionAssetClass(position);
   return [
     position.name,
     position.isin,
     position.wkn,
     position.category,
+    position.assetClass,
+    position.assetClassLabel,
+    assetClassInfo.label,
     position.source,
     position.accountId,
     position.accountNumber,
@@ -1083,8 +1223,8 @@ function getPositionTableSortValue(position: PortfolioPosition, key: PositionSor
       return position.quotePriceEur ?? position.quotePrice ?? 0;
     case "cost":
       return performance.cost ?? 0;
-    case "category":
-      return normalizeSearchText(position.category);
+    case "assetClass":
+      return normalizeSearchText(normalizePositionAssetClass(position).label);
     case "updatedAt":
       return dateToMillis(getPositionDisplayUpdatedAt(position));
     default:
@@ -1721,6 +1861,7 @@ function PositionsTable({
           const dayChange = getPositionDayChange(position);
           const dayTone = getPerformanceTone(dayChange.value);
           const statusMeta = getPositionStatusMeta(position);
+          const assetClassInfo = normalizePositionAssetClass(position);
           const itemKey = `${sectionKey ?? "positions"}:position:${position.id}`;
           const positionCode = [position.isin, position.wkn].filter(Boolean).join(" / ");
           const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
@@ -1742,7 +1883,7 @@ function PositionsTable({
                 />
                 <span className="mobile-position-card__main">
                   <strong>{position.name}</strong>
-                  <span>{positionCode || formatOptionalText(position.category)}</span>
+                  <span>{positionCode || assetClassInfo.label}</span>
                 </span>
                 <span className="mobile-position-card__value">
                   {privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}
@@ -1792,8 +1933,8 @@ function PositionsTable({
                   </strong>
                 </span>
                 <span>
-                  <em>Kategorie</em>
-                  <strong>{formatOptionalText(position.category)}</strong>
+                  <em>Assetklasse</em>
+                  <strong title={position.category ?? undefined}>{assetClassInfo.label}</strong>
                 </span>
                 <span>
                   <em>Status</em>
@@ -1825,7 +1966,7 @@ function PositionsTable({
               {renderSortHeader("Menge", "quantity")}
               {renderSortHeader("Kurs", "quote")}
               {renderSortHeader("Einstand", "cost", "numeric")}
-              {renderSortHeader("Kategorie", "category")}
+              {renderSortHeader("Assetklasse", "assetClass")}
               {renderSortHeader("Aktualisiert", "updatedAt")}
             </tr>
           </thead>
@@ -1835,6 +1976,7 @@ function PositionsTable({
               const performanceTone = getPerformanceTone(positionPerformance.performance);
               const dayChange = getPositionDayChange(position);
               const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
+              const assetClassInfo = normalizePositionAssetClass(position);
 
               return (
                 <tr className={isSearchMatch ? "positions-table__row--search-match" : undefined} key={position.id}>
@@ -1865,7 +2007,7 @@ function PositionsTable({
                   <td className="numeric">
                     {privacyMode ? maskMoney(positionPerformance.cost) : formatMoney(positionPerformance.cost, positionPerformance.currency)}
                   </td>
-                  <td>{formatOptionalText(position.category)}</td>
+                  <td title={position.category ?? undefined}>{assetClassInfo.label}</td>
                   <td className="positions-table__updated-at">
                     {formatUpdatedAt(getPositionDisplayUpdatedAt(position))}
                   </td>
@@ -2105,6 +2247,8 @@ function App() {
   const [tradeRepublicPortalRequestStatus, setTradeRepublicPortalRequestStatus] =
     useState<CommandRequestStatus>("idle");
   const [tradeRepublicPortalRequestError, setTradeRepublicPortalRequestError] = useState<string | null>(null);
+  const [repairRequestStatuses, setRepairRequestStatuses] = useState<Record<string, CommandRequestStatus>>({});
+  const [repairRequestErrors, setRepairRequestErrors] = useState<Record<string, string | null>>({});
   const [pendingDocumentDecisionId, setPendingDocumentDecisionId] = useState<string | null>(null);
   const [pendingDocumentOpenId, setPendingDocumentOpenId] = useState<string | null>(null);
   const [documentDecisionError, setDocumentDecisionError] = useState<string | null>(null);
@@ -2518,6 +2662,59 @@ function App() {
     }
   }
 
+  async function handleRequestRepairAction(action: AlertRepairAction) {
+    if (action.id === "traderepublic") {
+      await handleRequestTradeRepublicPortalRefresh();
+      return;
+    }
+
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    try {
+      setRepairRequestErrors((current) => ({ ...current, [action.id]: null }));
+      setRepairRequestStatuses((current) => ({ ...current, [action.id]: "requesting" }));
+      await requestAutomationCommand(services.db, action.commandId, action.commandType, authUser.email);
+      setRepairRequestStatuses((current) => ({ ...current, [action.id]: "requested" }));
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4000));
+        const [command, loadedAgentStatuses, health] = await Promise.all([
+          loadAutomationCommand(services.db, action.commandId),
+          loadAgentStatuses(services.db),
+          loadSystemHealth(services.db),
+        ]);
+        setAgentStatuses(loadedAgentStatuses);
+        setSystemHealth(health);
+        if (command?.status === "RUNNING") {
+          setRepairRequestStatuses((current) => ({ ...current, [action.id]: "running" }));
+          continue;
+        }
+        if (command?.status === "DONE") {
+          await refreshPortfolioData();
+          setRepairRequestStatuses((current) => ({ ...current, [action.id]: "idle" }));
+          return;
+        }
+        if (command?.status === "ERROR") {
+          await refreshPortfolioData().catch(() => undefined);
+          setRepairRequestErrors((current) => ({
+            ...current,
+            [action.id]: command.errorMessage ?? `${action.label} ist fehlgeschlagen.`,
+          }));
+          setRepairRequestStatuses((current) => ({ ...current, [action.id]: "error" }));
+          return;
+        }
+      }
+      await refreshPortfolioData().catch(() => undefined);
+      setRepairRequestStatuses((current) => ({ ...current, [action.id]: "idle" }));
+    } catch (error) {
+      setRepairRequestErrors((current) => ({
+        ...current,
+        [action.id]: error instanceof Error ? error.message : `${action.label} konnte nicht angefordert werden.`,
+      }));
+      setRepairRequestStatuses((current) => ({ ...current, [action.id]: "error" }));
+    }
+  }
+
   const valuationSummaries = useMemo<Record<string, SourceSummaryDocument>>(() => {
     if (tradeRepublicDisplayMode !== "current") return sourceSummaries;
     const tradeRepublicCurrentSummary = getTradeRepublicCurrentSummary(sourceSummaries.traderepublic);
@@ -2565,15 +2762,22 @@ function App() {
         const summary = valuationSummaries[source.summaryId ?? source.id];
         const agentStatus = getSourceAgentStatus(source.id, agentStatuses);
         const agentDisplayStatus = getAgentDisplayStatus(agentStatus);
+        const sourceHealthStatus = getHealthStatusForSource(source.id, systemHealth);
+        const sourceHealthMessage = getHealthMessageForSource(source.id, systemHealth);
         const bankAccounts = source.id === "bank_accounts" ? (summary?.accounts ?? []) : [];
         const bankAccountStatus = getBankAccountsAggregateStatus(bankAccounts, agentStatuses);
         const bankAccountMessage =
           bankAccountStatus && bankAccountStatus !== "OK"
             ? getBankAccountsAggregateMessage(bankAccounts, agentStatuses)
             : null;
-        const combinedAgentStatus = getWorseStatus(agentDisplayStatus, bankAccountStatus);
+        const combinedAgentStatus = getWorseStatus(
+          getWorseStatus(agentDisplayStatus, bankAccountStatus),
+          sourceHealthStatus,
+        );
         const combinedAgentMessage =
-          bankAccountMessage && getStatusRank(bankAccountStatus) >= getStatusRank(agentDisplayStatus)
+          sourceHealthMessage && getStatusRank(sourceHealthStatus) >= getStatusRank(getWorseStatus(agentDisplayStatus, bankAccountStatus))
+            ? sourceHealthMessage
+            : bankAccountMessage && getStatusRank(bankAccountStatus) >= getStatusRank(agentDisplayStatus)
             ? bankAccountMessage
             : agentStatus?.message ?? bankAccountMessage;
         const positionStats = positionStatsBySource[source.id];
@@ -2656,7 +2860,7 @@ function App() {
             source.positionCount,
         };
       }),
-    [agentStatuses, positionStatsBySource, valuationSummaries],
+    [agentStatuses, positionStatsBySource, systemHealth, valuationSummaries],
   );
 
   const trackedTotal = getTrackedTotal(sources);
@@ -2692,18 +2896,24 @@ function App() {
     portfolioPreviousValue && portfolioDayChange ? portfolioDayChange / portfolioPreviousValue : null;
   const portfolioPerformanceTone = getPerformanceTone(portfolioPerformance);
   const bankAccountSourceUnits = valuationSummaries.bank_accounts?.accounts ?? [];
+  const activeBankAccountSourceUnits = bankAccountSourceUnits.filter((account) =>
+    isBankAccountSourceUnitHealthy(account, agentStatuses, systemHealth),
+  ).length;
+  const totalBankAccountSourceUnits = Math.max(bankAccountSourceUnits.length, 1);
+  const portfolioValueBreakdown = getPortfolioValueBreakdown(sources, bankAccountSourceUnits);
   const regularSourceUnits = sources.filter((source) => source.id !== "bank_accounts");
+  const activeRegularSourceUnits = regularSourceUnits.filter(isSourceUnitHealthy).length;
   const activeSourceUnits =
-    regularSourceUnits.filter(isTrackedSourceActive).length +
-    bankAccountSourceUnits.filter(isBankAccountSourceUnitActive).length;
-  const totalSourceUnits = regularSourceUnits.length + Math.max(bankAccountSourceUnits.length, 1);
+    activeRegularSourceUnits +
+    activeBankAccountSourceUnits;
+  const totalSourceUnits = regularSourceUnits.length + totalBankAccountSourceUnits;
   const displaySources = useMemo(
     () =>
       sortSourcesByOrder(
         sources.filter(
           (source) =>
             source.status !== "blocked" ||
-            isTrackedSourceActive(source),
+            hasFinancialFootprint(source),
         ),
         sourceOrder,
       ),
@@ -2733,13 +2943,8 @@ function App() {
     }
     return grouped;
   }, [displayedPositions]);
-  const documentAlertIds = new Set([
-    "unclassified_documents",
-    "unknown_document_facts",
-    "traderepublic_portal_unresolved_document_failures",
-  ]);
   const visibleAlerts = (systemHealth?.alerts ?? []).filter(
-    (alert) => documentInboxItems.length > 0 || !documentAlertIds.has(alert.id),
+    (alert) => documentInboxItems.length > 0 || !isDocumentAlert(alert),
   );
   const visibleErrorCount = visibleAlerts.filter((alert) => alert.severity === "error").length;
   const visibleWarningCount = visibleAlerts.filter((alert) => alert.severity === "warning").length;
@@ -2823,6 +3028,40 @@ function App() {
               <small>{formatSignedPercent(portfolioDayChangePct)}</small>
             </span>
           </div>
+          <dl className="metric-card__breakdown" aria-label="Vermoegensaufteilung">
+            <div>
+              <dt>Depotwerte</dt>
+              <dd>
+                {privacyMode ? maskMoney(portfolioValueBreakdown.depotValue) : formatCurrency(portfolioValueBreakdown.depotValue)}
+              </dd>
+            </div>
+            <div>
+              <dt>Cash</dt>
+              <dd>
+                {privacyMode ? maskMoney(portfolioValueBreakdown.cashValue) : formatCurrency(portfolioValueBreakdown.cashValue)}
+              </dd>
+            </div>
+            <div>
+              <dt>Kreditlinien</dt>
+              <dd>
+                {privacyMode ? maskMoney(portfolioValueBreakdown.creditLine) : formatCurrency(portfolioValueBreakdown.creditLine)}
+              </dd>
+            </div>
+            <div>
+              <dt>Genutzter Kredit</dt>
+              <dd>
+                {privacyMode ? maskMoney(portfolioValueBreakdown.usedCredit) : formatCurrency(portfolioValueBreakdown.usedCredit)}
+              </dd>
+            </div>
+            <div>
+              <dt>Freies Cash</dt>
+              <dd>
+                {privacyMode
+                  ? maskMoney(portfolioValueBreakdown.uninvestedCash)
+                  : formatCurrency(portfolioValueBreakdown.uninvestedCash)}
+              </dd>
+            </div>
+          </dl>
           <span>Depots, Krypto, Edelmetalle und Vorsorgewerte</span>
         </article>
 
@@ -2858,12 +3097,40 @@ function App() {
           </div>
           {visibleAlerts.length ? (
             <ul className="alert-list">
-              {visibleAlerts.map((alert) => (
-                <li className={`alert-list__item alert-list__item--${alert.severity}`} key={alert.id}>
-                  <strong>{alert.title}</strong>
-                  <span>{alert.message}</span>
-                </li>
-              ))}
+              {visibleAlerts.map((alert) => {
+                const repairAction = getAlertRepairAction(alert);
+                const repairStatus = repairAction
+                  ? repairAction.id === "traderepublic"
+                    ? tradeRepublicPortalRequestStatus
+                    : repairRequestStatuses[repairAction.id] ?? "idle"
+                  : "idle";
+                const isRepairRunning = ["requesting", "requested", "running"].includes(repairStatus);
+                const repairError = repairAction
+                  ? repairAction.id === "traderepublic"
+                    ? tradeRepublicPortalRequestError
+                    : repairRequestErrors[repairAction.id]
+                  : null;
+                return (
+                  <li className={`alert-list__item alert-list__item--${alert.severity}`} key={alert.id}>
+                    <div className="alert-list__item-main">
+                      <strong>{alert.title}</strong>
+                      <span>{alert.message}</span>
+                      {repairError ? <em>{repairError}</em> : null}
+                    </div>
+                    {repairAction ? (
+                      <button
+                        type="button"
+                        className="alert-list__action"
+                        onClick={() => void handleRequestRepairAction(repairAction)}
+                        disabled={isRepairRunning}
+                      >
+                        <RefreshCcw aria-hidden="true" />
+                        <span>{getRepairActionLabel(repairAction, repairStatus)}</span>
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : systemHealth?.status === "OK" ? (
             <span className="health-ok">Alle Prüfungen aktuell ohne Warnung.</span>

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -40,8 +41,13 @@ const messagesTanHelperPath = path.join(__dirname, "read-messages-tan.swift");
 const messagesDbPath = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const runtimeDir = path.join(__dirname, "..", "runtime");
 const debugLogPath = path.join(runtimeDir, "tfbank-debug.ndjson");
+const submittedTanRegistryPath = path.join(runtimeDir, "tfbank-submitted-tans.json");
 const debugEnabled = process.env.TFBANK_DEBUG !== "0";
 const messagesTanPickMode = process.env.TFBANK_MESSAGES_TAN_PICK ?? "last";
+const tanSettleMs = Math.max(
+  0,
+  Number.parseInt(readArg("--tan-settle-ms") ?? process.env.TFBANK_TAN_SETTLE_MS ?? "0", 10) || 0,
+);
 let messagesDbDisabledForRun = false;
 
 function maskTan(value) {
@@ -95,6 +101,52 @@ function normalizeTan(value) {
   return tan.length >= 4 ? tan : null;
 }
 
+function tanHash(value) {
+  const tan = normalizeTan(value);
+  if (!tan) return null;
+  return createHash("sha256").update(`tfbank:${tan}`).digest("hex");
+}
+
+async function readSubmittedTanRegistry() {
+  try {
+    const raw = await fs.readFile(submittedTanRegistryPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.submittedTans) ? parsed.submittedTans : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    await debugTfBank("submitted_tan_registry_error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+async function isSubmittedTan(tan) {
+  const hash = tanHash(tan);
+  if (!hash) return false;
+  const submittedTans = await readSubmittedTanRegistry();
+  return submittedTans.some((entry) => entry.hash === hash);
+}
+
+async function rememberSubmittedTan(tan, { channel } = {}) {
+  const normalizedTan = normalizeTan(tan);
+  const hash = tanHash(normalizedTan);
+  if (!hash) return;
+  await fs.mkdir(runtimeDir, { recursive: true });
+  const submittedTans = await readSubmittedTanRegistry();
+  const next = [
+    {
+      hash,
+      suffix: normalizedTan.slice(-2),
+      channel: channel ?? null,
+      submittedAt: new Date().toISOString(),
+    },
+    ...submittedTans.filter((entry) => entry.hash !== hash),
+  ].slice(0, 40);
+  await fs.writeFile(submittedTanRegistryPath, JSON.stringify({ submittedTans: next }, null, 2));
+  await debugTfBank("submitted_tan_remembered", { tan: maskTan(normalizedTan), channel });
+}
+
 function isTanRelatedText(text) {
   return /tan|sms|einmalpasswort|otp|code|ungueltig|ungültig|falsch|abgelaufen|fehlgeschlagen|verbraucht/i.test(
     String(text ?? ""),
@@ -112,7 +164,8 @@ function createTanLoginRetryError(message, { cause, stateText } = {}) {
 
 function isTanRetryableError(error) {
   if (!error) return false;
-  if (error.code === "WAITING_TAN" || error.code === "TAN_NOT_RECEIVED") return false;
+  if (error.code === "WAITING_TAN") return false;
+  if (error.code === "TAN_NOT_RECEIVED") return true;
   if (error.retryableTan || error.code === "TAN_LOGIN_RETRYABLE") return true;
   return isTanRelatedText(error.message) || isTanRelatedText(error.stateText);
 }
@@ -121,6 +174,11 @@ async function readTanFromFile(tanFilePath) {
   try {
     const tan = normalizeTan(await fs.readFile(tanFilePath, "utf8"));
     if (!tan) return null;
+    if (await isSubmittedTan(tan)) {
+      await fs.unlink(tanFilePath).catch(() => {});
+      await debugTfBank("tan_file_already_submitted", { tan: maskTan(tan), tanFilePath });
+      return null;
+    }
     await fs.unlink(tanFilePath).catch(() => {});
     await debugTfBank("tan_file_detected", { tan: maskTan(tan), tanFilePath });
     return tan;
@@ -247,7 +305,11 @@ async function waitForTan({ previousMessagesTan } = {}) {
   const deadline = Date.now() + waitSeconds * 1000;
   while (Date.now() < deadline) {
     const messagesTan = await readTanFromMessages();
-    if (messagesTan && messagesTan !== previousMessagesTan) {
+    if (messagesTan && await isSubmittedTan(messagesTan)) {
+      await debugTfBank("tan_messages_already_submitted", {
+        tan: maskTan(messagesTan),
+      });
+    } else if (messagesTan && messagesTan !== previousMessagesTan) {
       await debugTfBank("tan_messages_detected_new", {
         tan: maskTan(messagesTan),
         previousTan: maskTan(previousMessagesTan),
@@ -493,9 +555,14 @@ async function ensureTfBankLogin(page) {
       error.code = "TAN_NOT_RECEIVED";
       throw error;
     }
+    if (tanSettleMs > 0) {
+      await debugTfBank("tan_settle_wait", { tan: maskTan(tan), settleMs: tanSettleMs });
+      await page.waitForTimeout(tanSettleMs);
+    }
     await debugTfBank("login_tan_submit", { tan: maskTan(tan), inputVisible: true });
     await clearAndType(otpInput, tan);
     const submitButton = page.getByRole("button", { name: /Einloggen|Weiter|Bestätigen|Bestaetigen/i }).first();
+    await rememberSubmittedTan(tan, { channel: "tfbank_portal_submit" });
     await submitButton.click({ timeout: 8000 }).catch(async () => {
       const fallbackButton = page.locator("button").last();
       await fallbackButton.evaluate((button) => button.click());
@@ -655,6 +722,7 @@ try {
     maxTanLoginAttempts,
     tanWaitSeconds: readArg("--tan-wait-seconds") ?? process.env.TFBANK_TAN_WAIT_SECONDS ?? "60",
     tanPollMs: readArg("--tan-poll-ms") ?? process.env.TFBANK_TAN_POLL_MS ?? "1000",
+    tanSettleMs,
     messagesTanPickMode,
     messagesUiFallbackEnabled,
   });

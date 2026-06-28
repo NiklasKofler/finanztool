@@ -23,4 +23,4 @@ launchctl bootout "gui/$UID/com.niklas.finanztool.capitalcom-import" 2>/dev/null
 launchctl bootstrap "gui/$UID" "$plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.capitalcom-import"
 
-echo "[ok] Capital.com-Import laeuft stuendlich."
+echo "[ok] Capital.com-Import laeuft alle 5 Minuten."

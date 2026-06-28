@@ -48,6 +48,34 @@ function runTradeRepublicPortalRefresh() {
   if (result.status !== 0) throw new Error(`Trade-Republic-Portal-Refresh fehlgeschlagen: Exit ${result.status}`);
 }
 
+function runTfBankRefresh() {
+  const result = spawnSync(process.execPath, [
+    path.join(__dirname, "sync-tfbank-local.mjs"),
+    "--write",
+    "--headless",
+  ], {
+    cwd: path.resolve(__dirname, ".."),
+    env: {
+      ...process.env,
+      TFBANK_DEBUG: process.env.TFBANK_DEBUG ?? "1",
+      TFBANK_MESSAGES_UI_FALLBACK: "1",
+      TFBANK_TAN_WAIT_SECONDS: process.env.TFBANK_TAN_WAIT_SECONDS ?? "120",
+      TFBANK_TAN_SETTLE_MS: process.env.TFBANK_TAN_SETTLE_MS ?? "0",
+    },
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`TF-Bank-Refresh fehlgeschlagen: Exit ${result.status}`);
+}
+
+function runCapitalComRefresh() {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "import-capitalcom-local.mjs")], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`Capital.com-Refresh fehlgeschlagen: Exit ${result.status}`);
+}
+
 const firestore = new FirestoreRest({
   projectId,
   accessToken: await getFirebaseCliAccessToken(),
@@ -60,17 +88,21 @@ const [commands, statuses] = await Promise.all([
 const quoteAgentStatus = statuses.find((status) => status.id === "quotes");
 const manualRefreshStatus = statuses.find((status) => status.id === "manual_refresh");
 const tradeRepublicPortalStatus = statuses.find((status) => status.id === "traderepublic_portal");
+const tfBankStatus = statuses.find((status) => status.id === "tfbank");
+const capitalComStatus = statuses.find((status) => status.id === "capitalcom");
 if (
   quoteAgentStatus?.status === "RUNNING" ||
   manualRefreshStatus?.status === "RUNNING" ||
-  tradeRepublicPortalStatus?.status === "RUNNING"
+  tradeRepublicPortalStatus?.status === "RUNNING" ||
+  tfBankStatus?.status === "RUNNING" ||
+  capitalComStatus?.status === "RUNNING"
 ) {
   console.log("[info] Aktualisierung laeuft bereits. Offene Befehle bleiben fuer den naechsten Lauf liegen.");
   process.exit(0);
 }
 const pendingCommands = commands
   .filter((command) =>
-    ["sync_quotes", "full_refresh", "traderepublic_portal_refresh"].includes(command.type) &&
+    ["sync_quotes", "full_refresh", "traderepublic_portal_refresh", "tfbank_refresh", "capitalcom_refresh"].includes(command.type) &&
     command.status === "REQUESTED")
   .sort((left, right) => {
     const leftDate = parseDate(left.requestedAt)?.getTime() ?? 0;
@@ -96,6 +128,8 @@ for (const command of pendingCommands) {
     if (command.type === "sync_quotes") runQuoteSync();
     if (command.type === "full_refresh") runFullRefresh();
     if (command.type === "traderepublic_portal_refresh") runTradeRepublicPortalRefresh();
+    if (command.type === "tfbank_refresh") runTfBankRefresh();
+    if (command.type === "capitalcom_refresh") runCapitalComRefresh();
     const completedAt = new Date();
     await firestore.setDocument("automationCommands", command.id, {
       ...command,

@@ -54,12 +54,53 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   schnell liefern statt unnoetig alte Historie erneut zu pruefen.
 - Prioritaet der Datenhaltung: aktuelle Finanzlage, dann Preis-/Kurshistorie,
   dann Kosten, Steuern, Zinsen und Produktdetails.
-- Entscheidung 2026-06-27: Vor Dashboards wird zuerst die Datenbasis der
-  Kernquellen bereinigt. EquatePlus und Kreditkarten sind fuer diesen
-  Datenbasis-Cleanup zurueckgestellt. Bestehende Basiswerte duerfen sichtbar
-  bleiben, aber keine weitere Portal-/Dokument-/Transaktionsautomatisierung
-  dafuer, bis Flatex, Trade Republic, Ginmon, Intergold, Bitget, VBV und
-  Bankkonten ohne Kreditkarten sauber normalisiert sind.
+- Entscheidung 2026-06-28: Fuer den ersten Dashboard-Ausbau gilt der
+  Importumfang als ausreichend vollstaendig. Es gibt keine separate Quelle
+  `Quate Plus`; gemeint ist ausschliesslich `EquatePlus`. George Visa bleibt
+  pausiert, weil aktuell kein belastbarer API-/Portal-/Dokumentweg verfuegbar
+  ist. Amazon Visa, TF Bank, Trading 212, EquatePlus und die vorhandenen
+  Bankkonten sind als Basis angebunden. bank99 und N26 sind wegen geringem
+  Vermoegensanteil und API-Limits fuer den Dashboard-Start nicht kritisch und
+  koennen spaeter nach dem naechsten geplanten 06:00-/16:00-Lauf nachgeprueft
+  werden.
+- Entscheidung 2026-06-28: In der sichtbaren Portfolio- und Dashboard-Logik
+  wird nicht mehr die rohe Broker-Kategorie angezeigt, sondern eine
+  normalisierte `Assetklasse`. Die Rohkategorie bleibt im Hintergrund fuer
+  Nachvollziehbarkeit, Suche, Tooltips und Parser-/Backfill-Arbeit erhalten.
+  Fuer die sichtbare Sicht gelten vorerst: `Aktie`, `ETFs`, `Fonds`, `Cash`,
+  `Krypto`, `Metalle`, `Vorsorge`, `CFD`, `Bankkonto`, `Kreditkarte`,
+  `Private Equity` und `Sonstiges`. Wichtig: Die Normalisierung darf nicht
+  pauschal aus dem Depotnamen abgeleitet werden. Ginmon, Flatex, Trade
+  Republic und Trading 212 duerfen also nicht als ganze Quelle zu ETF oder
+  Aktie geraten werden. Cash wird positionsgenau erkannt, EquatePlus/Novartis
+  zaehlt als `Aktie`. Eine rohe Kategorie `Wertpapier` wird nach
+  ETF-/Fonds-/Cash-Erkennung als `Aktie` angezeigt, weil das fuer die
+  aktuellen Flatex-Einzelpositionen die richtige sichtbare Einordnung ist.
+  Unklare Positionen ohne solche Hinweise bleiben sichtbar als `Sonstiges`,
+  bis die Agents/Backfills
+  `assetClass`, `assetClassLabel`, `assetClassConfidence` und
+  `assetClassSource` dauerhaft schreiben.
+- Befund 2026-06-28: TF-Bank-Agent ist technisch geladen, scheitert aber im
+  LaunchAgent-Kontext am automatischen TAN-Lesen aus Messages
+  (`authorization denied` auf `~/Library/Messages/chat.db`). Das Terminal kann
+  die Messages-DB lesen, der LaunchAgent aber nicht. Der TF-Bank-LaunchAgent
+  nutzt deshalb ab jetzt zusaetzlich den Messages-UI-Fallback und wartet 120s.
+  `TAN_NOT_RECEIVED` ist wieder retrybar, damit die maximal 5 Loginversuche
+  tatsaechlich greifen. Der alte Firestore-Fehler bleibt sichtbar, bis ein
+  neuer TF-Bank-Lauf erfolgreich abgeschlossen ist.
+- Update 2026-06-28: TF Bank bleibt instabil. Debug zeigt, dass der Agent
+  neue SMS-Codes erkennt, das Portal diese aber wiederholt als
+  `Einmalpasswort aus SMS ungueltig` ablehnt. Gleichzeitig ist der
+  Messages-UI-Fallback nicht immer stabil (`NO_TFBANK_TAN_CODE_MATCH` in
+  separatem Debuglauf), waehrend direkter SQLite-Zugriff im Terminal Codes
+  findet. Fuer die App gibt es jetzt einen Reparaturbutton, der den
+  TF-Bank-Agenten ueber `automationCommands/tfbank_manual_refresh` startet.
+  Sicherer Fallback bleibt die TAN-Datei `~/.finanztool/tfbank-tan.txt`, falls
+  automatisches Messages-Lesen wieder fehlschlaegt.
+- Korrektur 2026-06-28: Capital.com war im Health-Check nur veraltet, nicht
+  API-defekt. `check:capitalcom` war erfolgreich, anschliessend wurde
+  `import:capitalcom:local` ausgefuehrt. Aktueller Stand: Live-Konto,
+  `0,00 EUR`, 0 offene Positionen, 0 History-Eintraege.
 - Entscheidung 2026-06-27: Kosten, Steuern, Ertraege und Transaktionen werden
   nicht in eine neue parallele Wahrheit verschoben, sondern in den bestehenden
   Collections `transactions`, `ledgerEntries`, `costEvents` und
@@ -280,8 +321,8 @@ Update 2026-06-27:
   - Amazon Visa
   - TF Bank Kreditkarte
 - Bankkonten/Kreditkarten, noch offen:
-  - George Visa
-- Trading 212, technisch vorbereitet; API-Key/Secret noch lokal hinterlegen
+  - George Visa bleibt ohne aktuelle Loesung pausiert
+- Trading 212 ist angebunden und derzeit nur mit Cash relevant
 
 ## Aktueller Produktivstand
 
@@ -306,11 +347,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 01:51 CEST
+- Stand: 2026-06-28 18:16 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `6b5c596`
-- Handoff-Commit: `610ac14`
-- Firebase Deploy: 2026-06-28 01:51 CEST erfolgreich
+- Ausgangscommit: `389707b`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -2301,10 +2342,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - Positionshistorie-Dry-Run fuer 2026-06-27 verarbeitet 72 Positionen,
     49 davon mit Vortagsbasis.
 - Health:
-  - Aktuell `WARNUNG`, 0 Fehler.
-  - Bekannte Warnungen: Bankkonten teilweise nicht abrufbar,
-    Capital.com API-Key ungueltig/zurueckgestellt, Flatex Wartungsseite,
-    9 Ginmon Info-/Rechtsdokumente bewusst offen.
+  - Urspruenglich `WARNUNG`, 0 Fehler.
+  - Update 2026-06-28: Health kann wegen bewusst limitierter Bankkonten
+    `FEHLER` zeigen. Das blockiert den Dashboard-Start nicht, solange der
+    letzte bekannte Geldstand erhalten bleibt und die betroffenen Konten
+    fachlich klein sind.
+  - bank99 und N26 zusammen sind fuer den ersten Dashboard-Ausbau nicht
+    kritisch; nach naechstem planmaessigen Lauf pruefen.
 - Entscheidung:
   - Naechster Abschnitt ist `Dashboards und GUI`.
   - Dashboards duerfen fuer Vermoegen, Depotwert, Cash/Kredit, Performance,
@@ -2616,10 +2660,24 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   aggregierte Warnung, die Detailbearbeitung liegt im Dokumenten-Postfach.
 - `Aktive Quellen` zaehlt Bankkonten und Kreditkarten als eigene Quellen, nicht
   nur die Sammelkarte `bank_accounts`.
-- Aktiv bedeutet: Die Quelle traegt aktuell wirklich zur Finanzlage bei
-  (Wert ungleich 0, Positionen oder Umsaetze). Dadurch sind aktuell 11/13
-  Quellen aktiv: Capital.com ist 0/zurueckgestellt, Amazon Visa hat aktuell
-  0 Saldo und keine Umsaetze, bleibt aber konfigurierte Quelle.
+- Aktiv bedeutet in dieser Kachel: Die integrierte Quelle ist operativ gesund
+  nutzbar (`OK`) und nicht blockiert. Der aktuelle Wert ist dafuer nicht
+  entscheidend. 0-EUR-Quellen wie Capital.com ohne offene Positionen oder
+  Amazon Visa ohne aktuellen Saldo zaehlen aktiv, sobald ihr Agent/API-Status
+  gesund ist. Die Kachel ist damit eine Quellen-/Health-Abdeckung, keine
+  Wertabdeckung.
+- Operative Health-Fehler einer Quelle muessen in die Quellenzaehlung
+  einfliessen, auch wenn die Depotkarte aus dem letzten erfolgreichen Snapshot
+  noch Daten anzeigen kann. Beispiel: Capital.com kann 0 EUR und letzte Daten
+  anzeigen, ist aber nicht aktiv, wenn der Agent veraltet ist.
+- Mehrere Fehler derselben Quelle zaehlen im Systemstatus als mehrere
+  Fehlermeldungen, fuer `Aktive Quellen` aber nur als eine inaktive Quelle.
+  Beispiel 2026-06-28: `tfbank` hatte `Agent FEHLER` und `stale_agent_tfbank`,
+  zaehlt aber nur einmal gegen die Quellenabdeckung.
+- Reparierbare Fehler/Warnungen im zentralen Systemstatus bekommen eine
+  direkte Aktion, wenn ein sicherer Automationsbefehl existiert:
+  Trade Republic startet den Portal-Refresh, TF Bank den TF-Bank-Agenten und
+  Capital.com den Capital-Agenten.
 - Dokumentwarnungen im Health-Header muessen knapp bleiben, z. B.
   `9 unbekannte Dokumente im Postfach.`. Die konkrete Liste und Details
   gehoeren ins Dokumenten-Postfach.
@@ -2884,3 +2942,93 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `sync:health` danach: 2 Fehler, 0 Warnungen
     - bank99: Tageslimit erreicht
     - N26: separater limitierter Agent wartet auf ersten geplanten Lauf
+
+## 2026-06-28 Dashboard-Datenvertrag gestartet
+
+- Vor den eigentlichen Dashboards gibt es jetzt einen expliziten
+  Dashboard-Datenvertrag in `app/src/dashboard/dashboardSources.ts`.
+- Zweck:
+  - Jede Quelle wird fuer Dashboards einheitlich als verwertbar,
+    leer-akzeptiert, nicht-blockierend auffaellig, blockierend oder pausiert
+    klassifiziert.
+  - Dashboards sollen nicht direkt aus einzelnen Sonderfaellen in `App.tsx`
+    heraus gebaut werden, sondern aus dieser normalisierten Sicht.
+- Fachliche Regel:
+  - Standard-Dashboards starten mit den Kernquellen:
+    Flatex, Trade Republic, Ginmon, Intergold, Bitget, VBV, EquatePlus und
+    Bankkonten.
+  - Capital.com und Trading 212 duerfen leer oder pausiert sein und blockieren
+    die Standard-Dashboards nicht.
+  - bank99 und N26 bleiben sichtbar, sind aber wegen niedrigem Wert und
+    strengem Abruflimit nicht dashboard-blockierend.
+  - Operative Fehler bleiben trotzdem in der normalen Fehlerlogik sichtbar.
+- In der App gibt es eine kompakte Anzeige `Dashboard-Datenbasis`, damit vor
+  dem Bau der Dashboards klar ist, ob die Kernquellen verwertbar sind.
+- Korrektur:
+  - Die Quellenabdeckung soll im ersten Dashboard selbst sichtbar sein, nicht
+    als separate technische Vorpruefung.
+  - Die Quellenzaehlung bleibt in der bestehenden oberen Systemkachel
+    `Aktive Quellen`.
+  - Das erste Dashboard zeigt keine Quellenchips mehr, weil dieselbe
+    Information direkt darunter in der Depotuebersicht sichtbar ist.
+  - Der Unterschied zwischen `Kernquelle blockiert` und `Quelle leer/optional`
+    bleibt im Datenvertrag erhalten, wird aber nicht als kleinere sichtbare
+    Quellenzahl missverstanden.
+
+## 2026-06-28 Vermoegens-Cockpit Punkt 2
+
+- In der oberen Karte `Erfasster Wert` gibt es jetzt eine kompakte
+  Aggregation ueber alle Quellen:
+  - Depotwerte
+  - Cash
+  - Kreditlinien
+  - genutzter Kredit
+  - freies Cash
+- Die Summen lesen aus der bestehenden Depotkarten-Logik:
+  - `getSourceDepotDisplayValue()` fuer Depotwerte inklusive Flatex-Kreditlogik
+  - `cashValue` fuer Cash
+  - `creditLineEstimate` fuer Kreditlinien
+  - negativer Flatex-Cash plus negative Kreditkartenwerte fuer genutzten Kredit
+- Die Anzeige ist nur eine Aufschluesselung; `Erfasster Wert` bleibt die
+  fuehrende Gesamtsumme.
+- Keine Quellenchips in dieser Karte: Quellenzaehlung und Quellenliste bleiben
+  in `Aktive Quellen` beziehungsweise in der Depotuebersicht.
+
+## 2026-06-28 Warnsystem und Reparaturaktionen
+
+- `Aktive Quellen` ist eine eindeutige Quellenzaehlung:
+  - 9 Depot-/Brokerquellen ohne `bank_accounts`
+  - 7 einzelne Bank-/Kreditkartenquellen
+  - Summe aktuell 16 Quellen
+- Operative Health-Fehler werden auf die betroffene Quelle gemappt. Mehrere
+  Fehler fuer dieselbe Quelle zaehlen als mehrere Fehler im Systemstatus, aber
+  nur einmal gegen `Aktive Quellen`.
+- Aktueller Health-Stand nach Pruefung:
+  - vor Capital-Reaktivierung: 3 Fehler, 2 betroffene Quellen
+    (`tfbank`, `capitalcom`), erwartete Anzeige `14/16`
+  - nach Capital-Reaktivierung: 2 Fehler, 1 betroffene Quelle (`tfbank`),
+    erwartete Anzeige `15/16`
+- Die Depotkarten ziehen den Quellenstatus jetzt aus `systemHealth/current`
+  mit. Dadurch darf Capital.com nicht mehr oben rot und in der Karte gruen
+  erscheinen.
+- Reparierbare Health-Meldungen erhalten einen Button in der Warnliste:
+  - Trade Republic: Portal-Refresh
+  - TF Bank: TF-Bank-Agent manuell starten
+  - Capital.com: Capital-Agent manuell starten
+- TF Bank:
+  - Debug bestaetigt: SMS-Codes werden erkannt und eingetippt, aber das Portal
+    antwortet mit `Einmalpasswort aus SMS ungueltig`.
+  - Der Agent merkt abgesendete TANs lokal als SHA-256-Hashes in
+    `automation/runtime/tfbank-submitted-tans.json` und ignoriert bereits
+    verwendete Codes bei spaeteren Laeufen. Die TAN selbst wird nicht im Klartext
+    gespeichert.
+  - Feste Zusatzwartezeit vor dem Absenden ist standardmaessig deaktiviert
+    (`TFBANK_TAN_SETTLE_MS=0`). Die Erkennung bleibt ereignisorientiert:
+    alter Code vor Login merken, danach nur neue und nicht verwendete Codes
+    akzeptieren.
+  - Debug-Hilfe: `npm --prefix automation run debug:tfbank`.
+- Capital.com:
+  - Ursache fuer stale Health war kein API-Problem, sondern ein nicht
+    installierter LaunchAgent nach frueherer Zurueckstellung.
+  - `com.niklas.finanztool.capitalcom-import` ist wieder installiert und
+    laeuft alle 5 Minuten (`StartInterval=300`).

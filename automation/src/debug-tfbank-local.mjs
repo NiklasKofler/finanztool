@@ -94,6 +94,7 @@ const dbError = latest(runRows, "messages_db_error");
 const uiRead = latest(runRows, "messages_tan_read");
 const uiError = latest(runRows, "messages_tan_error");
 const tanNotReceived = latest(runRows, "tan_not_received");
+const tanSettleWait = latest(runRows, "tan_settle_wait");
 const submit = latest(runRows, "login_tan_submit");
 const attemptError = latest(runRows, "login_attempt_error");
 const dbProbe = !dbRead && !dbError ? await probeMessagesDatabase() : null;
@@ -141,6 +142,9 @@ if (uiRead) {
 }
 
 if (submit) {
+  if (tanSettleWait) {
+    printLine("Wartezeit vor TAN", `${tanSettleWait.settleMs ?? "-"} ms`);
+  }
   printLine("Eingetippt", `TAN ${submit.tan}`);
 }
 
