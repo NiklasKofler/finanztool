@@ -122,6 +122,34 @@ export interface PortfolioPosition {
   valuationMethod?: string | null;
 }
 
+export interface PositionPriceHistoryEntry {
+  id: string;
+  historyKey?: string | null;
+  instrumentId?: string | null;
+  positionId?: string | null;
+  positionIds?: string[] | null;
+  source?: string | null;
+  sources?: string[] | null;
+  name?: string | null;
+  category?: string | null;
+  isin?: string | null;
+  wkn?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  priceEur?: number | null;
+  currency?: string | null;
+  currentValue?: number | null;
+  currentValueEur?: number | null;
+  quotePrice?: number | null;
+  quoteCurrency?: string | null;
+  provider?: string | null;
+  asOf?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  fetchedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
+  historyDate?: string | null;
+  status?: string | null;
+}
+
 export interface SystemAlert {
   id: string;
   severity: "error" | "warning" | "info";

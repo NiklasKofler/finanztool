@@ -9,7 +9,7 @@ import {
   where,
   type Firestore,
 } from "firebase/firestore";
-import type { PortfolioPosition, SystemHealth } from "../domain/types";
+import type { PortfolioPosition, PositionPriceHistoryEntry, SystemHealth } from "../domain/types";
 
 export interface SourceSummaryDocument {
   source: string;
@@ -532,6 +532,15 @@ const numericPositionFields = [
   "avgCostPerShare",
 ] as const;
 
+const numericPriceHistoryFields = [
+  "quantity",
+  "price",
+  "priceEur",
+  "currentValue",
+  "currentValueEur",
+  "quotePrice",
+] as const;
+
 function parseMaybeNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return value;
@@ -547,6 +556,14 @@ function normalizePosition(doc: PortfolioPosition): PortfolioPosition {
   return normalized as unknown as PortfolioPosition;
 }
 
+function normalizePriceHistoryEntry(doc: PositionPriceHistoryEntry): PositionPriceHistoryEntry {
+  const normalized: Record<string, unknown> = { ...doc };
+  for (const field of numericPriceHistoryFields) {
+    normalized[field] = parseMaybeNumber(normalized[field]);
+  }
+  return normalized as unknown as PositionPriceHistoryEntry;
+}
+
 export async function loadSourcePositions(db: Firestore): Promise<PortfolioPosition[]> {
   const snapshot = await getDocs(collection(db, "sourcePositions"));
   return snapshot.docs.map((doc) =>
@@ -555,6 +572,26 @@ export async function loadSourcePositions(db: Firestore): Promise<PortfolioPosit
       ...(doc.data() as Omit<PortfolioPosition, "id">),
     }),
   );
+}
+
+function historyDateId(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export async function loadPositionPriceHistory(db: Firestore): Promise<PositionPriceHistoryEntry[]> {
+  const earliest = new Date();
+  earliest.setFullYear(earliest.getFullYear() - 1);
+  const snapshot = await getDocs(
+    query(collection(db, "priceHistory"), where("historyDate", ">=", historyDateId(earliest))),
+  );
+  return snapshot.docs
+    .map((doc) =>
+      normalizePriceHistoryEntry({
+        id: doc.id,
+        ...(doc.data() as Omit<PositionPriceHistoryEntry, "id">),
+      }),
+    )
+    .filter((entry) => entry.status !== "ERROR");
 }
 
 export async function loadEquatePlusManualInput(

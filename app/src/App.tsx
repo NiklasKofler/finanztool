@@ -38,6 +38,7 @@ import {
   loadEquatePlusManualInput,
   loadAutomationCommand,
   loadHealthCheckCommand,
+  loadPositionPriceHistory,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
@@ -63,7 +64,13 @@ import {
 } from "./firebase/sourceSummaries";
 import { normalizePositionAssetClass } from "./domain/assetClasses";
 import { sourceOverviews } from "./domain/seedData";
-import type { PortfolioPosition, SourceOverview, SystemAlert, SystemHealth } from "./domain/types";
+import type {
+  PortfolioPosition,
+  PositionPriceHistoryEntry,
+  SourceOverview,
+  SystemAlert,
+  SystemHealth,
+} from "./domain/types";
 
 const currencyFormatter = new Intl.NumberFormat("de-AT", {
   style: "currency",
@@ -104,6 +111,16 @@ const sourceSortOrder = [
   "bank_accounts",
 ];
 const ownerEmail = "niklas.kofler@gmail.com";
+const dayInMillis = 24 * 60 * 60 * 1000;
+const priceChartRanges: Array<{ id: PriceChartRangeId; label: string; durationMs: number }> = [
+  { id: "1h", label: "1h", durationMs: 60 * 60 * 1000 },
+  { id: "1d", label: "Tag", durationMs: dayInMillis },
+  { id: "1w", label: "Woche", durationMs: 7 * dayInMillis },
+  { id: "1m", label: "Monat", durationMs: 31 * dayInMillis },
+  { id: "3m", label: "3M", durationMs: 92 * dayInMillis },
+  { id: "6m", label: "6M", durationMs: 183 * dayInMillis },
+  { id: "1y", label: "Jahr", durationMs: 366 * dayInMillis },
+];
 type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
 type EquatePlusSaveStatus = "idle" | "saving" | "saved" | "error";
 type EquatePlusDraft = { quantity: string; entryValueEur: string };
@@ -129,6 +146,13 @@ type PositionSortKey =
   | "updatedAt";
 type PositionSortDirection = "asc" | "desc";
 type PositionSortState = { key: PositionSortKey; direction: PositionSortDirection };
+type PriceChartRangeId = "1h" | "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
+type PriceChartPoint = {
+  id: string;
+  time: number;
+  value: number;
+  label: string;
+};
 type PortfolioValueBreakdown = {
   depotValue: number;
   cashValue: number;
@@ -1325,6 +1349,93 @@ function dateToMillis(value?: string | Date | { toDate: () => Date } | { seconds
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function safeHistoryId(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function positionHistoryKey(position: PortfolioPosition) {
+  return `position_${safeHistoryId(position.id)}`;
+}
+
+function historyEntryTime(entry: PositionPriceHistoryEntry) {
+  const explicitTime =
+    dateToMillis(entry.asOf) ||
+    dateToMillis(entry.fetchedAt) ||
+    dateToMillis(entry.updatedAt);
+  if (explicitTime) return explicitTime;
+  if (!entry.historyDate) return 0;
+  return dateToMillis(`${entry.historyDate}T22:00:00`);
+}
+
+function historyEntryValue(entry: PositionPriceHistoryEntry, position: PortfolioPosition) {
+  if (typeof entry.priceEur === "number") return entry.priceEur;
+  if (typeof entry.price === "number" && (!entry.currency || entry.currency.toUpperCase() === "EUR")) {
+    return entry.price;
+  }
+  if (typeof entry.currentValueEur === "number" && typeof entry.quantity === "number" && entry.quantity > 0) {
+    return entry.currentValueEur / entry.quantity;
+  }
+  if (typeof entry.currentValue === "number" && typeof entry.quantity === "number" && entry.quantity > 0) {
+    return entry.currentValue / entry.quantity;
+  }
+  if (typeof entry.currentValueEur === "number" && typeof position.quantity === "number" && position.quantity > 0) {
+    return entry.currentValueEur / position.quantity;
+  }
+  if (typeof entry.currentValue === "number" && typeof position.quantity === "number" && position.quantity > 0) {
+    return entry.currentValue / position.quantity;
+  }
+  return null;
+}
+
+function currentPositionChartPoint(position: PortfolioPosition): PriceChartPoint | null {
+  const value =
+    position.quotePriceEur ??
+    (position.quoteCurrency?.toUpperCase() === "EUR" ? position.quotePrice : null) ??
+    (typeof position.currentValue === "number" && typeof position.quantity === "number" && position.quantity > 0
+      ? position.currentValue / position.quantity
+      : null);
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const time = dateToMillis(getPositionDisplayUpdatedAt(position)) || Date.now();
+  return {
+    id: `${position.id}:current`,
+    time,
+    value,
+    label: "Aktuell",
+  };
+}
+
+function historyEntryMatchesPosition(entry: PositionPriceHistoryEntry, position: PortfolioPosition) {
+  if (entry.positionId === position.id) return true;
+  if (Array.isArray(entry.positionIds) && entry.positionIds.includes(position.id)) return true;
+  if (entry.historyKey === positionHistoryKey(position)) return true;
+  if (entry.instrumentId === positionHistoryKey(position)) return true;
+  if (position.isin && entry.isin === position.isin) return true;
+  return false;
+}
+
+function priceHistoryForPosition(
+  position: PortfolioPosition,
+  history: PositionPriceHistoryEntry[],
+) {
+  return history
+    .filter((entry) => historyEntryMatchesPosition(entry, position))
+    .map((entry): PriceChartPoint | null => {
+      const time = historyEntryTime(entry);
+      const value = historyEntryValue(entry, position);
+      if (!time || typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+      return {
+        id: entry.id,
+        time,
+        value,
+        label: entry.provider ?? entry.historyDate ?? "Historie",
+      };
+    })
+    .filter((point): point is PriceChartPoint => Boolean(point));
+}
+
 function getPositionSearchText(position: PortfolioPosition) {
   const assetClassInfo = normalizePositionAssetClass(position);
   return [
@@ -1467,6 +1578,101 @@ function getPositionAccountLabel(position: PortfolioPosition) {
     position.accountNumber?.trim() ||
     position.customerId?.trim() ||
     "Depot"
+  );
+}
+
+function formatChartMoney(value?: number | null, privacyMode = false) {
+  if (typeof value !== "number") return "—";
+  return privacyMode ? maskMoney(value) : formatCurrency(value);
+}
+
+function PositionPriceChart({
+  position,
+  history,
+  privacyMode,
+}: {
+  position: PortfolioPosition;
+  history: PriceChartPoint[];
+  privacyMode: boolean;
+}) {
+  const [rangeId, setRangeId] = useState<PriceChartRangeId>("1m");
+  const currentPoint = currentPositionChartPoint(position);
+  const points = useMemo(() => {
+    const combined = [...history, ...(currentPoint ? [currentPoint] : [])]
+      .sort((left, right) => left.time - right.time);
+    const deduplicated = combined.filter((point, index, allPoints) => {
+      const previous = allPoints[index - 1];
+      return !previous || previous.time !== point.time || previous.value !== point.value;
+    });
+    const latestTime = deduplicated.at(-1)?.time ?? Date.now();
+    const range = priceChartRanges.find((item) => item.id === rangeId) ?? priceChartRanges[3];
+    return deduplicated.filter((point) => point.time >= latestTime - range.durationMs);
+  }, [currentPoint, history, rangeId]);
+
+  const firstPoint = points[0] ?? null;
+  const latestPoint = points.at(-1) ?? null;
+  const deltaValue = firstPoint && latestPoint ? latestPoint.value - firstPoint.value : null;
+  const deltaPct = firstPoint && latestPoint && firstPoint.value ? (deltaValue ?? 0) / firstPoint.value : null;
+  const deltaTone = getPerformanceTone(deltaValue);
+  const values = points.map((point) => point.value);
+  const minValue = values.length ? Math.min(...values) : 0;
+  const maxValue = values.length ? Math.max(...values) : 0;
+  const valueSpread = maxValue - minValue || 1;
+  const firstTime = firstPoint?.time ?? 0;
+  const lastTime = latestPoint?.time ?? firstTime + 1;
+  const timeSpread = lastTime - firstTime || 1;
+  const chartPoints = points.map((point) => {
+    const x = points.length === 1 ? 50 : ((point.time - firstTime) / timeSpread) * 100;
+    const y = 34 - ((point.value - minValue) / valueSpread) * 28;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+
+  return (
+    <section className="position-price-chart" aria-label={`Kurschart ${position.name}`}>
+      <header className="position-price-chart__header">
+        <div className="position-price-chart__title">
+          <span>Kurschart</span>
+          <strong>{formatChartMoney(latestPoint?.value, privacyMode)}</strong>
+        </div>
+        <div className="position-price-chart__ranges" aria-label="Zeitraum waehlen">
+          {priceChartRanges.map((range) => (
+            <button
+              type="button"
+              key={range.id}
+              className={range.id === rangeId ? "is-active" : undefined}
+              onClick={() => setRangeId(range.id)}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
+      </header>
+      {points.length ? (
+        <>
+          <svg className="position-price-chart__svg" viewBox="0 0 100 38" preserveAspectRatio="none" role="img">
+            <title>Kursverlauf {position.name}</title>
+            <line x1="0" y1="35" x2="100" y2="35" />
+            {points.length > 1 ? (
+              <polyline points={chartPoints.join(" ")} />
+            ) : (
+              <circle cx="50" cy="18" r="1.8" />
+            )}
+          </svg>
+          <footer className="position-price-chart__footer">
+            <span>{points.length} Punkt{points.length === 1 ? "" : "e"}</span>
+            <strong className={`performance-cell--${deltaTone}`}>
+              {privacyMode ? maskSignedMoney(deltaValue) : formatSignedMoney(deltaValue)}
+              <small>{formatSignedPercent(deltaPct)}</small>
+            </strong>
+            <span>{latestPoint ? formatUpdatedAt(new Date(latestPoint.time)) : "—"}</span>
+          </footer>
+        </>
+      ) : (
+        <p className="position-price-chart__empty">
+          Fuer diesen Zeitraum ist noch keine Preis-Historie vorhanden.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -2016,6 +2222,7 @@ function BankAccountGroup({
 function PositionsTable({
   positions,
   privacyMode,
+  priceHistoryByPosition,
   sectionKey,
   isSectionOpen,
   onSectionToggle,
@@ -2023,6 +2230,7 @@ function PositionsTable({
 }: {
   positions: PortfolioPosition[];
   privacyMode: boolean;
+  priceHistoryByPosition?: Record<string, PriceChartPoint[]>;
   sectionKey?: string;
   isSectionOpen?: UiSectionOpenGetter;
   onSectionToggle?: UiSectionToggleHandler;
@@ -2073,6 +2281,7 @@ function PositionsTable({
           const itemKey = `${sectionKey ?? "positions"}:position:${position.id}`;
           const positionCode = [position.isin, position.wkn].filter(Boolean).join(" / ");
           const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
+          const positionHistory = priceHistoryByPosition?.[position.id] ?? [];
 
           return (
             <details
@@ -2153,6 +2362,11 @@ function PositionsTable({
                   <strong>{getQuoteProviderLabel(position) ?? "—"}</strong>
                 </span>
               </div>
+              <PositionPriceChart
+                position={position}
+                history={positionHistory}
+                privacyMode={privacyMode}
+              />
             </details>
           );
         }) : (
@@ -2185,14 +2399,24 @@ function PositionsTable({
               const dayChange = getPositionDayChange(position);
               const isSearchMatch = positionMatchesSearch(position, normalizedSearchQuery);
               const assetClassInfo = normalizePositionAssetClass(position);
+              const positionHistory = priceHistoryByPosition?.[position.id] ?? [];
+              const chartKey = `${sectionKey ?? "positions"}:position:${position.id}:chart`;
+              const isChartOpen = isSectionOpen?.(chartKey, false) ?? false;
 
-              return (
+              return [
                 <tr className={isSearchMatch ? "positions-table__row--search-match" : undefined} key={position.id}>
                   <td className="position-name-cell">
                     <strong>{position.name}</strong>
                     <span>
                       {[position.isin, position.wkn].filter(Boolean).join(" / ") || "—"}
                     </span>
+                    <button
+                      type="button"
+                      className="position-chart-toggle"
+                      onClick={() => onSectionToggle?.(chartKey, !isChartOpen, false)}
+                    >
+                      {isChartOpen ? "Chart ausblenden" : "Chart"}
+                    </button>
                   </td>
                   <td className="numeric">{privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}</td>
                   <td className={`numeric performance-cell performance-cell--${performanceTone}`}>
@@ -2219,8 +2443,19 @@ function PositionsTable({
                   <td className="positions-table__updated-at">
                     {formatUpdatedAt(getPositionDisplayUpdatedAt(position))}
                   </td>
-                </tr>
-              );
+                </tr>,
+                isChartOpen ? (
+                  <tr className="position-chart-row" key={`${position.id}:chart`}>
+                    <td colSpan={11}>
+                      <PositionPriceChart
+                        position={position}
+                        history={positionHistory}
+                        privacyMode={privacyMode}
+                      />
+                    </td>
+                  </tr>
+                ) : null,
+              ];
             }) : (
               <tr>
                 <td className="empty-position-row" colSpan={11}>
@@ -2499,6 +2734,7 @@ function App() {
   >({});
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatusDocument>>({});
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
+  const [positionPriceHistory, setPositionPriceHistory] = useState<PositionPriceHistoryEntry[]>([]);
   const [bankLedgerEntries, setBankLedgerEntries] = useState<BankLedgerEntryDocument[]>([]);
   const [documentInboxItems, setDocumentInboxItems] = useState<DocumentInboxItem[]>([]);
   const [equatePlusManualInput, setEquatePlusManualInput] =
@@ -2560,6 +2796,7 @@ function App() {
         setSourceSummaries({});
         setAgentStatuses({});
         setPositions([]);
+        setPositionPriceHistory([]);
         setBankLedgerEntries([]);
         setDocumentInboxItems([]);
         setEquatePlusManualInput(null);
@@ -2587,6 +2824,7 @@ function App() {
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadPositionPriceHistory(services.db),
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
@@ -2598,6 +2836,7 @@ function App() {
         summaries,
         loadedAgentStatuses,
         loadedPositions,
+        loadedPositionPriceHistory,
         loadedBankLedgerEntries,
         loadedDocumentInboxItems,
         loadedEquatePlusManualInput,
@@ -2609,6 +2848,7 @@ function App() {
         setSourceSummaries(summaries);
         setAgentStatuses(loadedAgentStatuses);
         setPositions(loadedPositions);
+        setPositionPriceHistory(loadedPositionPriceHistory);
         setBankLedgerEntries(loadedBankLedgerEntries);
         setDocumentInboxItems(loadedDocumentInboxItems);
         setEquatePlusManualInput(loadedEquatePlusManualInput);
@@ -2723,6 +2963,7 @@ function App() {
       summaries,
       loadedAgentStatuses,
       loadedPositions,
+      loadedPositionPriceHistory,
       loadedBankLedgerEntries,
       loadedDocumentInboxItems,
       loadedEquatePlusManualInput,
@@ -2733,6 +2974,7 @@ function App() {
       loadSourceSummaries(services.db),
       loadAgentStatuses(services.db),
       loadSourcePositions(services.db),
+      loadPositionPriceHistory(services.db),
       loadBankLedgerEntries(services.db),
       loadDocumentInboxItems(services.db),
       loadEquatePlusManualInput(services.db),
@@ -2743,6 +2985,7 @@ function App() {
     setSourceSummaries(summaries);
     setAgentStatuses(loadedAgentStatuses);
     setPositions(loadedPositions);
+    setPositionPriceHistory(loadedPositionPriceHistory);
     setBankLedgerEntries(loadedBankLedgerEntries);
     setDocumentInboxItems(loadedDocumentInboxItems);
     setEquatePlusManualInput(loadedEquatePlusManualInput);
@@ -3334,6 +3577,13 @@ function App() {
         }),
     [valuationPositions],
   );
+  const priceHistoryByPosition = useMemo(() => {
+    const grouped: Record<string, PriceChartPoint[]> = {};
+    for (const position of displayedPositions) {
+      grouped[position.id] = priceHistoryForPosition(position, positionPriceHistory);
+    }
+    return grouped;
+  }, [displayedPositions, positionPriceHistory]);
   const displayedPositionsBySource = useMemo(() => {
     const grouped: Record<string, PortfolioPosition[]> = {};
     for (const position of displayedPositions) {
@@ -4230,6 +4480,7 @@ function App() {
                               <PositionsTable
                                 positions={accountPositions}
                                 privacyMode={privacyMode}
+                                priceHistoryByPosition={priceHistoryByPosition}
                                 searchQuery={depotSearchQuery}
                                 sectionKey={`${sourceSectionKey}:account:${accountKey}:positions`}
                                 isSectionOpen={getUiSectionOpen}
@@ -4261,6 +4512,7 @@ function App() {
                         <PositionsTable
                           positions={sourcePositionsForCard}
                           privacyMode={privacyMode}
+                          priceHistoryByPosition={priceHistoryByPosition}
                           searchQuery={depotSearchQuery}
                           sectionKey={`${sourceSectionKey}:positions`}
                           isSectionOpen={getUiSectionOpen}

@@ -766,6 +766,145 @@
   font-size: 0.78rem;
 }
 
+.position-chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 7px;
+  border: 1px solid #cfe0da;
+  border-radius: 7px;
+  background: #f3faf7;
+  color: #185647;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.position-chart-toggle:hover {
+  border-color: #8ab6a8;
+  background: #e8f5f0;
+}
+
+.position-chart-row td {
+  border-bottom: 1px solid #dfe8e5;
+  background: #fbfdfc;
+  padding: 0;
+}
+
+.position-price-chart {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid #e7ecea;
+  background: linear-gradient(180deg, #fbfdfc, #ffffff);
+}
+
+.position-price-chart__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.position-price-chart__title {
+  display: grid;
+  gap: 2px;
+}
+
+.position-price-chart__title span,
+.position-price-chart__footer span {
+  color: #73807c;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.position-price-chart__title strong {
+  color: #17201f;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.position-price-chart__ranges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.position-price-chart__ranges button {
+  border: 1px solid #d8e6e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #42514d;
+  padding: 4px 8px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.position-price-chart__ranges button.is-active {
+  border-color: #105f4d;
+  background: #e8f5f0;
+  color: #105f4d;
+}
+
+.position-price-chart__svg {
+  width: 100%;
+  height: 86px;
+  overflow: visible;
+}
+
+.position-price-chart__svg line {
+  stroke: #e1ebe7;
+  stroke-width: 0.7;
+}
+
+.position-price-chart__svg polyline {
+  fill: none;
+  stroke: #0e7860;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.position-price-chart__svg circle {
+  fill: #0e7860;
+}
+
+.position-price-chart__footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.position-price-chart__footer strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 0.86rem;
+}
+
+.position-price-chart__footer small {
+  color: inherit;
+  font-size: 0.78em;
+  font-weight: 900;
+}
+
+.position-price-chart__empty {
+  margin: 0;
+  border: 1px dashed #d6e3df;
+  border-radius: 8px;
+  background: #f8fbfa;
+  color: #66716e;
+  padding: 14px;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
 .performance-cell--positive {
   color: #0e6a4e;
   font-weight: 800;
@@ -2930,6 +3069,51 @@
     font-size: 0.66rem;
     line-height: 1.18;
     overflow-wrap: anywhere;
+  }
+
+  .mobile-position-card .position-price-chart {
+    margin: 0 8px 8px 24px;
+    border: 1px solid #dfe8e5;
+    border-radius: 8px;
+    padding: 8px;
+  }
+
+  .position-price-chart__header {
+    display: grid;
+    gap: 6px;
+  }
+
+  .position-price-chart__ranges {
+    justify-content: start;
+  }
+
+  .position-price-chart__ranges button {
+    padding: 3px 6px;
+    font-size: 0.58rem;
+  }
+
+  .position-price-chart__svg {
+    height: 58px;
+  }
+
+  .position-price-chart__footer {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px;
+  }
+
+  .position-price-chart__footer strong {
+    justify-self: center;
+    font-size: 0.72rem;
+  }
+
+  .position-price-chart__title span,
+  .position-price-chart__footer span {
+    font-size: 0.56rem;
+  }
+
+  .position-price-chart__title strong {
+    font-size: 0.8rem;
   }
 
   .positions-table {

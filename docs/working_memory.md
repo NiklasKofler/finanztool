@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-29 00:05 CEST
+- Stand: 2026-06-29 00:35 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `2435550`
-- Handoff-Commit: `5648095`
-- Firebase Deploy: 2026-06-29 00:05 CEST erfolgreich
+- Ausgangscommit: `dcbdb0e`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3216,3 +3216,20 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   Kreditkarten-/Kontostand und Vorsorgewerten.
 - G/V und Heute in der Hauptkarte werden anhand des Vorzeichens gruen, rot oder
   neutral gefaerbt.
+
+## 2026-06-29 Positions-Kurscharts
+
+- Unter jeder Position gibt es einen aufklappbaren Kurschart.
+- Datenquelle ist `priceHistory`; die App lädt aktuell die letzten 12 Monate.
+- Matching-Reihenfolge:
+  - direkte `positionId`
+  - `position_<sourcePositions.id>` als `historyKey`/`instrumentId`
+  - `positionIds[]`
+  - ISIN als Fallback fuer instrumentbezogene Kurs-Historie
+- Der Chart zeigt bevorzugt `priceEur`, sonst EUR-`price`, sonst aus
+  Positionswert/Menge abgeleitete EUR-Kurse.
+- Zeitraum-Schalter: `1h`, `Tag`, `Woche`, `Monat`, `3M`, `6M`, `Jahr`.
+- Wichtig: Fuer `1h` und `Tag` ist echte Aussagekraft erst gegeben, wenn die
+  5-Minuten-Kursagenten auch intraday Punkte in `priceHistory` schreiben.
+  Die UI ist dafuer vorbereitet und zeigt bis dahin nur die vorhandenen
+  Tages-/Snapshot-Punkte.
