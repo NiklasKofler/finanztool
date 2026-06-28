@@ -224,6 +224,7 @@ export interface AutomationCommandDocument {
 export type AutomationCommandType =
   | "sync_quotes"
   | "full_refresh"
+  | "health_check"
   | "traderepublic_portal_refresh"
   | "tfbank_refresh"
   | "capitalcom_refresh";
@@ -748,6 +749,10 @@ export async function requestQuoteSync(db: Firestore, requestedBy?: string | nul
   await requestAutomationCommand(db, "sync_quotes_manual", "sync_quotes", requestedBy);
 }
 
+export async function requestHealthCheck(db: Firestore, requestedBy?: string | null) {
+  await requestAutomationCommand(db, "health_check_manual", "health_check", requestedBy);
+}
+
 export async function requestTradeRepublicPortalRefresh(db: Firestore, requestedBy?: string | null) {
   await requestAutomationCommand(db, "traderepublic_portal_refresh", "traderepublic_portal_refresh", requestedBy);
 }
@@ -766,6 +771,10 @@ export async function loadAutomationCommand(
 
 export async function loadQuoteSyncCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
   return loadAutomationCommand(db, "sync_quotes_manual");
+}
+
+export async function loadHealthCheckCommand(db: Firestore): Promise<AutomationCommandDocument | null> {
+  return loadAutomationCommand(db, "health_check_manual");
 }
 
 export async function loadTradeRepublicPortalCommand(db: Firestore): Promise<AutomationCommandDocument | null> {

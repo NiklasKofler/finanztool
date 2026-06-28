@@ -36,6 +36,7 @@ import {
   loadDocumentInboxItems,
   loadEquatePlusManualInput,
   loadAutomationCommand,
+  loadHealthCheckCommand,
   loadSourcePositions,
   loadSourceSummaries,
   loadSystemHealth,
@@ -44,6 +45,7 @@ import {
   loadUiPreferences,
   markDocumentInboxItemDecision,
   requestAutomationCommand,
+  requestHealthCheck,
   requestQuoteSync,
   requestTradeRepublicPortalRefresh,
   saveEquatePlusManualInput,
@@ -720,19 +722,88 @@ function getHealthMessageForSource(sourceId: string, health?: SystemHealth | nul
   return `${alert.title}: ${alert.message}`;
 }
 
-function isSourceUnitHealthy(source: SourceOverview) {
-  return source.status !== "blocked" && source.agentStatus !== "FEHLER" && source.agentStatus !== "WARNUNG";
+function normalizeHealthKey(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
-function isBankAccountSourceUnitHealthy(
-  account: SourceSummaryAccount,
+function getAlertHealthKeys(alert: SystemAlert) {
+  const agentId = (alert as SystemAlert & { agentId?: string | null }).agentId;
+  return [alert.source, agentId].map(normalizeHealthKey).filter(Boolean);
+}
+
+function isOperationalHealthAlert(alert: SystemAlert) {
+  return !isDocumentAlert(alert) && (alert.severity === "error" || alert.severity === "warning");
+}
+
+function getBankAccountSourceUnitId(account: SourceSummaryAccount, index: number) {
+  return [
+    "bank",
+    account.agentStatusId,
+    account.bankKey,
+    account.providerSource,
+    account.providerAccountId,
+    account.accountId,
+    index,
+  ]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(":");
+}
+
+function getBankAccountHealthKeys(account: SourceSummaryAccount) {
+  return [
+    getBankAccountAgentId(account),
+    account.agentStatusId,
+    account.bankKey,
+    account.providerSource,
+    account.providerAccountId,
+    account.accountId,
+  ]
+    .map(normalizeHealthKey)
+    .filter(Boolean);
+}
+
+function getInactiveSourceUnitIds(
+  regularSourceUnits: SourceOverview[],
+  bankAccountSourceUnits: SourceSummaryAccount[],
   agentStatuses: Record<string, AgentStatusDocument>,
   health?: SystemHealth | null,
 ) {
-  const accountStatus = getBankAccountEffectiveStatus(account, agentStatuses);
-  const healthStatus = getHealthStatusForSource(getBankAccountAgentId(account), health);
-  const status = getWorseStatus(accountStatus, healthStatus);
-  return status !== "FEHLER" && status !== "WARNUNG";
+  const units = [
+    ...regularSourceUnits.map((source) => ({
+      id: `source:${source.id}`,
+      keys: [source.id, ...getSourceAgentStatusIds(source.id)].map(normalizeHealthKey),
+      fallbackStatus: source.agentStatus,
+      blocked: source.status === "blocked",
+    })),
+    ...bankAccountSourceUnits.map((account, index) => ({
+      id: getBankAccountSourceUnitId(account, index),
+      keys: getBankAccountHealthKeys(account),
+      fallbackStatus: getBankAccountEffectiveStatus(account, agentStatuses),
+      blocked: false,
+    })),
+  ];
+
+  const inactiveIds = new Set(units.filter((unit) => unit.blocked).map((unit) => unit.id));
+  const alertKeys = (health?.alerts ?? [])
+    .filter(isOperationalHealthAlert)
+    .flatMap(getAlertHealthKeys);
+
+  if (alertKeys.length) {
+    for (const unit of units) {
+      if (unit.keys.some((key) => alertKeys.includes(key))) {
+        inactiveIds.add(unit.id);
+      }
+    }
+    return inactiveIds;
+  }
+
+  for (const unit of units) {
+    if (unit.fallbackStatus === "FEHLER" || unit.fallbackStatus === "WARNUNG") {
+      inactiveIds.add(unit.id);
+    }
+  }
+  return inactiveIds;
 }
 
 function getUsedCreditValue(source: SourceOverview) {
@@ -2244,6 +2315,7 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [quoteRequestStatus, setQuoteRequestStatus] = useState<CommandRequestStatus>("idle");
+  const [healthRefreshStatus, setHealthRefreshStatus] = useState<CommandRequestStatus>("idle");
   const [tradeRepublicPortalRequestStatus, setTradeRepublicPortalRequestStatus] =
     useState<CommandRequestStatus>("idle");
   const [tradeRepublicPortalRequestError, setTradeRepublicPortalRequestError] = useState<string | null>(null);
@@ -2620,6 +2692,40 @@ function App() {
     }
   }
 
+  async function handleRequestHealthRefresh() {
+    const services = getFirebaseServices();
+    if (!services || !authUser) return;
+
+    try {
+      setHealthRefreshStatus("requesting");
+      await requestHealthCheck(services.db, authUser.email);
+      setHealthRefreshStatus("requested");
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const command = await loadHealthCheckCommand(services.db);
+        if (command?.status === "RUNNING") {
+          setHealthRefreshStatus("running");
+          continue;
+        }
+        if (command?.status === "DONE") {
+          await refreshPortfolioData();
+          setHealthRefreshStatus("idle");
+          window.location.reload();
+          return;
+        }
+        if (command?.status === "ERROR") {
+          await refreshPortfolioData().catch(() => undefined);
+          setHealthRefreshStatus("error");
+          return;
+        }
+      }
+      await refreshPortfolioData().catch(() => undefined);
+      setHealthRefreshStatus("idle");
+    } catch {
+      setHealthRefreshStatus("error");
+    }
+  }
+
   async function handleRequestTradeRepublicPortalRefresh() {
     const services = getFirebaseServices();
     if (!services || !authUser) return;
@@ -2896,17 +3002,17 @@ function App() {
     portfolioPreviousValue && portfolioDayChange ? portfolioDayChange / portfolioPreviousValue : null;
   const portfolioPerformanceTone = getPerformanceTone(portfolioPerformance);
   const bankAccountSourceUnits = valuationSummaries.bank_accounts?.accounts ?? [];
-  const activeBankAccountSourceUnits = bankAccountSourceUnits.filter((account) =>
-    isBankAccountSourceUnitHealthy(account, agentStatuses, systemHealth),
-  ).length;
   const totalBankAccountSourceUnits = Math.max(bankAccountSourceUnits.length, 1);
   const portfolioValueBreakdown = getPortfolioValueBreakdown(sources, bankAccountSourceUnits);
   const regularSourceUnits = sources.filter((source) => source.id !== "bank_accounts");
-  const activeRegularSourceUnits = regularSourceUnits.filter(isSourceUnitHealthy).length;
-  const activeSourceUnits =
-    activeRegularSourceUnits +
-    activeBankAccountSourceUnits;
   const totalSourceUnits = regularSourceUnits.length + totalBankAccountSourceUnits;
+  const inactiveSourceUnitIds = getInactiveSourceUnitIds(
+    regularSourceUnits,
+    bankAccountSourceUnits,
+    agentStatuses,
+    systemHealth,
+  );
+  const activeSourceUnits = Math.max(0, totalSourceUnits - inactiveSourceUnitIds.size);
   const displaySources = useMemo(
     () =>
       sortSourcesByOrder(
@@ -2962,19 +3068,33 @@ function App() {
           <p className="eyebrow">Personal Asset Intelligence</p>
           <h1>Finanzperformance</h1>
         </div>
-        <div className="topbar__status">
-          <Cloud aria-hidden="true" />
-          <span>
-            {dataStatus === "live"
-              ? "Firestore-Daten geladen"
-              : dataStatus === "loading"
-                ? "Lade Firestore"
-              : dataStatus === "blocked"
-                ? "Firestore blockiert"
-              : isFirebaseConfigured
-                ? "Google-Anmeldung nötig"
-                : "Lokaler Modus"}
-          </span>
+        <div className="topbar__status-group">
+          <div className="topbar__status">
+            <Cloud aria-hidden="true" />
+            <span>
+              {dataStatus === "live"
+                ? "Firestore-Daten geladen"
+                : dataStatus === "loading"
+                  ? "Lade Firestore"
+                : dataStatus === "blocked"
+                  ? "Firestore blockiert"
+                : isFirebaseConfigured
+                  ? "Google-Anmeldung nötig"
+                  : "Lokaler Modus"}
+            </span>
+          </div>
+          {dataStatus === "live" ? (
+            <button
+              type="button"
+              className="page-health-refresh-button"
+              onClick={handleRequestHealthRefresh}
+              disabled={["requesting", "requested", "running"].includes(healthRefreshStatus)}
+              title="Health-Check starten und Daten neu laden"
+              aria-label="Health-Check starten und Daten neu laden"
+            >
+              <RefreshCcw aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
         <label className="privacy-toggle">
           <input
@@ -3006,7 +3126,7 @@ function App() {
                   : quoteRequestStatus === "error"
                     ? "Kurs-Sync fehlgeschlagen"
                     : "Kurse aktualisieren"}
-            </span>
+              </span>
           </button>
         ) : null}
       </header>

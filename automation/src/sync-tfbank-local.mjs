@@ -27,8 +27,7 @@ const keepBrowserOpen = process.argv.includes("--keep-open");
 const logoutAfter = !process.argv.includes("--no-logout") && process.env.TFBANK_LOGOUT_AFTER !== "0";
 const tanFromStdin = process.argv.includes("--tan-stdin");
 const messagesTanEnabled = !process.argv.includes("--no-messages-tan") && process.env.TFBANK_MESSAGES_TAN !== "0";
-const messagesUiFallbackEnabled =
-  process.argv.includes("--messages-ui-fallback") || process.env.TFBANK_MESSAGES_UI_FALLBACK === "1";
+const messagesUiFallbackEnabled = false;
 const reuseBrowserProfile = process.argv.includes("--reuse-browser-profile") || process.env.TFBANK_REUSE_BROWSER_PROFILE === "1";
 const maxTanLoginAttempts = Math.max(
   1,
@@ -41,6 +40,7 @@ const messagesTanHelperPath = path.join(__dirname, "read-messages-tan.swift");
 const messagesDbPath = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const runtimeDir = path.join(__dirname, "..", "runtime");
 const debugLogPath = path.join(runtimeDir, "tfbank-debug.ndjson");
+const runLockPath = path.join(runtimeDir, "tfbank-run.lock");
 const submittedTanRegistryPath = path.join(runtimeDir, "tfbank-submitted-tans.json");
 const debugEnabled = process.env.TFBANK_DEBUG !== "0";
 const messagesTanPickMode = process.env.TFBANK_MESSAGES_TAN_PICK ?? "last";
@@ -49,6 +49,8 @@ const tanSettleMs = Math.max(
   Number.parseInt(readArg("--tan-settle-ms") ?? process.env.TFBANK_TAN_SETTLE_MS ?? "0", 10) || 0,
 );
 let messagesDbDisabledForRun = false;
+let runLockHandle = null;
+let lastSubmittedTanMeta = null;
 
 function maskTan(value) {
   const tan = normalizeTan(value);
@@ -75,6 +77,63 @@ async function debugTfBank(event, data = {}) {
   } catch {
     // Debugging must never break the import itself.
   }
+}
+
+async function acquireTfBankRunLock() {
+  await fs.mkdir(runtimeDir, { recursive: true });
+  try {
+    runLockHandle = await fs.open(runLockPath, "wx");
+    await runLockHandle.writeFile(JSON.stringify({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      command: process.argv.join(" "),
+    }));
+    await debugTfBank("run_lock_acquired", { runLockPath });
+    return true;
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+
+    let ageMs = null;
+    let lockInfo = null;
+    try {
+      const [stats, raw] = await Promise.all([
+        fs.stat(runLockPath),
+        fs.readFile(runLockPath, "utf8").catch(() => ""),
+      ]);
+      ageMs = Date.now() - stats.mtimeMs;
+      lockInfo = raw ? JSON.parse(raw) : null;
+    } catch {
+      // If the lock cannot be inspected, treat it as active and avoid a second login attempt.
+    }
+
+    const staleAfterMs = 20 * 60 * 1000;
+    if (ageMs !== null && ageMs > staleAfterMs) {
+      await debugTfBank("run_lock_stale_removed", { runLockPath, ageMs, lockInfo });
+      await fs.rm(runLockPath, { force: true });
+      return acquireTfBankRunLock();
+    }
+
+    const lockedError = new Error(
+      "TF Bank Agent laeuft bereits. Kein zweiter Login wird gestartet, damit keine parallelen SMS-TANs entstehen.",
+    );
+    lockedError.code = "TFBANK_RUN_LOCKED";
+    lockedError.lockAgeMs = ageMs;
+    lockedError.lockInfo = lockInfo;
+    throw lockedError;
+  }
+}
+
+async function releaseTfBankRunLock() {
+  if (!runLockHandle) return;
+  try {
+    await runLockHandle.close();
+  } catch {
+    // Best effort cleanup.
+  } finally {
+    runLockHandle = null;
+  }
+  await fs.rm(runLockPath, { force: true }).catch(() => {});
+  await debugTfBank("run_lock_released", { runLockPath });
 }
 
 function readArg(name) {
@@ -132,19 +191,30 @@ async function rememberSubmittedTan(tan, { channel } = {}) {
   const normalizedTan = normalizeTan(tan);
   const hash = tanHash(normalizedTan);
   if (!hash) return;
+  lastSubmittedTanMeta = {
+    masked: maskTan(normalizedTan),
+    suffix: normalizedTan.slice(-2),
+    channel: channel ?? null,
+    submittedAt: new Date().toISOString(),
+  };
   await fs.mkdir(runtimeDir, { recursive: true });
   const submittedTans = await readSubmittedTanRegistry();
   const next = [
     {
       hash,
-      suffix: normalizedTan.slice(-2),
-      channel: channel ?? null,
-      submittedAt: new Date().toISOString(),
+      suffix: lastSubmittedTanMeta.suffix,
+      channel: lastSubmittedTanMeta.channel,
+      submittedAt: lastSubmittedTanMeta.submittedAt,
     },
     ...submittedTans.filter((entry) => entry.hash !== hash),
   ].slice(0, 40);
   await fs.writeFile(submittedTanRegistryPath, JSON.stringify({ submittedTans: next }, null, 2));
   await debugTfBank("submitted_tan_remembered", { tan: maskTan(normalizedTan), channel });
+}
+
+function lastSubmittedTanMessage() {
+  if (!lastSubmittedTanMeta?.masked) return "";
+  return ` Letzter eingereichter TAN-Versuch: ${lastSubmittedTanMeta.masked} um ${lastSubmittedTanMeta.submittedAt}.`;
 }
 
 function isTanRelatedText(text) {
@@ -200,7 +270,7 @@ async function readTanFromMessages() {
   if (!messagesUiFallbackEnabled) {
     await debugTfBank("messages_ui_fallback_skipped", {
       reason: "disabled",
-      hint: "TFBANK_MESSAGES_UI_FALLBACK=1 oder --messages-ui-fallback aktivieren",
+      hint: "UI-Fallback ist deaktiviert; TF Bank liest TANs nur direkt aus der Messages-Datenbank oder der TAN-Datei.",
     });
     return null;
   }
@@ -711,7 +781,10 @@ async function loadPreviousAgentSuccess(firestore) {
   }
 }
 
+let tfBankRunLockAcquired = false;
+
 try {
+  tfBankRunLockAcquired = await acquireTfBankRunLock();
   await debugTfBank("run_start", {
     writeEnabled,
     headless,
@@ -792,34 +865,47 @@ try {
     projectId,
     accessToken: await getFirebaseCliAccessToken(),
   });
+  const runLocked = error?.code === "TFBANK_RUN_LOCKED";
   const waitingTan = error?.code === "WAITING_TAN";
   const tanNotReceived = error?.code === "TAN_NOT_RECEIVED";
   const tanLoginFailed = error?.code === "TAN_LOGIN_FAILED";
   await debugTfBank("run_error", {
     code: error?.code ?? null,
     message: error instanceof Error ? error.message : String(error),
+    runLocked,
     waitingTan,
     tanNotReceived,
     tanLoginFailed,
+    lastSubmittedTan: lastSubmittedTanMeta,
   });
-  if (writeEnabled || waitingTan || tanNotReceived) {
+  if (writeEnabled || waitingTan || tanNotReceived || runLocked) {
     const previousSuccess = await loadPreviousAgentSuccess(firestore);
     await firestore.setDocument("agentStatus", source, {
       source,
-      status: waitingTan ? "RUNNING" : "FEHLER",
-      message: waitingTan
+      status: waitingTan || runLocked ? "RUNNING" : "FEHLER",
+      message: runLocked
+        ? `${error instanceof Error ? error.message : String(error)} Letzter erfolgreicher Stand bleibt sichtbar.`
+        : waitingTan
         ? `${error instanceof Error ? error.message : String(error)} Letzter erfolgreicher Stand bleibt sichtbar.`
         : tanLoginFailed || tanNotReceived
-          ? `${error instanceof Error ? error.message : String(error)} Letzter erfolgreicher Stand bleibt sichtbar.`
+          ? `${error instanceof Error ? error.message : String(error)}${lastSubmittedTanMessage()} Letzter erfolgreicher Stand bleibt sichtbar.`
           : error instanceof Error ? error.message : String(error),
       ...previousSuccess,
       lastAgentRunAt: now,
       updatedAt: now,
     });
   }
-  if (waitingTan) {
+  if (runLocked) {
+    console.log(JSON.stringify({ status: "RUNNING", source, message: error.message }, null, 2));
+    process.exitCode = 0;
+  } else if (waitingTan) {
     console.log(JSON.stringify({ status: "WAITING_TAN", source, message: error.message }, null, 2));
-    process.exit(0);
+    process.exitCode = 0;
+  } else {
+    throw error;
   }
-  throw error;
+} finally {
+  if (tfBankRunLockAcquired) {
+    await releaseTfBankRunLock();
+  }
 }

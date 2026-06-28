@@ -13,6 +13,7 @@ service cloud.firestore {
       allow create, update: if isOwner()
         && commandId in [
           "sync_quotes_manual",
+          "health_check_manual",
           "traderepublic_portal_refresh",
           "tfbank_manual_refresh",
           "capitalcom_manual_refresh"
@@ -27,6 +28,9 @@ service cloud.firestore {
         && (
           (commandId == "sync_quotes_manual"
             && request.resource.data.type == "sync_quotes")
+          ||
+          (commandId == "health_check_manual"
+            && request.resource.data.type == "health_check")
           ||
           (commandId == "traderepublic_portal_refresh"
             && request.resource.data.type == "traderepublic_portal_refresh")

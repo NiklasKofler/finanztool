@@ -28,7 +28,7 @@
       <key>TFBANK_MESSAGES_DB</key>
       <string>1</string>
       <key>TFBANK_MESSAGES_UI_FALLBACK</key>
-      <string>1</string>
+      <string>0</string>
       <key>TFBANK_DEBUG</key>
       <string>1</string>
     </dict>

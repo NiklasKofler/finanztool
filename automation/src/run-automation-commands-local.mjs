@@ -34,6 +34,15 @@ function runFullRefresh() {
   if (result.status !== 0) throw new Error(`Gesamtaktualisierung fehlgeschlagen: Exit ${result.status}`);
 }
 
+function runHealthCheck() {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "check-health-local.mjs"), "--write"], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`Health-Check fehlgeschlagen: Exit ${result.status}`);
+}
+
 function runTradeRepublicPortalRefresh() {
   const result = spawnSync(process.execPath, [
     path.join(__dirname, "download-traderepublic-local.mjs"),
@@ -58,7 +67,7 @@ function runTfBankRefresh() {
     env: {
       ...process.env,
       TFBANK_DEBUG: process.env.TFBANK_DEBUG ?? "1",
-      TFBANK_MESSAGES_UI_FALLBACK: "1",
+      TFBANK_MESSAGES_UI_FALLBACK: "0",
       TFBANK_TAN_WAIT_SECONDS: process.env.TFBANK_TAN_WAIT_SECONDS ?? "120",
       TFBANK_TAN_SETTLE_MS: process.env.TFBANK_TAN_SETTLE_MS ?? "0",
     },
@@ -102,7 +111,7 @@ if (
 }
 const pendingCommands = commands
   .filter((command) =>
-    ["sync_quotes", "full_refresh", "traderepublic_portal_refresh", "tfbank_refresh", "capitalcom_refresh"].includes(command.type) &&
+    ["sync_quotes", "full_refresh", "health_check", "traderepublic_portal_refresh", "tfbank_refresh", "capitalcom_refresh"].includes(command.type) &&
     command.status === "REQUESTED")
   .sort((left, right) => {
     const leftDate = parseDate(left.requestedAt)?.getTime() ?? 0;
@@ -127,6 +136,7 @@ for (const command of pendingCommands) {
   try {
     if (command.type === "sync_quotes") runQuoteSync();
     if (command.type === "full_refresh") runFullRefresh();
+    if (command.type === "health_check") runHealthCheck();
     if (command.type === "traderepublic_portal_refresh") runTradeRepublicPortalRefresh();
     if (command.type === "tfbank_refresh") runTfBankRefresh();
     if (command.type === "capitalcom_refresh") runCapitalComRefresh();

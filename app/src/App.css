@@ -21,6 +21,13 @@
   letter-spacing: 0;
 }
 
+.topbar__status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .topbar__status {
   display: inline-flex;
   align-items: center;
@@ -62,6 +69,32 @@
 }
 
 .quote-sync-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.page-health-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  width: 44px;
+  border: 1px solid #b7cfc9;
+  border-radius: 8px;
+  padding: 0;
+  color: #123f39;
+  background: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.page-health-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.page-health-refresh-button svg {
   width: 18px;
   height: 18px;
 }
@@ -2125,6 +2158,7 @@
 
   .topbar__status,
   .quote-sync-button,
+  .page-health-refresh-button,
   .privacy-toggle {
     min-height: 34px;
     border-radius: 7px;
@@ -2134,9 +2168,19 @@
   }
 
   .topbar__status svg,
-  .quote-sync-button svg {
+  .quote-sync-button svg,
+  .page-health-refresh-button svg {
     width: 15px;
     height: 15px;
+  }
+
+  .topbar__status-group {
+    gap: 6px;
+  }
+
+  .page-health-refresh-button {
+    width: 34px;
+    padding: 0;
   }
 
   .privacy-toggle__track {
@@ -3090,10 +3134,10 @@
   }
 
   .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
-  .topbar__status {
+  .topbar__status-group {
     grid-column: 1 / -1;
     grid-row: 2;
     justify-content: center;

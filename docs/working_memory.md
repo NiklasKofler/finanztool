@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 18:35 CEST
+- Stand: 2026-06-28 20:16 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `96ea31b`
-- Handoff-Commit: `9a7d5ab`
-- Firebase Deploy: 2026-06-28 18:36 CEST erfolgreich
+- Ausgangscommit: `07c5ac9`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -2809,11 +2809,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     Login mit 1 Versuch, Saldo geschrieben, Logout bestaetigt.
 - Optimierter Betrieb ab 2026-06-27:
   - Primaerer TAN-Weg ist nur noch `~/Library/Messages/chat.db`.
-  - Messages-UI-Fallback ist standardmaessig aus
-    (`TFBANK_MESSAGES_UI_FALLBACK=0`), damit kein Messages-Fenster im
-    Normalbetrieb stoert.
-  - Optionaler sichtbarer Fallback nur bewusst per
-    `--messages-ui-fallback` oder `TFBANK_MESSAGES_UI_FALLBACK=1`.
+  - Messages-UI-Fallback ist dauerhaft deaktiviert. Der Agent darf kein
+    Messages-Fenster mehr oeffnen oder per UI auslesen, weil die App
+    geschlossen sein kann und UI-Fallback zu instabil ist.
+  - Erlaubte TAN-Wege sind nur Messages-Datenbank oder die TAN-Datei.
   - TAN-Wartefenster: 60 Sekunden.
   - TAN-Polling: 1000 ms.
   - TF-Bank-LaunchAgent hat kein `RunAtLoad` mehr. Installieren oder
@@ -3048,3 +3047,55 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
     installierter LaunchAgent nach frueherer Zurueckstellung.
   - `com.niklas.finanztool.capitalcom-import` ist wieder installiert und
     laeuft alle 5 Minuten (`StartInterval=300`).
+
+## 2026-06-28 Quellenzaehlung und TF-Bank-Korrektur
+
+- Diagnosekorrektur:
+  - Die fruehere Aussage, die Quellenanzeige muesse schon stimmen, war falsch:
+    Es wurde der Backend-Stand geprueft, aber nicht die sichtbare Chrome-UI.
+  - Sichtbarer Fehler war `12/16`, obwohl Firestore nur TF Bank als operative
+    Fehlerquelle enthielt.
+  - Die UI-Zaehllogik wurde daher auf eindeutige Quellen-Einheiten umgestellt:
+    9 Depot-/Brokerquellen plus 7 Bank-/Kreditkartenkonten = 16 Quellen.
+  - Operative Alerts aus `systemHealth/current` ziehen eine Quelle nur einmal
+    ab, auch wenn mehrere Alerts dieselbe Quelle betreffen.
+- Aktueller gepruefter Stand nach TF-Bank-Erfolg:
+  - `systemHealth/current`: `OK`, 0 Fehler, 0 Warnungen.
+  - `agentStatus/tfbank`: `OK`, letzter Erfolg 2026-06-28 17:06.
+  - Erwartete Quellenanzeige nach Login/Reload: `16/16`.
+- TF-Bank-Agent:
+  - Ursache fuer die wiederkehrenden TAN-Probleme war sehr wahrscheinlich
+    paralleler Agentenlauf: LaunchAgent, Button und Testlaeufe konnten mehrere
+    Logins und damit mehrere SMS-Codes erzeugen.
+  - `automation/src/sync-tfbank-local.mjs` nutzt jetzt eine harte Lauf-Sperre
+    `automation/runtime/tfbank-run.lock`.
+  - Wenn bereits ein TF-Bank-Lauf aktiv ist, wird kein zweiter Login gestartet,
+    damit keine parallelen TANs entstehen.
+  - Fehlermeldungen duerfen keinen vollstaendigen TAN-Code speichern. Bei
+    TAN-Fehlern wird nur der zuletzt eingereichte TAN-Versuch maskiert
+    protokolliert, z. B. `****42` plus Zeitstempel.
+  - Gepruefter Testlauf:
+    `TFBANK_MESSAGES_UI_FALLBACK=0 TFBANK_TAN_LOGIN_ATTEMPTS=1 ... sync-tfbank-local.mjs --write --headless`
+    war erfolgreich, inklusive Messages-Datenbank, Portal-Login, Snapshot und
+    Logout.
+  - Nachtrag: Die installierte LaunchAgent-plist wurde ebenfalls aktualisiert.
+    `~/Library/LaunchAgents/com.niklas.finanztool.tfbank.plist` enthaelt jetzt
+    `TFBANK_MESSAGES_UI_FALLBACK=0`.
+
+## 2026-06-28 Health-Refresh Button
+
+- Oben rechts in der App gibt es einen Refresh-Button fuer den Systemstand.
+- Der Button sitzt direkt neben `Firestore-Daten geladen`, nutzt denselben
+  Button-Stil wie die anderen Topbar-Aktionen und zeigt nur das
+  Aktualisierungssymbol.
+- Ablauf:
+  - schreibt `automationCommands/health_check_manual` mit Typ `health_check`
+  - lokaler Command-Runner fuehrt `check-health-local.mjs --write` aus
+  - App laedt Firestore-Daten neu
+- danach wird die Browserseite neu geladen, damit wirklich der aktuelle
+  Firestore-/Health-Stand sichtbar ist
+- Der Button ist bewusst kein Full-Refresh und stoesst keine Broker-/Bank-
+  Abrufe an. Er aktualisiert nur die zentrale Health- und Fehlerlogik.
+- Technischer Test: `automationCommands/health_check_manual` wurde lokal auf
+  `REQUESTED` gesetzt, der Command-Runner hat `check-health-local.mjs --write`
+  ausgefuehrt, danach stand der Command auf `DONE` und Health war `OK`.
