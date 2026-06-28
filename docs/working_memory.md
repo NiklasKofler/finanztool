@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-28 22:59 CEST
+- Stand: 2026-06-28 23:09 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `2e44ad4`
-- Handoff-Commit: `228b1ec`
-- Firebase Deploy: 2026-06-28 22:59 CEST erfolgreich
+- Ausgangscommit: `99df9db`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3169,3 +3169,19 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `bank_accounts` / Cash -> Euro-Symbol
 - Das Revolut-Logo aus der Liste wird aktuell nicht als Depotkarten-Logo
   verwendet, weil Revolut ein Unterkonto der Cash-Karte ist.
+
+## 2026-06-28 Bankkonto-Zeilenlogos
+
+- Der Chrome-Tab `bank` aus Google Gespeichert enthaelt 5 Banklogo-Quellen:
+  N26, Revolut, PayPal, meine99/bank99 und Tiroler Sparkasse.
+- Diese Logos sind lokal unter `app/public/bank-logos/` gespeichert:
+  - `n26.png`
+  - `revolut.png`
+  - `paypal.jpg`
+  - `bank99.png`
+  - `sparkasse.png`
+- Die Cash-Karte zeigt diese Logos direkt in den Bankkonto-Zeilen anhand von
+  `bankKey`, `providerSource`, `bankName` oder Label.
+- Amazon Visa und TF Bank haben in diesem Tab keine gespeicherten Logos; sie
+  bleiben vorerst beim Text-/Statuslayout, bis eigene Logos geliefert oder
+  freigegeben sind.

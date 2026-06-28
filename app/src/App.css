@@ -1713,6 +1713,33 @@
   line-height: 1.35;
 }
 
+.source-account-row__identity {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: #1c2523;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.source-account-row__identity strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-account-row__logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #ffffff;
+}
+
 .source-account-row__meta {
   display: flex;
   flex-wrap: wrap;
@@ -3036,6 +3063,17 @@
   .source-account-row__main span {
     font-size: 0.64rem;
     line-height: 1.25;
+  }
+
+  .source-account-row__identity {
+    gap: 7px;
+  }
+
+  .source-account-row__logo {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+    border-radius: 6px;
   }
 
   .source-account-row__value > strong,

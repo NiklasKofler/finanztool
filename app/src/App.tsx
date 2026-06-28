@@ -958,6 +958,42 @@ function getAccountLabel(account: SourceSummaryAccount) {
   );
 }
 
+const bankAccountLogoPaths: Record<string, string> = {
+  bank99: "/bank-logos/bank99.png",
+  n26: "/bank-logos/n26.png",
+  paypal: "/bank-logos/paypal.jpg",
+  revolut: "/bank-logos/revolut.png",
+  sparkasse: "/bank-logos/sparkasse.png",
+};
+
+function getBankAccountLogoKey(account: SourceSummaryAccount) {
+  const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
+  const provider = String(account.providerSource ?? "").trim().toLowerCase();
+  const labelText = `${account.bankName ?? ""} ${account.label ?? ""} ${account.accountType ?? ""}`.toLowerCase();
+
+  if (bankKey === "bank99" || provider === "bank99" || labelText.includes("bank99")) return "bank99";
+  if (bankKey === "n26" || provider === "n26" || labelText.includes("n26")) return "n26";
+  if (bankKey === "paypal" || provider === "paypal" || labelText.includes("paypal")) return "paypal";
+  if (bankKey === "revolut" || provider === "revolut" || labelText.includes("revolut")) return "revolut";
+  if (
+    bankKey === "erste" ||
+    bankKey === "sparkasse" ||
+    provider === "erste" ||
+    provider === "sparkasse" ||
+    labelText.includes("sparkasse") ||
+    labelText.includes("erste")
+  ) {
+    return "sparkasse";
+  }
+
+  return null;
+}
+
+function getBankAccountLogoPath(account: SourceSummaryAccount) {
+  const logoKey = getBankAccountLogoKey(account);
+  return logoKey ? bankAccountLogoPaths[logoKey] : null;
+}
+
 function getBankAccountAgentId(account: SourceSummaryAccount) {
   const bankKey = String(account.bankKey ?? "").trim().toLowerCase();
   if (bankKey === "bank99") return "bank99";
@@ -1812,6 +1848,7 @@ function BankAccountGroup({
           const accountUpdatedAt = formatUpdatedAt(getBankAccountUpdatedAt(account));
           const accountIssueMessage = getBankAccountIssueMessage(account, accountAgentStatus);
           const accountSectionKey = `${groupKey}:account:${accountKey}`;
+          const accountLogoPath = getBankAccountLogoPath(account);
           return (
             <details
               className="source-account-details"
@@ -1824,7 +1861,12 @@ function BankAccountGroup({
             >
               <summary className="source-account-row source-account-row--bank">
                 <div className="source-account-row__main">
-                  <strong>{getAccountLabel(account)}</strong>
+                  <span className="source-account-row__identity">
+                    {accountLogoPath ? (
+                      <img className="source-account-row__logo" src={accountLogoPath} alt="" aria-hidden="true" />
+                    ) : null}
+                    <strong>{getAccountLabel(account)}</strong>
+                  </span>
                   <span className="source-account-row__meta">
                     <span className={`source-account-row__status source-account-row__status--${accountStatusTone}`}>
                       {getBankAccountStatusLabel(account, accountAgentStatus)}
