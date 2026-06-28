@@ -24,6 +24,8 @@ Zielgeraet:
 Commit/Stand:
 Aktion:
 Erledigt:
+- Handoff-Commit `228b1ec` auf GitHub gepusht
+- Firebase Deploy 2026-06-28 22:59 CEST erfolgreich
 - Handoff-Commit `3f7940b` auf GitHub gepusht
 - Firebase Deploy 2026-06-28 21:51 CEST erfolgreich
 - Handoff-Commit `31d9caa` auf GitHub gepusht
@@ -83,7 +85,7 @@ Datum/Zeit: 2026-06-28 22:59 CEST
 Quellgeraet: Mac Studio von Niklas
 Zielgeraet: MacBook Pro
 Commit/Stand: Ausgangscommit `2e44ad4`; Handoff-Commit wird in diesem
-`ftp`-Lauf erstellt
+`ftp`-Lauf erstellt; Handoff-Commit `228b1ec`
 Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
 Firebase deployen
 Erledigt:
@@ -806,7 +808,7 @@ Datum/Zeit: 2026-06-22 18:09 CEST
 Quellgeraet: Mac Studio von Niklas
 Zielgeraet: MacBook Pro
 Commit/Stand: Ausgangscommit `dd9fa3a`; Handoff-Commit wird in diesem
-`ftu`-Lauf erstellt; Handoff-Commit `3f7940b`; Handoff-Commit `31d9caa`; Handoff-Commit `a4c8f5f`; Handoff-Commit `9a7d5ab`; Handoff-Commit `105e566`; Handoff-Commit `610ac14`; Handoff-Commit `b85640b`; Handoff-Commit `324fe58`; Handoff-Commit `987edf5`; Handoff-Commit `f1eed15`; Handoff-Commit `4d9c3da`; Handoff-Commit `1320c29`; Handoff-Commit `5a7fa05`; Handoff-Commit `15bd8b7`; Handoff-Commit `1280336`; Handoff-Commit `bbc6885`; Handoff-Commit `434c93b`
+`ftu`-Lauf erstellt; Handoff-Commit `228b1ec`; Handoff-Commit `3f7940b`; Handoff-Commit `31d9caa`; Handoff-Commit `a4c8f5f`; Handoff-Commit `9a7d5ab`; Handoff-Commit `105e566`; Handoff-Commit `610ac14`; Handoff-Commit `b85640b`; Handoff-Commit `324fe58`; Handoff-Commit `987edf5`; Handoff-Commit `f1eed15`; Handoff-Commit `4d9c3da`; Handoff-Commit `1320c29`; Handoff-Commit `5a7fa05`; Handoff-Commit `15bd8b7`; Handoff-Commit `1280336`; Handoff-Commit `bbc6885`; Handoff-Commit `434c93b`
 Aktion: Projektstand bauen, Uebergabe dokumentieren, auf GitHub pushen und
 Firebase deployen
 Erledigt:
