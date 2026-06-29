@@ -30,6 +30,24 @@ body {
     #f5f2eb;
 }
 
+:root[data-theme="dark"] {
+  color: #dfe9e6;
+  background: #081012;
+}
+
+:root[data-theme="dark"] body {
+  background:
+    linear-gradient(180deg, rgba(8, 16, 18, 0.96), rgba(11, 22, 24, 0.98)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(79, 214, 181, 0.05) 0,
+      rgba(79, 214, 181, 0.05) 1px,
+      transparent 1px,
+      transparent 80px
+    ),
+    #081012;
+}
+
 button,
 input,
 textarea,

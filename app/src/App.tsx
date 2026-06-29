@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   ChevronDown,
+  ChevronsUp,
   CheckCircle2,
   Cloud,
   CreditCard,
@@ -21,9 +22,11 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Moon,
   Pencil,
   RefreshCcw,
   Search,
+  Sun,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -169,6 +172,7 @@ type AlertRepairAction = {
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
 const sourceOrderStorageKey = "finanztool-source-order";
 const cashHomeStorageKey = "finanztool-cash-home";
+const themeModeStorageKey = "finanztool-theme-mode";
 const documentAlertIds = new Set([
   "unclassified_documents",
   "unknown_document_facts",
@@ -198,6 +202,11 @@ function loadStoredExpandedSections(): UiExpandedSections {
     return sections;
   }
   return sections;
+}
+
+function loadStoredDarkMode() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(themeModeStorageKey) === "dark";
 }
 
 function saveStoredExpandedSections(sections: UiExpandedSections) {
@@ -2768,6 +2777,7 @@ function App() {
     "auth-required" | "loading" | "live" | "blocked"
   >("auth-required");
   const [privacyMode, setPrivacyMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(() => loadStoredDarkMode());
   const [expandedSections, setExpandedSections] = useState<UiExpandedSections>(() => loadStoredExpandedSections());
   const [sourceOrder, setSourceOrder] = useState<string[]>(() => loadStoredSourceOrder());
   const [depotSearchQuery, setDepotSearchQuery] = useState("");
@@ -2782,6 +2792,11 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem("finanztool-traderepublic-display-mode", tradeRepublicDisplayMode);
   }, [tradeRepublicDisplayMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(themeModeStorageKey, darkMode ? "dark" : "light");
+    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+  }, [darkMode]);
 
   useEffect(() => {
     const services = getFirebaseServices();
@@ -2941,6 +2956,17 @@ function App() {
   function toggleSourceCard(sourceId: string) {
     const sectionKey = `source:${sourceId}`;
     setUiSectionOpen(sectionKey, !getUiSectionOpen(sectionKey, true));
+  }
+
+  function collapseAllSourceCards() {
+    setExpandedSections((current) => {
+      const next = { ...current };
+      for (const source of sourceOverviews) {
+        next[`source:${source.id}`] = false;
+      }
+      persistExpandedSections(next);
+      return next;
+    });
   }
 
   function moveSourceCard(sourceId: string, direction: -1 | 1) {
@@ -3606,7 +3632,7 @@ function App() {
         : "good";
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${darkMode ? " theme-dark" : ""}`}>
       <header className="topbar" aria-label="Projektstatus">
         <div>
           <p className="eyebrow">Personal Asset Intelligence</p>
@@ -3652,6 +3678,15 @@ function App() {
           {privacyMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
           <span>{privacyMode ? "Privat" : "Sichtbar"}</span>
         </label>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setDarkMode((current) => !current)}
+          title={darkMode ? "Tagmodus aktivieren" : "Nachtmodus aktivieren"}
+          aria-label={darkMode ? "Tagmodus aktivieren" : "Nachtmodus aktivieren"}
+        >
+          {darkMode ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        </button>
         {dataStatus === "live" ? (
           <button
             type="button"
@@ -3680,7 +3715,7 @@ function App() {
           <div className="metric-card__icon">
             <Wallet aria-hidden="true" />
           </div>
-          <p>Depotwert</p>
+          <p>Gesamtvermögen</p>
           <strong>
             {privacyMode ? maskMoney(portfolioValueBreakdown.depotValue) : formatCurrency(portfolioValueBreakdown.depotValue)}
           </strong>
@@ -3884,6 +3919,16 @@ function App() {
                   aria-label="Depot oder Position suchen"
                 />
               </label>
+              <button
+                type="button"
+                className="depot-collapse-all-button"
+                onClick={collapseAllSourceCards}
+                aria-label="Alle Depotkarten einklappen"
+                title="Alle Depotkarten einklappen"
+              >
+                <ChevronsUp aria-hidden="true" />
+                <span>Alle einklappen</span>
+              </button>
               <button
                 type="button"
                 className={`depot-edit-toggle${isDepotEditMode ? " is-active" : ""}`}

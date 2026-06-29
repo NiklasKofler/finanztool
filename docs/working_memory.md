@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-29 00:35 CEST
+- Stand: 2026-06-29 02:25 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `dcbdb0e`
-- Handoff-Commit: `3463490`
-- Firebase Deploy: 2026-06-29 00:35 CEST erfolgreich
+- Ausgangscommit: `b606a4a`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3233,3 +3233,37 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   5-Minuten-Kursagenten auch intraday Punkte in `priceHistory` schreiben.
   Die UI ist dafuer vorbereitet und zeigt bis dahin nur die vorhandenen
   Tages-/Snapshot-Punkte.
+
+## 2026-06-29 Nachtmodus
+
+- Die App hat einen eigenen Nachtmodus-Schalter in der Kopfzeile.
+- Privatmodus und Nachtmodus sind getrennte Funktionen:
+  - Privatmodus verschleiert absolute Werte.
+  - Nachtmodus aendert nur die Darstellung.
+- Die Einstellung wird lokal unter `finanztool-theme-mode` gespeichert und
+  beim Laden wiederhergestellt.
+- Technisch setzt die App `data-theme="dark"` auf `documentElement` und
+  `theme-dark` auf dem App-Container; dadurch wechseln Seitenhintergrund,
+  Karten, Tabellen, Postfach, Agenten und Positionscharts gemeinsam.
+- Nachgezogen: generische `.panel`-Container, Depotuebersicht-Toolbar,
+  Kennzahlen-Breakdown und Chips haben eigene dunkle Farben, damit im
+  Nachtmodus keine weissen Flaechen oder dunkelgraue Schrift stehen bleiben.
+- Die grosse obere Vermoegenskarte heisst in der UI `Gesamtvermögen`.
+- Die Depotuebersicht hat ein zentrales Steuerelement `Alle einklappen`.
+  Es setzt alle Depotkarten auf eingeklappt und speichert den Zustand wie die
+  Einzel-Klappbuttons in `expandedSections`.
+- Dark-Mode-Regel erweitert: wiederkehrende Unterkarten fuer Postfach,
+  Agenten, manuelle Eingaben, Bankkonto-Zeilen, VBV-Details, Tabellen,
+  Status-Badges und Mobile-Positionskarten duerfen keine weissen Flaechen oder
+  dunkelgraue Schrift mehr behalten.
+
+## 2026-06-29 App-Icon
+
+- Browser-Tab, Apple-Homescreen-Icon und Webmanifest-Icons verwenden jetzt das
+  neue schwarze IA-Logo mit Gold-/Silber-Schrift und Aufwaertspfeil.
+- Aktualisierte Dateien:
+  - `app/public/favicon.png`
+  - `app/public/favicon-32.png`
+  - `app/public/apple-touch-icon.png`
+  - `app/public/icon-192.png`
+  - `app/public/icon-512.png`
