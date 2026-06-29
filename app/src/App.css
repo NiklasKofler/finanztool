@@ -507,6 +507,21 @@
   color: #c8d6d2;
 }
 
+.theme-dark .metric-chip.metric-chip--positive {
+  background: rgba(12, 78, 58, 0.24);
+  color: #56d196;
+}
+
+.theme-dark .metric-chip.metric-chip--negative {
+  background: rgba(122, 43, 21, 0.24);
+  color: #ff9b74;
+}
+
+.theme-dark .metric-chip.metric-chip--neutral {
+  background: rgba(160, 176, 171, 0.14);
+  color: #a8b8b3;
+}
+
 .theme-dark .performance-value--positive,
 .theme-dark .performance-cell--positive,
 .theme-dark .source-card dd.performance-value--positive {
@@ -627,15 +642,29 @@
 .metric-card__details .metric-chip {
   display: inline-flex;
   align-items: baseline;
+  justify-content: center;
   gap: 6px;
   min-height: 28px;
+  min-width: 0;
   margin: 0;
+  border: 1px solid rgba(210, 219, 216, 0.72);
   border-radius: 999px;
   padding: 0 10px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.9);
   color: #66716e;
   font-size: 0.86rem;
   font-weight: 900;
+  text-align: center;
+  box-shadow: 0 1px 0 rgba(38, 48, 46, 0.04);
+}
+
+.metric-card__details .metric-chip .metric-chip__label,
+.metric-card__details .metric-chip .metric-chip__value {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .metric-chip small {
@@ -643,15 +672,19 @@
   font-size: 0.82em;
 }
 
-.metric-chip--positive {
+.metric-chip.metric-chip--positive {
+  border-color: rgba(14, 106, 78, 0.18);
+  background: rgba(255, 255, 255, 0.94);
   color: #0e6a4e;
 }
 
-.metric-chip--negative {
+.metric-chip.metric-chip--negative {
+  border-color: rgba(161, 58, 27, 0.2);
+  background: rgba(255, 255, 255, 0.94);
   color: #a13a1b;
 }
 
-.metric-chip--neutral {
+.metric-chip.metric-chip--neutral {
   color: #66716e;
 }
 
@@ -2819,12 +2852,16 @@
   }
 
   .metric-card__details {
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 5px;
     margin-top: 8px;
   }
 
   .metric-card__details .metric-chip {
+    width: 100%;
     min-height: 23px;
+    justify-content: center;
     padding: 0 7px;
     font-size: 0.72rem;
   }
@@ -3411,6 +3448,18 @@
     display: grid;
     min-width: 0;
     gap: 1px;
+  }
+
+  .mobile-position-card__metrics > span:nth-child(1) {
+    text-align: left;
+  }
+
+  .mobile-position-card__metrics > span:nth-child(2) {
+    text-align: center;
+  }
+
+  .mobile-position-card__metrics > span:nth-child(3) {
+    text-align: right;
   }
 
   .mobile-position-card em,

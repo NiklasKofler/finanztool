@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-29 02:25 CEST
+- Stand: 2026-06-29 19:00 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `b606a4a`
-- Handoff-Commit: `d3bfeac`
-- Firebase Deploy: 2026-06-29 02:25 CEST erfolgreich
+- Ausgangscommit: `835cebe`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3236,12 +3236,12 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 ## 2026-06-29 Nachtmodus
 
-- Die App hat einen eigenen Nachtmodus-Schalter in der Kopfzeile.
+- Der Nachtmodus folgt automatisch der Systemeinstellung des Endgeraets
+  (`prefers-color-scheme`). Es gibt keine dauerhaft gespeicherte manuelle
+  Theme-Entscheidung mehr.
 - Privatmodus und Nachtmodus sind getrennte Funktionen:
   - Privatmodus verschleiert absolute Werte.
   - Nachtmodus aendert nur die Darstellung.
-- Die Einstellung wird lokal unter `finanztool-theme-mode` gespeichert und
-  beim Laden wiederhergestellt.
 - Technisch setzt die App `data-theme="dark"` auf `documentElement` und
   `theme-dark` auf dem App-Container; dadurch wechseln Seitenhintergrund,
   Karten, Tabellen, Postfach, Agenten und Positionscharts gemeinsam.
@@ -3259,11 +3259,33 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 ## 2026-06-29 App-Icon
 
-- Browser-Tab, Apple-Homescreen-Icon und Webmanifest-Icons verwenden jetzt das
-  neue schwarze IA-Logo mit Gold-/Silber-Schrift und Aufwaertspfeil.
+- Browser-Tab verwendet bevorzugt `app/public/favicon.svg`: transparentes
+  IA-Symbol ohne schwarzen Kachelrand, damit im Tab kein dunkler Rand stehen
+  bleibt.
+- Apple-Homescreen-Icon und Webmanifest-PNGs bleiben separat gepflegt, weil iOS
+  fuer Homescreen-Icons PNGs bevorzugt.
+- Die PNG-Icons sind aus dem schwarzen IA-Logo eng zugeschnitten; es darf kein
+  sichtbarer weisser Aussenrand um die schwarze Kachel stehen.
 - Aktualisierte Dateien:
+  - `app/public/favicon.svg`
+  - `app/index.html`
   - `app/public/favicon.png`
   - `app/public/favicon-32.png`
   - `app/public/apple-touch-icon.png`
   - `app/public/icon-192.png`
   - `app/public/icon-512.png`
+
+## 2026-06-29 Mobile Kennzahlenlogik
+
+- In `Gesamtvermoegen` nutzen `G/V` und `Heute` dieselbe Farblogik wie die
+  Depotkarten: positiv gruen, negativ rot, neutral grau.
+- Die Werte in den ovalen Hauptkarten-Chips sind mittig ausgerichtet.
+- Mobile Depotkarten:
+  - links oben `Depotwert`
+  - links darunter `Heute`
+  - rechts oben `G/V`
+  - rechts darunter `Update`
+- Mobile Positionskarten:
+  - `Kurs` links
+  - `G/V` mittig
+  - `Heute` rechts

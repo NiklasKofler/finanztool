@@ -172,7 +172,7 @@ type AlertRepairAction = {
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
 const sourceOrderStorageKey = "finanztool-source-order";
 const cashHomeStorageKey = "finanztool-cash-home";
-const themeModeStorageKey = "finanztool-theme-mode";
+const systemDarkModeQuery = "(prefers-color-scheme: dark)";
 const documentAlertIds = new Set([
   "unclassified_documents",
   "unknown_document_facts",
@@ -206,7 +206,7 @@ function loadStoredExpandedSections(): UiExpandedSections {
 
 function loadStoredDarkMode() {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(themeModeStorageKey) === "dark";
+  return window.matchMedia?.(systemDarkModeQuery).matches ?? false;
 }
 
 function saveStoredExpandedSections(sections: UiExpandedSections) {
@@ -2315,6 +2315,10 @@ function PositionsTable({
                   {privacyMode ? maskMoney(position.currentValue) : formatCurrency(position.currentValue ?? undefined)}
                 </span>
                 <span className="mobile-position-card__metrics">
+                  <span className="mobile-position-card__quote">
+                    <em>Kurs</em>
+                    <strong>{formatQuoteText(position)}</strong>
+                  </span>
                   <span>
                     <em>G/V</em>
                     <strong className={`performance-cell--${performanceTone}`}>
@@ -2334,10 +2338,6 @@ function PositionsTable({
                     <small className={`performance-cell--${dayTone}`}>
                       {formatSignedPercent(dayChange.percentage)}
                     </small>
-                  </span>
-                  <span className="mobile-position-card__quote">
-                    <em>Kurs</em>
-                    <strong>{formatQuoteText(position)}</strong>
                   </span>
                 </span>
               </summary>
@@ -2794,9 +2794,21 @@ function App() {
   }, [tradeRepublicDisplayMode]);
 
   useEffect(() => {
-    window.localStorage.setItem(themeModeStorageKey, darkMode ? "dark" : "light");
     document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute(
+      "content",
+      darkMode ? "#081012" : "#f5f2eb",
+    );
   }, [darkMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mediaQuery = window.matchMedia(systemDarkModeQuery);
+    const handleSystemThemeChange = () => setDarkMode(mediaQuery.matches);
+    handleSystemThemeChange();
+    mediaQuery.addEventListener("change", handleSystemThemeChange);
+    return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
+  }, []);
 
   useEffect(() => {
     const services = getFirebaseServices();
@@ -3721,11 +3733,17 @@ function App() {
           </strong>
           <div className="metric-card__details">
             <span className={`metric-chip metric-chip--${portfolioPerformanceTone}`}>
-              G/V {privacyMode ? maskSignedMoney(portfolioPerformance) : formatSignedMoney(portfolioPerformance)}
+              <span className="metric-chip__label">G/V</span>
+              <span className="metric-chip__value">
+                {privacyMode ? maskSignedMoney(portfolioPerformance) : formatSignedMoney(portfolioPerformance)}
+              </span>
               <small>{formatSignedPercent(portfolioPerformancePct)}</small>
             </span>
             <span className={`metric-chip metric-chip--${portfolioDayChangeTone}`}>
-              Heute {privacyMode ? maskSignedMoney(portfolioDayChange) : formatSignedMoney(portfolioDayChange)}
+              <span className="metric-chip__label">Heute</span>
+              <span className="metric-chip__value">
+                {privacyMode ? maskSignedMoney(portfolioDayChange) : formatSignedMoney(portfolioDayChange)}
+              </span>
               <small>{formatSignedPercent(portfolioDayChangePct)}</small>
             </span>
           </div>
