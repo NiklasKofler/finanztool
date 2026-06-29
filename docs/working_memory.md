@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-29 19:00 CEST
+- Stand: 2026-06-29 20:52 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `835cebe`
-- Handoff-Commit: `a2d61b0`
-- Firebase Deploy: 2026-06-29 19:00 CEST erfolgreich
+- Ausgangscommit: `a50e0d0`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3279,11 +3279,13 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 - In `Gesamtvermoegen` nutzen `G/V` und `Heute` dieselbe Farblogik wie die
   Depotkarten: positiv gruen, negativ rot, neutral grau.
-- Die Werte in den ovalen Hauptkarten-Chips sind mittig ausgerichtet.
+- Die ovalen Hauptkarten-Chips bleiben kompakt und linksbuendig angeordnet.
+  Nur die Schrift wird gruen/rot/grau gefaerbt; der Chip-Hintergrund wird nicht
+  nach Vorzeichen eingefaerbt. Der Text im Chip ist horizontal zentriert.
 - Mobile Depotkarten:
   - links oben `Depotwert`
-  - links darunter `Heute`
-  - rechts oben `G/V`
+  - links darunter `G/V`
+  - rechts oben `Heute`
   - rechts darunter `Update`
 - Mobile Positionskarten:
   - `Kurs` links
