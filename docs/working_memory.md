@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-07-01 14:22 CEST
+- Stand: 2026-07-01 16:04 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `cf0f052`
-- Handoff-Commit: `63c6c6d`
-- Firebase Deploy: 2026-07-01 14:22 CEST erfolgreich
+- Ausgangscommit: `99490b2`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3294,9 +3294,10 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 
 ## 2026-06-30 Bankkonten und Kreditkarten Vorzeichen
 
-- In Bankkonto- und Kreditkartenzeilen werden Geldwerte nach Vorzeichen
-  eingefaerbt: positiv gruen, negativ rot, neutral grau.
-- Das gilt fuer `Geldstand`, `Kreditlinie` und `Verfuegbar`.
+- In Bankkonto- und Kreditkartenzeilen wird nur der echte `Geldstand`/`Saldo`
+  nach Vorzeichen eingefaerbt: positiv gruen, negativ rot, neutral grau.
+- `Kreditlinie`, `Kreditlimit` und `Verfuegbar` bleiben neutral formatiert,
+  weil sie keine Gewinn-/Verlust- oder Kontostandsbewertung sind.
 - TF Bank: Der Agent darf den Portal-Saldo nicht pauschal als Schuld
   interpretieren. Ein erkanntes Feld `Saldo` wird als echter Kontostand mit
   Portal-Vorzeichen gespeichert. Nur Fallback-Felder wie `zu zahlen`,
@@ -3334,3 +3335,19 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   Snapshot, Transaction-Seite, Activity-Seite und Detailansichten verwenden
   parser-/DOM-basierte Ready-Checks. Verbleibende kurze Polling-Waits sind nur
   interne Ereignispruefungen oder harte Download-Maximalzeiten.
+
+## 2026-07-01 Flatex Snapshot-Konsistenz
+
+- Eine Flatex-Warnung `Depotwert passt nicht zur Positionsliste` kann durch
+  zeitversetztes Nachladen von Summary und Positionsliste im Flatex-Portal
+  entstehen. Der Brokerwert und die Positionsliste stammen dann zwar aus dem
+  gleichen Portal, aber nicht exakt aus dem gleichen UI-Zustand.
+- Der Flatex-Snapshot-Agent prueft deshalb Summary vs. Positionssumme vor dem
+  Schreiben. Bei auffaelliger Differenz wartet er und liest Summary/Positionen
+  bis zu drei Mal erneut. Die verwendete Versuchszahl und Konsistenzdaten
+  werden mit dem Snapshot gespeichert.
+- `systemHealth/current` erklaert diese Warnung jetzt explizit und bietet in
+  der GUI eine Behebung an: `Flatex-Snapshot starten`. Der Command-Runner
+  verarbeitet dafuer `flatex_refresh` und fuehrt
+  `download-flatex-local.mjs --write --snapshot-only --headless` plus
+  anschliessenden Health-Check aus.

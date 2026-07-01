@@ -225,6 +225,7 @@ export type AutomationCommandType =
   | "sync_quotes"
   | "full_refresh"
   | "health_check"
+  | "flatex_refresh"
   | "traderepublic_portal_refresh"
   | "tfbank_refresh"
   | "capitalcom_refresh";

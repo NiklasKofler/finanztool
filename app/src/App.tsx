@@ -164,10 +164,10 @@ type PortfolioValueBreakdown = {
   uninvestedCash: number;
 };
 type AlertRepairAction = {
-  id: "traderepublic" | "tfbank" | "capitalcom";
+  id: "flatex" | "traderepublic" | "tfbank" | "capitalcom";
   label: string;
   commandId: string;
-  commandType: "traderepublic_portal_refresh" | "tfbank_refresh" | "capitalcom_refresh";
+  commandType: "flatex_refresh" | "traderepublic_portal_refresh" | "tfbank_refresh" | "capitalcom_refresh";
 };
 const expandedSectionsStorageKey = "finanztool-expanded-sections";
 const sourceOrderStorageKey = "finanztool-source-order";
@@ -398,6 +398,14 @@ function getTradeRepublicPortalButtonLabel(
 
 function getAlertRepairAction(alert: SystemAlert): AlertRepairAction | null {
   const text = `${alert.id} ${alert.source ?? ""} ${alert.title} ${alert.message}`.toLowerCase();
+  if (/flatex/.test(text)) {
+    return {
+      id: "flatex",
+      label: "Flatex-Snapshot starten",
+      commandId: "flatex_snapshot_refresh",
+      commandType: "flatex_refresh",
+    };
+  }
   if (/traderepublic|trade republic/.test(text)) {
     return {
       id: "traderepublic",
@@ -1686,10 +1694,10 @@ function PositionPriceChart({
 }
 
 const sourceLogoPaths: Partial<Record<string, string>> = {
-  bank_accounts: "/source-logos/cash.jpg",
+  bank_accounts: "/source-logos/cash.svg",
   bitget: "/source-logos/bitget.png",
   capitalcom: "/source-logos/capitalcom.jpg",
-  cash_home: "/source-logos/cash.jpg",
+  cash_home: "/source-logos/cash.svg",
   equateplus: "/source-logos/equateplus.png",
   flatex: "/source-logos/flatex.png",
   ginmon: "/source-logos/ginmon.png",
@@ -2117,8 +2125,6 @@ function BankAccountGroup({
           const accountSectionKey = `${groupKey}:account:${accountKey}`;
           const accountLogoPath = getBankAccountLogoPath(account);
           const accountCurrentTone = getPerformanceTone(account.currentValue);
-          const accountCreditLineTone = getPerformanceTone(account.creditLineEstimate);
-          const accountAvailableTone = getPerformanceTone(account.availableWithCredit);
           return (
             <details
               className="source-account-details"
@@ -2167,12 +2173,12 @@ function BankAccountGroup({
                   </strong>
                 </div>
                 <div className="source-account-row__value" data-label="Kreditlinie">
-                  <strong className={`performance-value--${accountCreditLineTone}`}>
+                  <strong>
                     {privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}
                   </strong>
                 </div>
                 <div className="source-account-row__value" data-label="Verfügbar">
-                  <strong className={`performance-value--${accountAvailableTone}`}>
+                  <strong>
                     {privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}
                   </strong>
                 </div>
@@ -4261,13 +4267,13 @@ function App() {
                           </div>
                           <div>
                             <dt>Kreditlinie</dt>
-                            <dd className={`performance-value performance-value--${getPerformanceTone(source.creditLineEstimate)}`}>
+                            <dd>
                               {privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}
                             </dd>
                           </div>
                           <div>
                             <dt>Verfügbar</dt>
-                            <dd className={`performance-value performance-value--${getPerformanceTone(source.availableWithCredit)}`}>
+                            <dd>
                               {privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}
                             </dd>
                           </div>
@@ -4296,13 +4302,13 @@ function App() {
                           </div>
                           <div>
                             <dt>Kreditlimit</dt>
-                            <dd className={`performance-value performance-value--${getPerformanceTone(source.creditLineEstimate)}`}>
+                            <dd>
                               {privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}
                             </dd>
                           </div>
                           <div>
                             <dt>Verfügbar</dt>
-                            <dd className={`performance-value performance-value--${getPerformanceTone(source.availableWithCredit)}`}>
+                            <dd>
                               {privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}
                             </dd>
                           </div>

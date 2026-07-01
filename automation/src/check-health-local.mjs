@@ -604,12 +604,13 @@ if (flatexSummary) {
         "Flatex-Brokerwert passt nicht zur Positionsliste",
         `Flatex Depotwert und Broker-Positionssumme unterscheiden sich um ${roundCurrency(
           brokerPositionDifference,
-        ).toFixed(2)} EUR.`,
+        ).toFixed(2)} EUR. Das kann entstehen, wenn Flatex Summary und Positionsliste zeitversetzt nachladen. Behebung: Flatex-Snapshot erneut starten.`,
         "flatex",
         {
           depotValue,
           brokerPositionValue,
           allowedBrokerDifference,
+          repairCommandType: "flatex_refresh",
         },
       ),
     );
@@ -739,8 +740,13 @@ for (const source of expectedSources) {
         `summary_mismatch_${source}`,
         "warning",
         "Summary passt nicht zur Positionssumme",
-        `${source}: Positionssumme ${positionTotal.toFixed(2)} EUR, Summary ${summaryTotal.toFixed(2)} EUR.`,
+        source === "flatex"
+          ? `Flatex: Positionssumme ${positionTotal.toFixed(2)} EUR, Summary ${summaryTotal.toFixed(
+              2,
+            )} EUR. Das kann durch zeitversetztes Nachladen von Flatex Summary und Positionen entstehen. Behebung: Flatex-Snapshot erneut starten.`
+          : `${source}: Positionssumme ${positionTotal.toFixed(2)} EUR, Summary ${summaryTotal.toFixed(2)} EUR.`,
         source,
+        source === "flatex" ? { repairCommandType: "flatex_refresh" } : null,
       ),
     );
   }

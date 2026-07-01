@@ -221,6 +221,52 @@ function isNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function brokerPositionValue(positions) {
+  return roundCurrency((positions ?? []).reduce((sum, position) => sum + (parseMaybeNumber(position.currentValue) ?? 0), 0));
+}
+
+function brokerSnapshotConsistency({ overview, positions }) {
+  const depotValue = parseMaybeNumber(overview?.depotValue);
+  const positionValue = brokerPositionValue(positions);
+  const difference = isNumber(depotValue) && isNumber(positionValue) ? roundCurrency(depotValue - positionValue) : null;
+  const allowedDifference = isNumber(depotValue) ? Math.max(5, Math.abs(depotValue) * 0.0025) : 5;
+  const needsRetry =
+    !positions?.length ||
+    (isNumber(difference) && Math.abs(difference) > allowedDifference);
+  return {
+    depotValue: roundCurrency(depotValue),
+    brokerPositionValue: positionValue,
+    brokerPositionSummaryDifference: difference,
+    allowedDifference,
+    needsRetry,
+  };
+}
+
+async function readConsistentFlatexBrokerSnapshot(page, { attempts = 3 } = {}) {
+  let lastSnapshot = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const overview = await readFlatexOverviewSummary(page);
+    const positions = await readFlatexBrokerPositions(page);
+    const consistency = brokerSnapshotConsistency({ overview, positions });
+    lastSnapshot = { overview, positions, consistency, consistencyAttempt: attempt };
+
+    if (!consistency.needsRetry) return lastSnapshot;
+    if (attempt < attempts) {
+      console.warn(
+        `[warn] Flatex Snapshot noch inkonsistent (Versuch ${attempt}/${attempts}): Depot ${
+          isNumber(consistency.depotValue) ? consistency.depotValue.toFixed(2) : "n/a"
+        } EUR, Positionen ${consistency.brokerPositionValue.toFixed(2)} EUR, Differenz ${
+          isNumber(consistency.brokerPositionSummaryDifference)
+            ? consistency.brokerPositionSummaryDifference.toFixed(2)
+            : "n/a"
+        } EUR. Warte auf nachgeladene Broker-Daten.`,
+      );
+      await page.waitForTimeout(2500);
+    }
+  }
+  return lastSnapshot;
+}
+
 function isCashPosition(position) {
   return position.category === "Cash" || /cash|konto|kontostand/i.test(`${position.id ?? ""} ${position.name ?? ""}`);
 }
@@ -438,6 +484,14 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     brokerPositionValue,
     brokerPositionSummaryDifference:
       isNumber(depotValue) && isNumber(brokerPositionValue) ? roundCurrency(depotValue - brokerPositionValue) : null,
+    brokerSnapshotConsistencyAttempt: brokerSnapshot.consistencyAttempt ?? null,
+    brokerSnapshotConsistency:
+      brokerSnapshot.consistency ?? {
+        depotValue,
+        brokerPositionValue,
+        brokerPositionSummaryDifference:
+          isNumber(depotValue) && isNumber(brokerPositionValue) ? roundCurrency(depotValue - brokerPositionValue) : null,
+      },
     positionCount: brokerPositions.length + (isNumber(cashValue) ? 1 : 0),
     brokerPositionCount: brokerPositions.length,
     valuationMethod: "flatex_broker_snapshot_v1",
@@ -460,6 +514,8 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     exportResults: results,
     overview,
     positions: brokerPositions,
+    consistency: brokerSnapshot.consistency ?? null,
+    consistencyAttempt: brokerSnapshot.consistencyAttempt ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -491,6 +547,9 @@ async function writeBrokerSnapshot({ brokerSnapshot, targets, results, requested
     cashValue: roundCurrency(cashValue),
     depotValue,
     netValue,
+    brokerSnapshotConsistencyAttempt: brokerSnapshot.consistencyAttempt ?? null,
+    brokerPositionSummaryDifference:
+      isNumber(depotValue) && isNumber(brokerPositionValue) ? roundCurrency(depotValue - brokerPositionValue) : null,
     brokerSnapshotImportId: importId,
   });
 
@@ -572,9 +631,7 @@ try {
   }
 
   try {
-    const overview = await readFlatexOverviewSummary(page);
-    const positions = await readFlatexBrokerPositions(page);
-    brokerSnapshot = { overview, positions };
+    brokerSnapshot = await readConsistentFlatexBrokerSnapshot(page);
   } catch (error) {
     brokerSnapshotError = error;
   }
@@ -602,6 +659,8 @@ console.log(
         ? {
             overview: brokerSnapshot.overview,
             positionCount: brokerSnapshot.positions.length,
+            consistency: brokerSnapshot.consistency ?? null,
+            consistencyAttempt: brokerSnapshot.consistencyAttempt ?? null,
           }
         : null,
       brokerSnapshotError:

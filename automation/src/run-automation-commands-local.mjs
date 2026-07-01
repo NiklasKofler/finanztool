@@ -57,6 +57,21 @@ function runTradeRepublicPortalRefresh() {
   if (result.status !== 0) throw new Error(`Trade-Republic-Portal-Refresh fehlgeschlagen: Exit ${result.status}`);
 }
 
+function runFlatexRefresh() {
+  const result = spawnSync(process.execPath, [
+    path.join(__dirname, "download-flatex-local.mjs"),
+    "--write",
+    "--snapshot-only",
+    "--headless",
+  ], {
+    cwd: path.resolve(__dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) throw new Error(`Flatex-Snapshot fehlgeschlagen: Exit ${result.status}`);
+  runHealthCheck();
+}
+
 function runTfBankRefresh() {
   const result = spawnSync(process.execPath, [
     path.join(__dirname, "sync-tfbank-local.mjs"),
@@ -97,12 +112,14 @@ const [commands, statuses] = await Promise.all([
 const quoteAgentStatus = statuses.find((status) => status.id === "quotes");
 const manualRefreshStatus = statuses.find((status) => status.id === "manual_refresh");
 const tradeRepublicPortalStatus = statuses.find((status) => status.id === "traderepublic_portal");
+const flatexStatus = statuses.find((status) => status.id === "flatex");
 const tfBankStatus = statuses.find((status) => status.id === "tfbank");
 const capitalComStatus = statuses.find((status) => status.id === "capitalcom");
 if (
   quoteAgentStatus?.status === "RUNNING" ||
   manualRefreshStatus?.status === "RUNNING" ||
   tradeRepublicPortalStatus?.status === "RUNNING" ||
+  flatexStatus?.status === "RUNNING" ||
   tfBankStatus?.status === "RUNNING" ||
   capitalComStatus?.status === "RUNNING"
 ) {
@@ -111,7 +128,7 @@ if (
 }
 const pendingCommands = commands
   .filter((command) =>
-    ["sync_quotes", "full_refresh", "health_check", "traderepublic_portal_refresh", "tfbank_refresh", "capitalcom_refresh"].includes(command.type) &&
+    ["sync_quotes", "full_refresh", "health_check", "flatex_refresh", "traderepublic_portal_refresh", "tfbank_refresh", "capitalcom_refresh"].includes(command.type) &&
     command.status === "REQUESTED")
   .sort((left, right) => {
     const leftDate = parseDate(left.requestedAt)?.getTime() ?? 0;
@@ -137,6 +154,7 @@ for (const command of pendingCommands) {
     if (command.type === "sync_quotes") runQuoteSync();
     if (command.type === "full_refresh") runFullRefresh();
     if (command.type === "health_check") runHealthCheck();
+    if (command.type === "flatex_refresh") runFlatexRefresh();
     if (command.type === "traderepublic_portal_refresh") runTradeRepublicPortalRefresh();
     if (command.type === "tfbank_refresh") runTfBankRefresh();
     if (command.type === "capitalcom_refresh") runCapitalComRefresh();
