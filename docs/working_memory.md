@@ -97,11 +97,12 @@ Eine persoenliche Finanzperformance-App, die Vermoegenswerte aus mehreren Quelle
   TF-Bank-Agenten ueber `automationCommands/tfbank_manual_refresh` startet.
   Sicherer Fallback bleibt die TAN-Datei `~/.finanztool/tfbank-tan.txt`, falls
   automatisches Messages-Lesen wieder fehlschlaegt.
-- Fix 2026-06-28: Die Firestore-Regeln erlauben jetzt auch
-  `tfbank_manual_refresh` (`tfbank_refresh`) und `capitalcom_manual_refresh`
-  (`capitalcom_refresh`). Wenn die GUI bei einem Reparaturbutton
-  `Missing or insufficient permissions` zeigt, ist das zuerst ein
-  Firestore-Rules-Thema und nicht automatisch ein SMS-/Portalproblem.
+- Fix 2026-07-01: Die Firestore-Regeln erlauben jetzt auch
+  `flatex_snapshot_refresh` (`flatex_refresh`), `tfbank_manual_refresh`
+  (`tfbank_refresh`) und `capitalcom_manual_refresh` (`capitalcom_refresh`).
+  Wenn die GUI bei einem Reparaturbutton `Missing or insufficient permissions`
+  zeigt, ist das zuerst ein Firestore-Rules-Thema und nicht automatisch ein
+  Agent-/Portalproblem.
 - Stand Quellenzaehlung 2026-06-28: 16 integrierte Quellen = 9
   Depot-/Brokerquellen plus 7 einzelne Bank-/Kreditkartenquellen. Nur
   `tfbank` ist aktuell fachlich fehlerhaft; nach frischem Health-Sync muss die
@@ -352,10 +353,16 @@ Update 2026-06-27:
 - Firebase Hosting ist konfiguriert
 - Die App liest Live-Daten aus Firestore
 - App-Login ist auf `niklas.kofler@gmail.com` begrenzt
-- App darf `automationCommands/sync_quotes_manual`,
-  `automationCommands/traderepublic_portal_refresh`,
-  `documentReviewDecisions/*` und das eng begrenzte manuelle
-  Eingabedokument `manualInputs/equateplus_novartis` schreiben.
+- App darf eng begrenzte UI-Commands in `automationCommands/*` schreiben:
+  `sync_quotes_manual`, `health_check_manual`, `flatex_snapshot_refresh`,
+  `traderepublic_portal_refresh`, `tfbank_manual_refresh` und
+  `capitalcom_manual_refresh`.
+- Jeder Reparatur-/Refresh-Button muss sowohl auf localhost als auch online
+  funktionieren. Wird in der App ein neuer Command-Typ eingebaut, muss
+  `firestore.rules` im selben Schritt um exakt diesen Command erweitert werden.
+- App darf ausserdem `documentReviewDecisions/*` und eng begrenzte manuelle
+  Eingabedokumente wie `manualInputs/equateplus_novartis` und
+  `manualInputs/cash_home` schreiben.
   Der Command-Runner interpretiert `sync_quotes_manual` historisch so benannt
   inzwischen als Full-Refresh.
 - Finanzdaten werden lokal durch Agents geschrieben, nicht direkt aus der App
@@ -363,11 +370,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-07-01 16:04 CEST
+- Stand: 2026-07-01 20:44 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `99490b2`
-- Handoff-Commit: `bbe78ea`
-- Firebase Deploy: 2026-07-01 16:04 CEST erfolgreich
+- Ausgangscommit: `2fce4d0`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3351,3 +3358,23 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   verarbeitet dafuer `flatex_refresh` und fuehrt
   `download-flatex-local.mjs --write --snapshot-only --headless` plus
   anschliessenden Health-Check aus.
+
+## 2026-07-01 App-Icon / Browser-Tab
+
+- Browser-Tab, iPhone-Home-Screen und Webmanifest sollen dieselbe
+  IA-App-Logo-Familie verwenden.
+- `app/index.html` verlinkt deshalb zuerst `favicon.ico` und PNG-Favicons mit
+  Versionsparameter. Das vermeidet, dass Chrome weiter ein altes oder anderes
+  `favicon.svg` aus dem Cache verwendet.
+- Manifest-Icons sind ebenfalls versioniert, damit Homescreen-Shortcuts nach
+  Deploy das aktuelle Icon nachladen.
+
+## 2026-07-01 Bankkonten Logo
+
+- Die `bank_accounts`/Cash-Karte verwendet ein eigenes Banknoten-Logo unter
+  `/source-logos/bank-accounts.png`.
+- Die manuelle Bargeld-Position `cash_home` bleibt beim separaten Euro-Cash-
+  Symbol `/source-logos/cash.svg`.
+- Bankkonto- und Kreditkarten-Detailboxen duerfen nicht nach rechts einruecken.
+  Aufgeklappte Agenten-/Umsatzdetails stehen buendig unter der jeweiligen Zeile,
+  analog zu den anderen Depot-Positionslisten.

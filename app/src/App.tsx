@@ -1694,7 +1694,7 @@ function PositionPriceChart({
 }
 
 const sourceLogoPaths: Partial<Record<string, string>> = {
-  bank_accounts: "/source-logos/cash.svg",
+  bank_accounts: "/source-logos/bank-accounts.png",
   bitget: "/source-logos/bitget.png",
   capitalcom: "/source-logos/capitalcom.jpg",
   cash_home: "/source-logos/cash.svg",

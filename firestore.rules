@@ -20,6 +20,7 @@ service cloud.firestore {
         && commandId in [
           "sync_quotes_manual",
           "health_check_manual",
+          "flatex_snapshot_refresh",
           "traderepublic_portal_refresh",
           "tfbank_manual_refresh",
           "capitalcom_manual_refresh"
@@ -37,6 +38,9 @@ service cloud.firestore {
           ||
           (commandId == "health_check_manual"
             && request.resource.data.type == "health_check")
+          ||
+          (commandId == "flatex_snapshot_refresh"
+            && request.resource.data.type == "flatex_refresh")
           ||
           (commandId == "traderepublic_portal_refresh"
             && request.resource.data.type == "traderepublic_portal_refresh")

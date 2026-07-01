@@ -2424,7 +2424,7 @@
 }
 
 .source-account-transactions-placeholder {
-  margin: -2px 0 6px 28px;
+  margin: -2px 0 6px;
   border: 1px solid #e3ebe8;
   border-radius: 8px;
   background: #fbfcfc;
@@ -2437,7 +2437,7 @@
 .bank-ledger-list {
   display: grid;
   gap: 5px;
-  margin: -2px 0 6px 28px;
+  margin: -2px 0 6px;
 }
 
 .bank-ledger-row {
@@ -3796,7 +3796,7 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px 10px;
-    margin: -3px 0 5px 22px;
+    margin: -3px 0 5px;
     border: 1px solid #e2e9e6;
     border-radius: 8px;
     background: #fbfdfc;
@@ -3832,13 +3832,13 @@
   }
 
   .source-account-transactions-placeholder {
-    margin: -1px 0 5px 22px;
+    margin: -1px 0 5px;
     padding: 7px 8px;
     font-size: 0.64rem;
   }
 
   .bank-ledger-list {
-    margin: -1px 0 5px 22px;
+    margin: -1px 0 5px;
     gap: 4px;
   }
 
