@@ -125,6 +125,11 @@ export interface BankLedgerEntryDocument {
   currency?: string | null;
   counterpartyName?: string | null;
   transactionId?: string | null;
+  status?: string | null;
+  parseStatus?: string | null;
+  excludedFromAnalysis?: boolean | null;
+  dedupeKey?: string | null;
+  duplicateOf?: string | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
 }
 
@@ -716,7 +721,13 @@ export async function loadBankLedgerEntries(db: Firestore): Promise<BankLedgerEn
       id: entry.id,
       ...(entry.data() as Omit<BankLedgerEntryDocument, "id">),
     }))
-    .filter((entry) => entry.source === "bank_accounts")
+    .filter(
+      (entry) =>
+        entry.source === "bank_accounts" &&
+        entry.status !== "DUPLICATE" &&
+        entry.parseStatus !== "DUPLICATE" &&
+        entry.excludedFromAnalysis !== true,
+    )
     .map((entry) => ({
       ...entry,
       amount: parseMaybeNumber(entry.amount) as number | null,

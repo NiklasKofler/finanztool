@@ -266,11 +266,15 @@ Regeln:
   - wichtig fuer Gesamtvermoegen, Cash, Kreditlinien und spaetere
     Ausgabenanalyse
   - Transaktionen werden je Konto idempotent in `ledgerEntries` gespeichert
-  - Initialbestand ist vorhanden; normaler Sync ist inkrementell ab letztem
-    gespeicherten Umsatz je Konto minus 2 Tage Sicherheitsfenster
+  - Initialbestand ist vorhanden; fuer neu angebundene Konten liest der erste
+    Transaktionsimport standardmaessig 92 Tage. Normaler Sync ist danach
+    inkrementell ab letztem gespeicherten Umsatz je Konto minus 2 Tage
+    Sicherheitsfenster
   - Backfill: `npm run sync:bank-accounts:backfill` fuer 180 Tage
   - Bankkosten/Steuern werden als `costEvents`, Zinsen/Bonus/Cashback als
     `incomeEvents` abgeleitet, wenn der Umsatztext eindeutig ist
+  - Bankumsaetze haben einen fachlichen `dedupeKey`; alte bank99-Duplikate
+    werden als `DUPLICATE` markiert und aus Analyse/GUI herausgefiltert
   - keine Zahlungsfunktion und kein Bank-Web-Scraping
   - eigener Detailplan:
     `docs/sparkasse_george_integration_plan.md`
@@ -465,6 +469,9 @@ Aktuelle Hauptquellen:
 3. Full-Scans laufen nur gezielt oder zu geplanten Zeiten
 4. Technischer Agentlauf, fachliche Datenveraenderung, Dokumentstand und
    Kursstand bleiben getrennt sichtbar
+5. Der zentrale Quote-Lauf schreibt im 5-Minuten-Takt `priceHistory`-Buckets
+   fuer Instrumente und Positionen. Diese Buckets sind die Datenbasis fuer
+   Intraday-Charts und Hover-/Touch-Auslesung in der App.
 
 ### Phase 3 - Dashboards
 

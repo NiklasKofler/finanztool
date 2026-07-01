@@ -30,7 +30,14 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
+} from "react";
 import "./App.css";
 import { getFirebaseServices, isFirebaseConfigured } from "./firebase/client";
 import {
@@ -116,13 +123,12 @@ const sourceSortOrder = [
 const ownerEmail = "niklas.kofler@gmail.com";
 const dayInMillis = 24 * 60 * 60 * 1000;
 const priceChartRanges: Array<{ id: PriceChartRangeId; label: string; durationMs: number }> = [
-  { id: "1h", label: "1h", durationMs: 60 * 60 * 1000 },
-  { id: "1d", label: "Tag", durationMs: dayInMillis },
-  { id: "1w", label: "Woche", durationMs: 7 * dayInMillis },
-  { id: "1m", label: "Monat", durationMs: 31 * dayInMillis },
+  { id: "1d", label: "Heute", durationMs: dayInMillis },
+  { id: "1w", label: "1W", durationMs: 7 * dayInMillis },
+  { id: "1m", label: "1M", durationMs: 31 * dayInMillis },
   { id: "3m", label: "3M", durationMs: 92 * dayInMillis },
   { id: "6m", label: "6M", durationMs: 183 * dayInMillis },
-  { id: "1y", label: "Jahr", durationMs: 366 * dayInMillis },
+  { id: "1y", label: "1J", durationMs: 366 * dayInMillis },
 ];
 type CommandRequestStatus = "idle" | "requesting" | "requested" | "running" | "error";
 type EquatePlusSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -149,13 +155,14 @@ type PositionSortKey =
   | "updatedAt";
 type PositionSortDirection = "asc" | "desc";
 type PositionSortState = { key: PositionSortKey; direction: PositionSortDirection };
-type PriceChartRangeId = "1h" | "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
+type PriceChartRangeId = "1d" | "1w" | "1m" | "3m" | "6m" | "1y";
 type PriceChartPoint = {
   id: string;
   time: number;
   value: number;
   label: string;
 };
+type PositionedPriceChartPoint = PriceChartPoint & { x: number; y: number };
 type PortfolioValueBreakdown = {
   depotValue: number;
   cashValue: number;
@@ -1378,6 +1385,13 @@ function positionHistoryKey(position: PortfolioPosition) {
 }
 
 function historyEntryTime(entry: PositionPriceHistoryEntry) {
+  if (entry.historyInterval === "5m" || entry.historyBucket) {
+    const bucketTime =
+      dateToMillis(entry.fetchedAt) ||
+      dateToMillis(entry.updatedAt) ||
+      dateToMillis(entry.asOf);
+    if (bucketTime) return bucketTime;
+  }
   const explicitTime =
     dateToMillis(entry.asOf) ||
     dateToMillis(entry.fetchedAt) ||
@@ -1433,24 +1447,42 @@ function historyEntryMatchesPosition(entry: PositionPriceHistoryEntry, position:
   return false;
 }
 
+function historyEntryMatchRank(entry: PositionPriceHistoryEntry, position: PortfolioPosition) {
+  if (entry.positionId === position.id) return 0;
+  if (entry.historyKey === positionHistoryKey(position)) return 0;
+  if (entry.instrumentId === positionHistoryKey(position)) return 0;
+  if (Array.isArray(entry.positionIds) && entry.positionIds.includes(position.id)) return 1;
+  if (position.isin && entry.isin === position.isin) return 2;
+  return Number.MAX_SAFE_INTEGER;
+}
+
 function priceHistoryForPosition(
   position: PortfolioPosition,
   history: PositionPriceHistoryEntry[],
 ) {
-  return history
-    .filter((entry) => historyEntryMatchesPosition(entry, position))
-    .map((entry): PriceChartPoint | null => {
-      const time = historyEntryTime(entry);
-      const value = historyEntryValue(entry, position);
-      if (!time || typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
-      return {
-        id: entry.id,
-        time,
-        value,
-        label: entry.provider ?? entry.historyDate ?? "Historie",
-      };
-    })
-    .filter((point): point is PriceChartPoint => Boolean(point));
+  const fiveMinuteMs = 5 * 60 * 1000;
+  const byBucket = new Map<string, { point: PriceChartPoint; rank: number }>();
+  for (const entry of history) {
+    if (!historyEntryMatchesPosition(entry, position)) continue;
+    const time = historyEntryTime(entry);
+    const value = historyEntryValue(entry, position);
+    if (!time || typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+    const point = {
+      id: entry.id,
+      time,
+      value,
+      label: entry.provider ?? entry.historyDate ?? "Historie",
+    };
+    const rank = historyEntryMatchRank(entry, position);
+    const bucketKey = `${Math.floor(point.time / fiveMinuteMs)}`;
+    const existing = byBucket.get(bucketKey);
+    if (!existing || rank < existing.rank || (rank === existing.rank && point.time > existing.point.time)) {
+      byBucket.set(bucketKey, { point, rank });
+    }
+  }
+  return [...byBucket.values()]
+    .map((entry) => entry.point)
+    .sort((left, right) => left.time - right.time);
 }
 
 function getPositionSearchText(position: PortfolioPosition) {
@@ -1603,6 +1635,46 @@ function formatChartMoney(value?: number | null, privacyMode = false) {
   return privacyMode ? maskMoney(value) : formatCurrency(value);
 }
 
+function formatChartPointTime(time?: number | null, rangeId: PriceChartRangeId = "1d") {
+  if (typeof time !== "number" || !Number.isFinite(time)) return "—";
+  const date = new Date(time);
+  if (rangeId === "1d") {
+    return new Intl.DateTimeFormat("de-AT", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+  return new Intl.DateTimeFormat("de-AT", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function downsampleChartPoints(points: PriceChartPoint[], maxPoints = 520) {
+  if (points.length <= maxPoints) return points;
+  const sampled: PriceChartPoint[] = [];
+  const step = (points.length - 1) / (maxPoints - 1);
+  const seen = new Set<string>();
+  for (let index = 0; index < maxPoints; index += 1) {
+    const point = points[Math.round(index * step)];
+    if (point && !seen.has(point.id)) {
+      sampled.push(point);
+      seen.add(point.id);
+    }
+  }
+  const latest = points.at(-1);
+  if (latest && !seen.has(latest.id)) sampled.push(latest);
+  return sampled.sort((left, right) => left.time - right.time);
+}
+
+function startOfLocalChartDay(time: number) {
+  const date = new Date(time);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
 function PositionPriceChart({
   position,
   history,
@@ -1612,7 +1684,8 @@ function PositionPriceChart({
   history: PriceChartPoint[];
   privacyMode: boolean;
 }) {
-  const [rangeId, setRangeId] = useState<PriceChartRangeId>("1m");
+  const [rangeId, setRangeId] = useState<PriceChartRangeId>("1d");
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const currentPoint = currentPositionChartPoint(position);
   const points = useMemo(() => {
     const combined = [...history, ...(currentPoint ? [currentPoint] : [])]
@@ -1622,12 +1695,14 @@ function PositionPriceChart({
       return !previous || previous.time !== point.time || previous.value !== point.value;
     });
     const latestTime = deduplicated.at(-1)?.time ?? Date.now();
-    const range = priceChartRanges.find((item) => item.id === rangeId) ?? priceChartRanges[3];
-    return deduplicated.filter((point) => point.time >= latestTime - range.durationMs);
+    const range = priceChartRanges.find((item) => item.id === rangeId) ?? priceChartRanges[0];
+    const earliestTime = rangeId === "1d" ? startOfLocalChartDay(latestTime) : latestTime - range.durationMs;
+    return downsampleChartPoints(deduplicated.filter((point) => point.time >= earliestTime));
   }, [currentPoint, history, rangeId]);
 
   const firstPoint = points[0] ?? null;
   const latestPoint = points.at(-1) ?? null;
+  const selectedPoint = points.find((point) => point.id === selectedPointId) ?? latestPoint;
   const deltaValue = firstPoint && latestPoint ? latestPoint.value - firstPoint.value : null;
   const deltaPct = firstPoint && latestPoint && firstPoint.value ? (deltaValue ?? 0) / firstPoint.value : null;
   const deltaTone = getPerformanceTone(deltaValue);
@@ -1638,18 +1713,30 @@ function PositionPriceChart({
   const firstTime = firstPoint?.time ?? 0;
   const lastTime = latestPoint?.time ?? firstTime + 1;
   const timeSpread = lastTime - firstTime || 1;
-  const chartPoints = points.map((point) => {
+  const chartPoints: PositionedPriceChartPoint[] = points.map((point) => {
     const x = points.length === 1 ? 50 : ((point.time - firstTime) / timeSpread) * 100;
-    const y = 34 - ((point.value - minValue) / valueSpread) * 28;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
+    const y = 36 - ((point.value - minValue) / valueSpread) * 30;
+    return { ...point, x, y };
   });
+  const selectedChartPoint =
+    chartPoints.find((point) => point.id === selectedPoint?.id) ?? chartPoints.at(-1) ?? null;
+  const polylinePoints = chartPoints.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`);
+  const handlePointer = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!chartPoints.length) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
+    const nearest = chartPoints.reduce((best, point) =>
+      Math.abs(point.x - xPercent) < Math.abs(best.x - xPercent) ? point : best,
+    );
+    setSelectedPointId(nearest.id);
+  };
 
   return (
     <section className="position-price-chart" aria-label={`Kurschart ${position.name}`}>
       <header className="position-price-chart__header">
         <div className="position-price-chart__title">
-          <span>Kurschart</span>
-          <strong>{formatChartMoney(latestPoint?.value, privacyMode)}</strong>
+          <span>{selectedPoint ? formatChartPointTime(selectedPoint.time, rangeId) : "Kurschart"}</span>
+          <strong>{formatChartMoney(selectedPoint?.value, privacyMode)}</strong>
         </div>
         <div className="position-price-chart__ranges" aria-label="Zeitraum waehlen">
           {priceChartRanges.map((range) => (
@@ -1666,14 +1753,43 @@ function PositionPriceChart({
       </header>
       {points.length ? (
         <>
-          <svg className="position-price-chart__svg" viewBox="0 0 100 38" preserveAspectRatio="none" role="img">
+          <svg
+            className="position-price-chart__svg"
+            viewBox="0 0 100 42"
+            preserveAspectRatio="none"
+            role="img"
+            onPointerDown={handlePointer}
+            onPointerMove={handlePointer}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedPointId(null);
+            }}
+          >
             <title>Kursverlauf {position.name}</title>
-            <line x1="0" y1="35" x2="100" y2="35" />
+            <line className="position-price-chart__grid" x1="0" y1="6" x2="100" y2="6" />
+            <line className="position-price-chart__grid" x1="0" y1="21" x2="100" y2="21" />
+            <line className="position-price-chart__grid" x1="0" y1="36" x2="100" y2="36" />
             {points.length > 1 ? (
-              <polyline points={chartPoints.join(" ")} />
+              <polyline points={polylinePoints.join(" ")} />
             ) : (
               <circle cx="50" cy="18" r="1.8" />
             )}
+            {selectedChartPoint ? (
+              <>
+                <line
+                  className="position-price-chart__crosshair"
+                  x1={selectedChartPoint.x}
+                  y1="4"
+                  x2={selectedChartPoint.x}
+                  y2="38"
+                />
+                <circle
+                  className="position-price-chart__marker"
+                  cx={selectedChartPoint.x}
+                  cy={selectedChartPoint.y}
+                  r="2.2"
+                />
+              </>
+            ) : null}
           </svg>
           <footer className="position-price-chart__footer">
             <span>{points.length} Punkt{points.length === 1 ? "" : "e"}</span>

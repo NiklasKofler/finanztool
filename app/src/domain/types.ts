@@ -147,6 +147,8 @@ export interface PositionPriceHistoryEntry {
   fetchedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   updatedAt?: string | Date | { toDate: () => Date } | { seconds: number } | null;
   historyDate?: string | null;
+  historyBucket?: string | null;
+  historyInterval?: string | null;
   status?: string | null;
 }
 

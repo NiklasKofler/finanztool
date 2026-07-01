@@ -370,11 +370,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-07-01 20:44 CEST
+- Stand: 2026-07-01 23:14 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `2fce4d0`
-- Handoff-Commit: `a845aae`
-- Firebase Deploy: 2026-07-01 20:44 CEST erfolgreich
+- Ausgangscommit: `5e84e50`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -660,7 +660,8 @@ Update 2026-06-27:
 - Im Control Panel verlinkt sind Erste Bank/Sparkasse, Revolut, bank99, N26
   und PayPal. Fuer alle fuenf Quellen ist auf dem Mac Studio eine
   Enable-Banking-Session im macOS-Schluesselbund gespeichert.
-- Bank99 darf vom Agenten maximal 4-mal pro Kalendertag abgerufen werden; das
+- Bank99 und N26 duerfen vom Agenten maximal 2-mal pro Kalendertag abgerufen
+  werden; das
   Limit wird lokal in `automation/runtime/enable-banking-rate-limits.json`
   erzwungen.
 - Private Key liegt lokal unter
@@ -673,10 +674,12 @@ Update 2026-06-27:
   `sourcePositions`, `sourceAccounts`, `imports` und `agentStatus`
 - Transaktionsimport schreibt zusaetzlich `ledgerEntries`,
   `sourceDocumentFacts`, `costEvents` und `incomeEvents`.
-- Initialbestand ist vorhanden. Normaler Sync liest inkrementell ab letztem
-  gespeicherten Umsatz je Konto minus 2 Tage Sicherheitsfenster, damit die
-  App-Aktualisierung schnell bleibt. Historischer Backfill:
-  `npm run sync:bank-accounts:backfill` fuer 180 Tage.
+- Initialbestand ist vorhanden. Fuer neu angebundene Bankkonten gilt ab
+  2026-07-01 ein Schnittpunkt von drei Monaten: der erste
+  Transaktionsimport liest standardmaessig 92 Tage. Normaler Sync liest
+  danach inkrementell ab letztem gespeicherten Umsatz je Konto minus 2 Tage
+  Sicherheitsfenster, damit die App-Aktualisierung schnell bleibt.
+  Historischer Backfill: `npm run sync:bank-accounts:backfill` fuer 180 Tage.
 - Gepruefter Stand 2026-06-26 22:10:
   - Erste/Sparkasse-Session aktiv
   - Kontostand `2041.64 EUR`
@@ -3378,3 +3381,70 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - Bankkonto- und Kreditkarten-Detailboxen duerfen nicht nach rechts einruecken.
   Aufgeklappte Agenten-/Umsatzdetails stehen buendig unter der jeweiligen Zeile,
   analog zu den anderen Depot-Positionslisten.
+
+## 2026-07-01 Bank-/Kreditkarten-Zahlungshistorie
+
+- Ziel: Bankkonten und Kreditkarten liefern nicht nur Salden, sondern auch
+  Zahlungs-/Umsatzhistorie, damit Kontofuehrungsgebuehren, Zinsen, Kartenkosten
+  und sonstige Ausgaben spaeter analysiert werden koennen.
+- Datenmodell:
+  - Bewegungen landen in `ledgerEntries`.
+  - eindeutig erkannte Gebuehren/Steuern landen zusaetzlich in `costEvents`.
+  - eindeutig erkannte Zinsen, Bonus oder Cashback landen zusaetzlich in
+    `incomeEvents`.
+- Schnittpunkt fuer neu angebundene Bankkonten: erster Import liest
+  standardmaessig 92 Tage zurueck. Danach wird inkrementell ab letztem
+  gespeicherten Umsatz minus 2 Tage Sicherheitsfenster gelesen.
+- Dedupe-Regel:
+  - Jeder Bankumsatz bekommt einen fachlichen `dedupeKey` aus Konto,
+    Buchungs-/Valutadatum, Betrag, Waehrung, Text und Gegenpartei.
+  - Dadurch werden Buchungen nicht erneut gespeichert, wenn sich technische
+    Provider-/Konto-IDs aendern.
+  - Alte bank99-Duplikate werden nicht geloescht, sondern als
+    `DUPLICATE`/`excludedFromAnalysis=true` markiert.
+- Wichtig fuer Bank99/N26: Dedupe- und Statistikpflege duerfen ohne Bank-API
+  laufen. Echte API-Abrufe bleiben strikt auf die dedizierten 06:00-/16:00-
+  Agenten mit maximal 2 Abrufen pro Wiener Kalendertag begrenzt.
+- Kreditkarten:
+  - Amazon Visa und TF Bank schreiben aktuell Saldo, Kreditlinie und
+    Verfuegbarkeit.
+  - Die Bewegungs-Historie soll im gleichen `ledgerEntries`-Modell landen.
+    Der gemeinsame Datenvertrag ist gesetzt; die konkreten Portal-Parser fuer
+    Kartenumsaetze sind der naechste kreditkartenspezifische Schritt.
+- Durchgefuehrt am 2026-07-01:
+  - Firestore-only-Dedupe fuer bank99: 3 alte Duplikate als `DUPLICATE`
+    markiert, 0 aktive bank99-Duplikatgruppen verbleiben.
+  - 92-Tage-Backfill fuer Erste/Sparkasse, Revolut und PayPal geschrieben:
+    181 Umsaetze geprueft, 15 neue Ledger-Eintraege, 158 Duplikate erkannt.
+  - Gegencheck danach: 325 aktive `bank_accounts`-Ledger-Eintraege, 3
+    ausgeschlossene Duplikate; Kreditkarten-Ledger noch offen.
+
+## 2026-07-01 Positionscharts und 5-Minuten-Historie
+
+- Neue Chart-Regel: Die Tagesansicht `Heute` soll nicht aus einem einzelnen
+  22:00-Punkt entstehen, sondern aus `priceHistory`-Punkten im 5-Minuten-
+  Raster.
+- `com.niklas.finanztool.quote-sync` schreibt deshalb alle 5 Minuten aktuelle
+  Kurse plus `priceHistory`:
+  - Instrument-Historie: Dokument-ID `instrumentId_historyBucket`
+  - Positions-Historie: Dokument-ID `position_<sourcePositions.id>_historyBucket`
+  - `historyDate` bleibt der Wiener Kalendertag.
+  - `historyBucket` ist der Wiener 5-Minuten-Slot, z. B.
+    `2026-07-01T14-35`.
+  - `historyInterval=5m`.
+- Wiederholte Laeufe im selben 5-Minuten-Slot ueberschreiben denselben
+  Firestore-Eintrag. Das verhindert Duplikatflut, liefert aber fuer `Heute`
+  eine echte Intraday-Zeitreihe.
+- Der manuelle Button `Kurse aktualisieren` nutzt denselben
+  `--write-history`-Pfad, damit ein manueller Lauf ebenfalls einen Chartpunkt
+  erzeugt.
+- Der 22:00-Lauf bleibt als zusaetzlicher Tagesanker bestehen, ist aber nicht
+  mehr die einzige Quelle fuer Charts.
+- Die Chart-GUI liest weiterhin `priceHistory`, bevorzugt bei
+  `historyInterval=5m` den Abrufzeitpunkt (`fetchedAt`/`updatedAt`) als
+  Zeitachse und zeigt per Hover oder Fingertipp den exakten Kurs zum
+  naechstliegenden Punkt.
+- Robustheit: Ein Teilfehler in einer Kursquelle, z. B. temporare SIX/CHF-EUR-
+  Fehler bei EquatePlus, darf den generischen Positionssnapshot nicht mehr
+  blockieren. `run-quote-sync-local.mjs` schreibt bei Teilfehlern
+  `agentStatus/quotes=WARNUNG`, fuehrt aber die uebrigen Schritte weiter aus.

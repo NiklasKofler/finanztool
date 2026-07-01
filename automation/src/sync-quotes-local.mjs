@@ -38,6 +38,25 @@ function historyDateId(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: historyTimeZone }).format(date);
 }
 
+function historyBucketId(date = new Date(), intervalMinutes = 5) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: historyTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const minute = Math.floor(Number(parts.minute ?? "0") / intervalMinutes) * intervalMinutes;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}-${String(minute).padStart(2, "0")}`;
+}
+
 function isDocumentValuedPosition(position) {
   if (position.source !== "traderepublic") return false;
   const text = `${position.accountType ?? ""} ${position.accountId ?? ""} ${position.category ?? ""} ${position.valuationMethod ?? ""}`;
@@ -420,7 +439,7 @@ async function main() {
         status: "OK",
         updatedAt: now,
       });
-      if (writeHistoryEnabled) await firestore.setDocument("priceHistory", `${instrumentId}_${historyDateId(now)}`, {
+      if (writeHistoryEnabled) await firestore.setDocument("priceHistory", `${instrumentId}_${historyBucketId(now)}`, {
         instrumentId,
         isin,
         name: mapping.name ?? representative.name ?? null,
@@ -433,6 +452,8 @@ async function main() {
         priceEur,
         asOf: quote.asOf,
         historyDate: historyDateId(now),
+        historyBucket: historyBucketId(now),
+        historyInterval: "5m",
         mic: quote.mic ?? mapping.mic ?? null,
         quoteVenue: quote.mic ?? mapping.mic ?? null,
         fetchedAt: now,

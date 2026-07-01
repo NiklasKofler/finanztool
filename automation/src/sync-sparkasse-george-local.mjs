@@ -21,13 +21,14 @@ const startAuth = process.argv.includes("--start-auth");
 const openAuth = process.argv.includes("--open");
 const includeTransactions = process.argv.includes("--transactions");
 const allowLimitedBankRead = process.argv.includes("--allow-limited-bank-read");
+const dedupeLedgerOnly = process.argv.includes("--dedupe-ledger-only");
 const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
 const importId = `api_bank_accounts_${runId}`;
 const rateLimitPath = path.resolve(__dirname, "../runtime/enable-banking-rate-limits.json");
 const defaultInitialTransactionLookbackDays = Number(
   process.env.ENABLE_BANKING_TRANSACTION_INITIAL_LOOKBACK_DAYS ??
     process.env.ENABLE_BANKING_TRANSACTION_LOOKBACK_DAYS ??
-    30,
+    92,
 );
 const defaultIncrementalOverlapDays = Number(process.env.ENABLE_BANKING_TRANSACTION_OVERLAP_DAYS ?? 2);
 const maxTransactionPages = Number(process.env.ENABLE_BANKING_TRANSACTION_MAX_PAGES ?? 20);
@@ -207,6 +208,39 @@ function sanitizeId(value) {
 
 function stableHash(value) {
   return crypto.createHash("sha256").update(String(value ?? "")).digest("hex").slice(0, 24);
+}
+
+function canonicalLedgerText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalLedgerAmount(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+}
+
+function bankLedgerDedupeKey(entry) {
+  const parts = [
+    entry.source ?? source,
+    entry.accountId ?? "",
+    entry.date ?? entry.bookingDate ?? entry.valueDate ?? "",
+    entry.bookingDate ?? "",
+    entry.valueDate ?? "",
+    canonicalLedgerAmount(entry.amount),
+    String(entry.currency ?? "EUR").toUpperCase(),
+    canonicalLedgerText(entry.bookingText),
+    canonicalLedgerText(entry.counterpartyName),
+    canonicalLedgerText(entry.counterpartyIban),
+  ];
+  return `bank_accounts_ledger_dedupe_${stableHash(parts.join("|"))}`;
+}
+
+function isExcludedLedgerEntry(entry) {
+  return entry?.excludedFromAnalysis === true || entry?.status === "DUPLICATE" || entry?.parseStatus === "DUPLICATE";
 }
 
 function viennaDateKey(date = new Date()) {
@@ -416,7 +450,7 @@ function normalizeBankTransaction(transaction, account, { now }) {
     transaction?.transaction_id ??
     transaction?.transactionId ??
     id;
-  return {
+  const entry = {
     id,
     source,
     sourceLabel: "Bankkonten",
@@ -449,6 +483,10 @@ function normalizeBankTransaction(transaction, account, { now }) {
     updatedAt: now,
     raw: transaction,
   };
+  return {
+    ...entry,
+    dedupeKey: bankLedgerDedupeKey(entry),
+  };
 }
 
 function uniqueById(documents) {
@@ -457,7 +495,8 @@ function uniqueById(documents) {
 
 function summarizeExistingTransactionsByAccount(ledgerEntries) {
   const stats = new Map();
-  for (const entry of uniqueById(ledgerEntries)) {
+  for (const entry of uniqueLedgerEntriesForWrite(ledgerEntries)) {
+    if (isExcludedLedgerEntry(entry)) continue;
     if (!entry.accountId) continue;
     const current =
       stats.get(entry.accountId) ??
@@ -507,12 +546,81 @@ function transactionDateRangeForAccount(accountId, existingTransactionStatsByAcc
   }
 
   return {
-    mode: "initial",
+    mode: "initial_3_months",
     dateFrom: isoDateDaysAgo(defaultInitialTransactionLookbackDays),
     dateTo,
     overlapDays: 0,
     previousLatestTransactionDate: null,
   };
+}
+
+function ledgerDedupeKeyForExisting(entry) {
+  return typeof entry.dedupeKey === "string" && entry.dedupeKey.startsWith("bank_accounts_ledger_dedupe_")
+    ? entry.dedupeKey
+    : bankLedgerDedupeKey(entry);
+}
+
+function uniqueLedgerEntriesForWrite(entries) {
+  const byDedupeKey = new Map();
+  for (const entry of uniqueById(entries)) {
+    const key = ledgerDedupeKeyForExisting(entry);
+    if (!byDedupeKey.has(key)) {
+      byDedupeKey.set(key, { ...entry, dedupeKey: key });
+    }
+  }
+  return [...byDedupeKey.values()];
+}
+
+function pickLedgerDuplicateKeeper(entries) {
+  return [...entries].sort((left, right) => {
+    const leftLength = String(left.id ?? "").length;
+    const rightLength = String(right.id ?? "").length;
+    if (leftLength !== rightLength) return leftLength - rightLength;
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  })[0];
+}
+
+async function markHistoricalBank99LedgerDuplicates(firestore, existingLedgerEntries, now) {
+  const groups = new Map();
+  for (const entry of existingLedgerEntries) {
+    if (entry.bankKey !== "bank99" || isExcludedLedgerEntry(entry)) continue;
+    const key = ledgerDedupeKeyForExisting(entry);
+    const list = groups.get(key) ?? [];
+    list.push({ ...entry, dedupeKey: key });
+    groups.set(key, list);
+  }
+
+  let markedCount = 0;
+  for (const [dedupeKey, entries] of groups.entries()) {
+    if (entries.length < 2) continue;
+    const keeper = pickLedgerDuplicateKeeper(entries);
+    for (const entry of entries) {
+      if (entry.id === keeper.id) continue;
+      await firestore.setDocument("ledgerEntries", entry.id, normalizeEventDocument("ledgerEntries", {
+        ...entry,
+        status: "DUPLICATE",
+        parseStatus: "DUPLICATE",
+        excludedFromAnalysis: true,
+        duplicateOf: keeper.id,
+        duplicateReason: "bank99_same_booking_after_account_identifier_change",
+        dedupeKey,
+        updatedAt: now,
+      }, now));
+      markedCount += 1;
+    }
+  }
+  return markedCount;
+}
+
+function countBank99DuplicateGroups(existingLedgerEntries) {
+  const groups = new Map();
+  for (const entry of existingLedgerEntries) {
+    if (entry.bankKey !== "bank99" || isExcludedLedgerEntry(entry)) continue;
+    const key = ledgerDedupeKeyForExisting(entry);
+    const count = groups.get(key) ?? 0;
+    groups.set(key, count + 1);
+  }
+  return [...groups.values()].filter((count) => count > 1).length;
 }
 
 function costEventFromBankLedgerEntry(entry, { now }) {
@@ -931,6 +1039,32 @@ async function readBankSnapshots(
 
 async function main() {
   const code = normalizeAuthCode(readArg("--code") ?? process.env.ENABLE_BANKING_AUTH_CODE);
+
+  if (dedupeLedgerOnly) {
+    const firestore = new FirestoreRest({
+      projectId,
+      accessToken: await getFirebaseCliAccessToken(),
+    });
+    const now = new Date();
+    const existingSourceLedgerEntries = (await firestore.listDocuments("ledgerEntries")).filter(
+      (entry) => entry.source === source,
+    );
+    const historicalBank99DuplicateCount = writeEnabled
+      ? await markHistoricalBank99LedgerDuplicates(firestore, existingSourceLedgerEntries, now)
+      : 0;
+    const bank99DuplicateGroups = countBank99DuplicateGroups(existingSourceLedgerEntries);
+    console.log(JSON.stringify({
+      mode: writeEnabled ? "write" : "dry-run",
+      source,
+      bank99DuplicateGroups,
+      historicalBank99DuplicateCount,
+      note: writeEnabled
+        ? "Bank99-Duplikate wurden als DUPLICATE markiert."
+        : "Dry-run: keine Firestore-Daten geaendert. Fuer Schreiben --write verwenden.",
+    }, null, 2));
+    return;
+  }
+
   const client = await createEnableBankingClientFromLocalSecrets();
 
   if (startAuth) {
@@ -1040,8 +1174,18 @@ async function main() {
     return;
   }
 
-  const ledgerEntries = uniqueById(allLedgerEntries);
+  const historicalBank99DuplicateCount = await markHistoricalBank99LedgerDuplicates(
+    firestore,
+    existingSourceLedgerEntries,
+    now,
+  );
+  const ledgerEntries = uniqueLedgerEntriesForWrite(allLedgerEntries);
   const existingLedgerEntryIds = new Set(existingSourceLedgerEntries.map((entry) => entry.id));
+  const existingLedgerDedupeKeys = new Set(
+    existingSourceLedgerEntries
+      .filter((entry) => !isExcludedLedgerEntry(entry))
+      .map(ledgerDedupeKeyForExisting),
+  );
   const historicalTransactionStatsByAccount = summarizeExistingTransactionsByAccount([
     ...existingSourceLedgerEntries,
     ...ledgerEntries,
@@ -1051,11 +1195,19 @@ async function main() {
     const current =
       transactionWriteStatsByAccount.get(entry.accountId) ??
       { newCount: 0, duplicateCount: 0, writtenCount: 0, latestTransactionDate: null };
-    if (existingLedgerEntryIds.has(entry.id)) current.duplicateCount += 1;
-    else current.newCount += 1;
     current.writtenCount += 1;
     current.latestTransactionDate = newestDate([current.latestTransactionDate, entry.date]);
+    const existingId = existingLedgerEntryIds.has(entry.id);
+    const existingDedupe = existingLedgerDedupeKeys.has(entry.dedupeKey);
+    if (existingId || existingDedupe) {
+      current.duplicateCount += 1;
+      transactionWriteStatsByAccount.set(entry.accountId, current);
+      continue;
+    }
+
+    current.newCount += 1;
     transactionWriteStatsByAccount.set(entry.accountId, current);
+    existingLedgerDedupeKeys.add(entry.dedupeKey);
 
     await firestore.setDocument("ledgerEntries", entry.id, normalizeEventDocument("ledgerEntries", entry, now));
     await firestore.setDocument("sourceDocumentFacts", entry.id, {
@@ -1235,6 +1387,7 @@ async function main() {
     transactionStats: allTransactionStats,
     transactionWriteStats,
     transactionTotals,
+    historicalBank99DuplicateCount,
     existingLedgerEntryCount: existingSourceLedgerEntries.length,
     ledgerEntryCount: ledgerEntries.length,
     skippedBanks,

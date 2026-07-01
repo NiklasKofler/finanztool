@@ -33,4 +33,4 @@ launchctl bootstrap "gui/$UID" "$quote_plist_path"
 launchctl bootstrap "gui/$UID" "$history_plist_path"
 launchctl kickstart -k "gui/$UID/com.niklas.finanztool.quote-sync"
 
-echo "[ok] Kurs-Sync laeuft alle 5 Minuten; Tageshistorie laeuft taeglich um 22:00."
+echo "[ok] Kurs-Sync schreibt alle 5 Minuten aktuelle Kurse und 5-Minuten-Historie; 22:00 bleibt als zusaetzlicher Tagesanker aktiv."

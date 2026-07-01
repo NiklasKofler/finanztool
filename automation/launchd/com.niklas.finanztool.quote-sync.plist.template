@@ -8,6 +8,7 @@
     <array>
       <string>__NODE_PATH__</string>
       <string>src/run-quote-sync-local.mjs</string>
+      <string>--write-history</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORKING_DIRECTORY__</string>

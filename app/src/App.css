@@ -336,13 +336,22 @@
   color: #e5fff7;
 }
 
-.theme-dark .position-price-chart__svg line {
+.theme-dark .position-price-chart__svg line.position-price-chart__grid {
   stroke: #263d3e;
 }
 
 .theme-dark .position-price-chart__svg polyline,
 .theme-dark .position-price-chart__svg circle {
   stroke: #40d5ad;
+  fill: #40d5ad;
+}
+
+.theme-dark .position-price-chart__svg .position-price-chart__crosshair {
+  stroke: rgba(223, 233, 230, 0.58);
+}
+
+.theme-dark .position-price-chart__svg .position-price-chart__marker {
+  stroke: #0f171a;
   fill: #40d5ad;
 }
 
@@ -1251,11 +1260,14 @@
 
 .position-price-chart__svg {
   width: 100%;
-  height: 86px;
+  height: 118px;
   overflow: visible;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
 }
 
-.position-price-chart__svg line {
+.position-price-chart__svg line.position-price-chart__grid {
   stroke: #e1ebe7;
   stroke-width: 0.7;
 }
@@ -1271,6 +1283,18 @@
 
 .position-price-chart__svg circle {
   fill: #0e7860;
+}
+
+.position-price-chart__svg .position-price-chart__crosshair {
+  stroke: rgba(66, 81, 77, 0.52);
+  stroke-width: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.position-price-chart__svg .position-price-chart__marker {
+  stroke: #ffffff;
+  stroke-width: 0.9;
+  vector-effect: non-scaling-stroke;
 }
 
 .position-price-chart__footer {
@@ -3585,7 +3609,7 @@
   }
 
   .position-price-chart__svg {
-    height: 58px;
+    height: 96px;
   }
 
   .position-price-chart__footer {

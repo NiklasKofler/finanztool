@@ -17,7 +17,7 @@ function parseDate(value) {
 }
 
 function runQuoteSync() {
-  const result = spawnSync(process.execPath, [path.join(__dirname, "run-quote-sync-local.mjs")], {
+  const result = spawnSync(process.execPath, [path.join(__dirname, "run-quote-sync-local.mjs"), "--write-history"], {
     cwd: path.resolve(__dirname, ".."),
     env: process.env,
     stdio: "inherit",

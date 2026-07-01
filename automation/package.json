@@ -103,7 +103,7 @@
     "sync:traderepublic-manual-exports": "node src/trade-republic-manual-export-agent.mjs --write",
     "reconcile:traderepublic-manual-exports": "node src/trade-republic-manual-export-agent.mjs",
     "install:traderepublic-manual-export-agent": "zsh src/install-traderepublic-manual-export-agent.sh",
-    "sync:quotes": "node src/sync-quotes-local.mjs --write",
+    "sync:quotes": "node src/run-quote-sync-local.mjs --write-history",
     "sync:quotes:current": "node src/run-quote-sync-local.mjs",
     "sync:quotes:history": "node src/run-quote-sync-local.mjs --write-history",
     "sync:quotes:local": "node src/run-quote-sync-local.mjs",

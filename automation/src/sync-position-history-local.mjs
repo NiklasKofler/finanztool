@@ -10,6 +10,25 @@ function historyDateId(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: historyTimeZone }).format(date);
 }
 
+function historyBucketId(date = new Date(), intervalMinutes = 5) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: historyTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const minute = Math.floor(Number(parts.minute ?? "0") / intervalMinutes) * intervalMinutes;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}-${String(minute).padStart(2, "0")}`;
+}
+
 function safeId(value) {
   return String(value ?? "")
     .trim()
@@ -74,6 +93,7 @@ async function main() {
   });
   const now = new Date();
   const currentHistoryDate = historyDateId(now);
+  const currentHistoryBucket = historyBucketId(now);
   const [positions, priceHistory] = await Promise.all([
     firestore.listDocuments("sourcePositions"),
     firestore.listDocuments("priceHistory"),
@@ -96,7 +116,7 @@ async function main() {
     const unitPriceEur = positionUnitPrice(position, currentValue);
 
     if (writeEnabled) {
-      await firestore.setDocument("priceHistory", `${historyKey}_${currentHistoryDate}`, {
+      await firestore.setDocument("priceHistory", `${historyKey}_${currentHistoryBucket}`, {
         historyKey,
         instrumentId: historyKey,
         positionId: position.id,
@@ -117,7 +137,10 @@ async function main() {
         quoteCurrency: position.quoteCurrency ?? null,
         provider: position.quoteProvider ?? position.priceSource ?? position.valuationMethod ?? null,
         asOf: position.quoteAsOf ?? position.valuationDate ?? position.updatedAt ?? now,
+        fetchedAt: now,
         historyDate: currentHistoryDate,
+        historyBucket: currentHistoryBucket,
+        historyInterval: "5m",
         status: "OK",
         updatedAt: now,
       });
@@ -153,6 +176,8 @@ async function main() {
   console.log(JSON.stringify({
     mode: writeEnabled ? "write" : "dry-run",
     historyDate: currentHistoryDate,
+    historyBucket: currentHistoryBucket,
+    historyInterval: "5m",
     processedPositionCount: results.length,
     withPreviousCount: results.filter((result) => typeof result.previousCloseValue === "number").length,
     nonZeroDayChangeCount: results.filter((result) => result.dayChangeValue).length,

@@ -19,7 +19,7 @@ const steps = [
   { id: "intergold", label: "Intergold Bestand und Preise", script: "reconcile-intergold-local.mjs", args: ["--write"] },
   { id: "vbv", label: "VBV Vorsorgekasse", script: "sync-vbv-local.mjs", args: ["--write"] },
   { id: "bank_accounts", label: "Bankkonten", script: "sync-sparkasse-george-local.mjs", args: ["--banks=erste,revolut,paypal", "--write", "--transactions"] },
-  { id: "quotes", label: "Aktuelle Kurse", script: "run-quote-sync-local.mjs" },
+  { id: "quotes", label: "Aktuelle Kurse und 5-Minuten-Historie", script: "run-quote-sync-local.mjs", args: ["--write-history"] },
   { id: "event_model", label: "Event-Modell-Normalisierung", script: "backfill-event-model-local.mjs", args: ["--write"] },
   { id: "health", label: "Health-Check", script: "check-health-local.mjs" },
 ];
