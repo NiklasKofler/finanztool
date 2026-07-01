@@ -425,10 +425,18 @@ function parseTfBankDashboardText(text, now = new Date()) {
   const tfBankLimit = parseEuro(summaryMatch?.[1]);
   const tfBankReserved = parseEuro(summaryMatch?.[2]);
   const tfBankSaldo = parseEuro(summaryMatch?.[3]);
-  const debt =
+  const explicitSaldo =
     (typeof tfBankSaldo === "number" ? tfBankSaldo : null) ??
-    parseEuro(normalized.match(/(?:offener|aktueller|karten)?\s*saldo\s*:?\s*(-?[\d.\s]+,\d{2})\s*€/i)?.[1]) ??
-    parseEuro(normalized.match(/(?:zu zahlen|rechnung(?:sbetrag)?|verbrauch(?:t)?)\s*:?\s*(-?[\d.\s]+,\d{2})\s*€/i)?.[1]);
+    parseEuro(normalized.match(/(?:offener|aktueller|karten)?\s*saldo\s*:?\s*(-?[\d.\s]+,\d{2})\s*€/i)?.[1]);
+  const payableAmount = parseEuro(
+    normalized.match(/(?:zu zahlen|rechnung(?:sbetrag)?|verbrauch(?:t)?)\s*:?\s*(-?[\d.\s]+,\d{2})\s*€/i)?.[1],
+  );
+  const portalBalance =
+    typeof explicitSaldo === "number"
+      ? explicitSaldo
+      : typeof payableAmount === "number"
+        ? -Math.abs(payableAmount)
+        : null;
   const available =
     parseEuro(normalized.match(/Zur Verf[uü]gung stehender Betrag\s*€\s*([\d.\s]+,\d{2})/i)?.[1]) ??
     parseEuro(normalized.match(/verf[uü]gbar(?:er betrag)?\s*:?\s*€?\s*([\d.\s]+,\d{2})/i)?.[1]);
@@ -436,16 +444,19 @@ function parseTfBankDashboardText(text, now = new Date()) {
     (typeof tfBankLimit === "number" ? tfBankLimit : null) ??
     parseEuro(normalized.match(/(?:Verf[uü]gungsrahmen|kreditrahmen|kreditlimit|limit)\s*:?\s*€?\s*([\d.\s]+,\d{2})/i)?.[1]);
 
-  if (typeof debt !== "number") {
+  if (typeof portalBalance !== "number") {
     throw new Error("TF Bank Saldo konnte im Portaltext nicht erkannt werden.");
   }
+
+  const currentValue = roundCurrency(portalBalance);
+  const debtValue = currentValue < 0 ? roundCurrency(Math.abs(currentValue)) : 0;
 
   return {
     source,
     displayName: "TF Bank Kreditkarte",
     currency: "EUR",
-    currentValue: roundCurrency(-Math.abs(debt)),
-    debtValue: roundCurrency(Math.abs(debt)),
+    currentValue,
+    debtValue,
     availableWithCredit: typeof available === "number" ? roundCurrency(available) : null,
     creditLineEstimate: typeof limit === "number" ? roundCurrency(limit) : null,
     reservedValue: typeof tfBankReserved === "number" ? roundCurrency(tfBankReserved) : null,

@@ -2052,6 +2052,16 @@ function BankAccountGroup({
         : groupWarningCount > 0
           ? `${numberFormatter.format(groupWarningCount)} Hinweis${groupWarningCount === 1 ? "" : "e"}`
           : null;
+  const groupCurrentTotalBase = accounts.reduce(
+    (total, account) =>
+      typeof account.currentValue === "number"
+        ? { value: total.value + account.currentValue, count: total.count + 1 }
+        : total,
+    { value: 0, count: 0 },
+  );
+  const groupCurrentTotal =
+    groupCurrentTotalBase.count > 0 ? roundMoneyValue(groupCurrentTotalBase.value) : null;
+  const groupCurrentTotalTone = getPerformanceTone(groupCurrentTotal);
 
   return (
     <details
@@ -2063,6 +2073,12 @@ function BankAccountGroup({
         <span className="source-accounts-details__summary-title">
           <span>{title}</span>
           {groupIssueLabel ? <small>{groupIssueLabel}</small> : null}
+        </span>
+        <span className="source-accounts-details__summary-total">
+          <small>Gesamtstand</small>
+          <b className={`performance-value--${groupCurrentTotalTone}`}>
+            {privacyMode ? maskMoney(groupCurrentTotal) : formatCurrency(groupCurrentTotal)}
+          </b>
         </span>
         <span className="source-accounts-details__summary-status">
           <AgentStatusBadge status={groupStatus} emptyLabel="Kein Status" />
@@ -2100,6 +2116,9 @@ function BankAccountGroup({
           const accountIssueMessage = getBankAccountIssueMessage(account, accountAgentStatus);
           const accountSectionKey = `${groupKey}:account:${accountKey}`;
           const accountLogoPath = getBankAccountLogoPath(account);
+          const accountCurrentTone = getPerformanceTone(account.currentValue);
+          const accountCreditLineTone = getPerformanceTone(account.creditLineEstimate);
+          const accountAvailableTone = getPerformanceTone(account.availableWithCredit);
           return (
             <details
               className="source-account-details"
@@ -2143,13 +2162,19 @@ function BankAccountGroup({
                   ) : null}
                 </div>
                 <div className="source-account-row__value" data-label="Geldstand">
-                  <strong>{privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}</strong>
+                  <strong className={`performance-value--${accountCurrentTone}`}>
+                    {privacyMode ? maskMoney(account.currentValue) : formatCurrency(account.currentValue ?? undefined)}
+                  </strong>
                 </div>
                 <div className="source-account-row__value" data-label="Kreditlinie">
-                  <strong>{privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}</strong>
+                  <strong className={`performance-value--${accountCreditLineTone}`}>
+                    {privacyMode ? maskMoney(account.creditLineEstimate) : formatCurrency(account.creditLineEstimate ?? undefined)}
+                  </strong>
                 </div>
                 <div className="source-account-row__value" data-label="Verfügbar">
-                  <strong>{privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}</strong>
+                  <strong className={`performance-value--${accountAvailableTone}`}>
+                    {privacyMode ? maskMoney(account.availableWithCredit) : formatCurrency(account.availableWithCredit ?? undefined)}
+                  </strong>
                 </div>
               </summary>
               <div className="source-account-row__mobile-details">
@@ -3973,6 +3998,8 @@ function App() {
                 Boolean(normalizedDepotSearchQuery) && (sourceHasDirectSearchMatch || matchingSourcePositions.length > 0);
               const usedCreditValue = getUsedCreditValue(source);
               const sourcePrimaryTimestamp = getSourcePrimaryTimestamp(source);
+              const sourcePrimaryValue = getSourceCardPrimaryValue(source);
+              const sourcePrimaryIsNegative = (sourcePrimaryValue ?? 0) < 0;
               const isTradeRepublicSource = source.id === "traderepublic";
               const tradeRepublicHasCurrentQuotes =
                 isTradeRepublicSource && typeof rawSourceSummary?.externalQuoteDepotValue === "number";
@@ -4058,7 +4085,15 @@ function App() {
                         >
                           <div className="source-card__compact-metric source-card__compact-metric--value">
                             <dt>{getSourceCardPrimaryLabel(source)}</dt>
-                            <dd>{privacyMode ? maskMoney(getSourceCardPrimaryValue(source)) : formatCurrency(getSourceCardPrimaryValue(source))}</dd>
+                            <dd
+                              className={
+                                sourcePrimaryIsNegative
+                                  ? "performance-value performance-value--negative"
+                                  : undefined
+                              }
+                            >
+                              {privacyMode ? maskMoney(sourcePrimaryValue) : formatCurrency(sourcePrimaryValue)}
+                            </dd>
                           </div>
                           <div className="source-card__compact-metric source-card__compact-metric--performance">
                             <dt>
@@ -4203,7 +4238,9 @@ function App() {
                         <>
                           <div>
                             <dt>Barbestand</dt>
-                            <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.cashValue)}`}>
+                              {privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}
+                            </dd>
                           </div>
                           <div>
                             <dt>{sourcePrimaryTimestamp.label}</dt>
@@ -4218,15 +4255,21 @@ function App() {
                         <>
                           <div>
                             <dt>Geldstand</dt>
-                            <dd>{privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.cashValue)}`}>
+                              {privacyMode ? maskMoney(source.cashValue) : formatCurrency(source.cashValue)}
+                            </dd>
                           </div>
                           <div>
                             <dt>Kreditlinie</dt>
-                            <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.creditLineEstimate)}`}>
+                              {privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}
+                            </dd>
                           </div>
                           <div>
                             <dt>Verfügbar</dt>
-                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.availableWithCredit)}`}>
+                              {privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}
+                            </dd>
                           </div>
                           <div>
                             <dt>{sourcePrimaryTimestamp.label}</dt>
@@ -4247,15 +4290,21 @@ function App() {
                         <>
                           <div>
                             <dt>Saldo</dt>
-                            <dd>{privacyMode ? maskMoney(source.currentValue) : formatCurrency(source.currentValue)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.currentValue)}`}>
+                              {privacyMode ? maskMoney(source.currentValue) : formatCurrency(source.currentValue)}
+                            </dd>
                           </div>
                           <div>
                             <dt>Kreditlimit</dt>
-                            <dd>{privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.creditLineEstimate)}`}>
+                              {privacyMode ? maskMoney(source.creditLineEstimate) : formatCurrency(source.creditLineEstimate)}
+                            </dd>
                           </div>
                           <div>
                             <dt>Verfügbar</dt>
-                            <dd>{privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}</dd>
+                            <dd className={`performance-value performance-value--${getPerformanceTone(source.availableWithCredit)}`}>
+                              {privacyMode ? maskMoney(source.availableWithCredit) : formatCurrency(source.availableWithCredit)}
+                            </dd>
                           </div>
                           <div>
                             <dt>{sourcePrimaryTimestamp.label}</dt>
@@ -4276,7 +4325,15 @@ function App() {
                         <>
                           <div>
                             <dt>{getSourceCardPrimaryLabel(source)}</dt>
-                            <dd>{privacyMode ? maskMoney(getSourceCardPrimaryValue(source)) : formatCurrency(getSourceCardPrimaryValue(source))}</dd>
+                            <dd
+                              className={
+                                sourcePrimaryIsNegative
+                                  ? "performance-value performance-value--negative"
+                                  : undefined
+                              }
+                            >
+                              {privacyMode ? maskMoney(sourcePrimaryValue) : formatCurrency(sourcePrimaryValue)}
+                            </dd>
                           </div>
                           <div>
                             <dt>Cash</dt>
@@ -4324,7 +4381,7 @@ function App() {
                           </div>
                           <div>
                             <dt>Heute</dt>
-                            <dd>
+                            <dd className={`performance-value performance-value--${sourceDayChangeTone}`}>
                               {privacyMode ? maskSignedMoney(sourceDayChange) : formatSignedMoney(sourceDayChange)}
                               <span className="inline-percent"> {formatSignedPercent(sourceDayChangePct)}</span>
                             </dd>

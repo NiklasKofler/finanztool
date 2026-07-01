@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-06-29 20:52 CEST
+- Stand: 2026-07-01 12:28 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `a50e0d0`
-- Handoff-Commit: `3761d86`
-- Firebase Deploy: 2026-06-29 20:53 CEST erfolgreich
+- Ausgangscommit: `e87571d`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3291,3 +3291,22 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   - `Kurs` links
   - `G/V` mittig
   - `Heute` rechts
+
+## 2026-06-30 Bankkonten und Kreditkarten Vorzeichen
+
+- In Bankkonto- und Kreditkartenzeilen werden Geldwerte nach Vorzeichen
+  eingefaerbt: positiv gruen, negativ rot, neutral grau.
+- Das gilt fuer `Geldstand`, `Kreditlinie` und `Verfuegbar`.
+- TF Bank: Der Agent darf den Portal-Saldo nicht pauschal als Schuld
+  interpretieren. Ein erkanntes Feld `Saldo` wird als echter Kontostand mit
+  Portal-Vorzeichen gespeichert. Nur Fallback-Felder wie `zu zahlen`,
+  `Rechnungsbetrag` oder `Verbrauch` werden als Kreditkartenschuld negativ
+  gespeichert. Bestehende Firestore-Werte werden erst mit dem naechsten
+  erfolgreichen TF-Bank-Agentlauf aktualisiert.
+- Wichtig fuer die GUI: Die Vorzeichenfarbe muss auch in der mobilen
+  Bankkonto-/Kreditkartenansicht greifen. Mobile CSS-Regeln duerfen die
+  Klassen `performance-value--positive`, `performance-value--negative` und
+  `performance-value--neutral` nicht ueberstimmen.
+- In eingeklappten Bankkonto- und Kreditkarten-Gruppen muss der Gesamtstand
+  direkt im Gruppen-Header sichtbar sein. Negative Geldstaende werden rot,
+  positive gruen und neutrale grau dargestellt.

@@ -2018,6 +2018,7 @@
 }
 
 .source-accounts-details__summary-title,
+.source-accounts-details__summary-total,
 .source-accounts-details__summary-status {
   display: inline-flex;
   align-items: center;
@@ -2035,6 +2036,24 @@
   font-size: 0.68rem;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.source-accounts-details__summary-total {
+  flex-shrink: 0;
+  color: #6f7a77;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.source-accounts-details__summary-total small {
+  color: inherit;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.source-accounts-details__summary-total b {
+  font-size: 0.84rem;
 }
 
 .source-accounts-details__summary-status {
@@ -2356,6 +2375,36 @@
 .source-account-row__numbers > strong {
   color: #18211f;
   font-size: 0.84rem;
+}
+
+.source-account-row__value > strong.performance-value--positive,
+.source-account-row__numbers > strong.performance-value--positive {
+  color: #0e6a4e;
+}
+
+.source-account-row__value > strong.performance-value--negative,
+.source-account-row__numbers > strong.performance-value--negative {
+  color: #a13a1b;
+}
+
+.source-account-row__value > strong.performance-value--neutral,
+.source-account-row__numbers > strong.performance-value--neutral {
+  color: #66716e;
+}
+
+.theme-dark .source-account-row__value > strong.performance-value--positive,
+.theme-dark .source-account-row__numbers > strong.performance-value--positive {
+  color: #47d7a3;
+}
+
+.theme-dark .source-account-row__value > strong.performance-value--negative,
+.theme-dark .source-account-row__numbers > strong.performance-value--negative {
+  color: #ff8b6a;
+}
+
+.theme-dark .source-account-row__value > strong.performance-value--neutral,
+.theme-dark .source-account-row__numbers > strong.performance-value--neutral {
+  color: #9fb0ab;
 }
 
 .source-account-row__value::before {
@@ -3307,6 +3356,23 @@
     font-size: 0.68rem;
   }
 
+  .source-accounts-details__summary-title {
+    justify-content: flex-start;
+  }
+
+  .source-accounts-details__summary-total {
+    gap: 5px;
+    font-size: 0.66rem;
+  }
+
+  .source-accounts-details__summary-total small {
+    display: none;
+  }
+
+  .source-accounts-details__summary-total b {
+    font-size: 0.76rem;
+  }
+
   .document-inbox__row {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
@@ -3689,6 +3755,36 @@
   .source-account-row__value > strong,
   .source-account-row__numbers > strong {
     font-size: 0.76rem;
+  }
+
+  .source-account-row__value > strong.performance-value--positive,
+  .source-account-row__numbers > strong.performance-value--positive {
+    color: #0e6a4e;
+  }
+
+  .source-account-row__value > strong.performance-value--negative,
+  .source-account-row__numbers > strong.performance-value--negative {
+    color: #a13a1b;
+  }
+
+  .source-account-row__value > strong.performance-value--neutral,
+  .source-account-row__numbers > strong.performance-value--neutral {
+    color: #66716e;
+  }
+
+  .theme-dark .source-account-row__value > strong.performance-value--positive,
+  .theme-dark .source-account-row__numbers > strong.performance-value--positive {
+    color: #47d7a3;
+  }
+
+  .theme-dark .source-account-row__value > strong.performance-value--negative,
+  .theme-dark .source-account-row__numbers > strong.performance-value--negative {
+    color: #ff8b6a;
+  }
+
+  .theme-dark .source-account-row__value > strong.performance-value--neutral,
+  .theme-dark .source-account-row__numbers > strong.performance-value--neutral {
+    color: #9fb0ab;
   }
 
   .source-account-row__numbers .performance-value {
