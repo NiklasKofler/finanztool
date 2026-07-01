@@ -121,7 +121,6 @@ async function selectTradeRepublicCountry(page, { countryName = TR_COUNTRY_NAME,
       const item = candidate.nth(index);
       if (!(await item.isVisible({ timeout: 700 }).catch(() => false))) continue;
       await item.click({ timeout: 1500, force: true }).catch(() => null);
-      await page.waitForTimeout(500);
       const option = page
         .getByRole("option", { name: exactCountryPattern })
         .or(page.getByText(looseCountryPattern))
@@ -138,10 +137,29 @@ async function selectTradeRepublicCountry(page, { countryName = TR_COUNTRY_NAME,
 }
 
 async function waitForLoggedIn(page, timeoutMs) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const url = page.url();
-    const bodyText = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+  return await page.waitForFunction(() => {
+    const url = window.location.href;
+    const bodyText = document.body?.innerText ?? "";
+    const hasAuthenticatedBody =
+      /wealth|cash|portfolio|profile|transactions|activity|vermögen|konto/i.test(bodyText);
+    const hasLoginBody = /phone|telefon|pin|passcode|log in|login|einloggen|anmelden/i.test(bodyText);
+    const isAuthenticatedUrl =
+      /app\.traderepublic\.com\/(portfolio|profile|cash|orders|browse|search|settings)/i.test(url) &&
+      !/signin|login|challenge|identifier/i.test(url);
+    return (
+      (isAuthenticatedUrl && hasAuthenticatedBody && !hasLoginBody) ||
+      (/app\.traderepublic\.com/i.test(url) &&
+        !/signin|login|challenge|identifier/i.test(url) &&
+        hasAuthenticatedBody &&
+        !hasLoginBody)
+    );
+  }, null, { timeout: timeoutMs, polling: 250 }).then(() => true).catch(() => false);
+}
+
+async function waitForLoginFormOrSession(page, timeoutMs = 4000) {
+  const result = await page.waitForFunction(() => {
+    const url = window.location.href;
+    const bodyText = document.body?.innerText ?? "";
     const hasAuthenticatedBody =
       /wealth|cash|portfolio|profile|transactions|activity|vermögen|konto/i.test(bodyText);
     const hasLoginBody = /phone|telefon|pin|passcode|log in|login|einloggen|anmelden/i.test(bodyText);
@@ -155,11 +173,45 @@ async function waitForLoggedIn(page, timeoutMs) {
         hasAuthenticatedBody &&
         !hasLoginBody)
     ) {
-      return true;
+      return "session";
     }
-    await page.waitForTimeout(750);
-  }
-  return false;
+    const phoneInput = [...document.querySelectorAll("input")].find((input) => {
+      const rect = input.getBoundingClientRect();
+      const style = window.getComputedStyle(input);
+      const isVisible =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        input.type !== "hidden" &&
+        !input.disabled;
+      if (!isVisible) return false;
+      const meta = [
+        input.type,
+        input.autocomplete,
+        input.name,
+        input.id,
+        input.inputMode,
+        input.getAttribute("inputmode"),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return (
+        meta.includes("tel") ||
+        meta.includes("phone") ||
+        meta.includes("numeric") ||
+        input.type === "text" ||
+        input.type === "number" ||
+        !input.type
+      );
+    });
+    if (phoneInput) {
+      return "form";
+    }
+    return false;
+  }, null, { timeout: timeoutMs, polling: 250 }).catch(() => null);
+  return result ? await result.jsonValue() : null;
 }
 
 async function saveLoginDiagnostic(page) {
@@ -185,15 +237,14 @@ export async function ensureTradeRepublicLogin(page, { onStatus = async () => {}
 
   await onStatus("Trade Republic Session wird geprueft");
   await page.goto(TRADE_REPUBLIC_SESSION_CHECK_URL, { waitUntil: "domcontentloaded" }).catch(() => null);
-  if (await waitForLoggedIn(page, 2500)) {
+  if (await waitForLoggedIn(page, 1500)) {
     return { mode: "existing-session" };
   }
 
   await onStatus("Trade Republic Login wird geprueft");
   await page.goto(TRADE_REPUBLIC_LOGIN_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1000);
-
-  if (await waitForLoggedIn(page, 3000)) {
+  const loginState = await waitForLoginFormOrSession(page, 4000);
+  if (loginState === "session") {
     return { mode: "existing-session" };
   }
 
@@ -230,7 +281,7 @@ export async function ensureTradeRepublicLogin(page, { onStatus = async () => {}
     )
     .first()
     .waitFor({ state: "visible", timeout: 5000 })
-    .catch(() => page.waitForTimeout(500));
+    .catch(() => null);
 
   await onStatus("PIN wird eingegeben");
   const pinFilled = await fillFirst(page, [
@@ -250,6 +301,8 @@ export async function ensureTradeRepublicLogin(page, { onStatus = async () => {}
     'button[type="submit"]',
   ]).catch(() => false);
   await page.keyboard.press("Enter").catch(() => {});
+
+  await onStatus("Trade-Republic-App-Bestaetigung angefordert");
 
   await onStatus("Warte auf Bestaetigung in der Trade-Republic-App");
   const loggedIn = await waitForLoggedIn(page, confirmTimeoutMs);

@@ -227,6 +227,55 @@ async function readBodyText(page) {
   return page.locator("body").innerText({ timeout: 8000 }).catch(() => "");
 }
 
+async function waitForBodyText(page, predicate, { timeoutMs = 8000, pollMs = 250 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = "";
+  while (Date.now() < deadline) {
+    lastText = await readBodyText(page);
+    if (predicate(lastText)) return lastText;
+    await page.waitForTimeout(pollMs);
+  }
+  return lastText || (await readBodyText(page));
+}
+
+async function waitForParsedPage(page, parser, isReady, { timeoutMs = 8000, pollMs = 250 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = "";
+  let lastParsed = null;
+  while (Date.now() < deadline) {
+    lastText = await readBodyText(page);
+    lastParsed = parser(lastText);
+    if (isReady(lastParsed, lastText)) return { parsed: lastParsed, text: lastText, ready: true };
+    await page.waitForTimeout(pollMs);
+  }
+  lastText = lastText || (await readBodyText(page));
+  lastParsed = parser(lastText);
+  return { parsed: lastParsed, text: lastText, ready: false };
+}
+
+async function waitForLocatorCount(locator, minCount = 1, { timeoutMs = 4000, pollMs = 200 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastCount = 0;
+  while (Date.now() < deadline) {
+    lastCount = await locator.count().catch(() => 0);
+    if (lastCount >= minCount) return lastCount;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return lastCount;
+}
+
+function isPortfolioSnapshotReady(portfolio) {
+  return (
+    typeof portfolio?.totalValue === "number" &&
+    Array.isArray(portfolio?.positions) &&
+    portfolio.positions.length > 0
+  );
+}
+
+function isTransactionsSnapshotReady(transactions) {
+  return typeof transactions?.cashValue === "number";
+}
+
 function parsePortfolioSnapshot(text, observedAt = new Date()) {
   const lines = String(text ?? "")
     .replace(/\u00a0/g, " ")
@@ -502,27 +551,39 @@ async function ensurePortfolioSinceBuyMode(page) {
   const trigger = page.getByText(/Daily trend|Tagestrend/i).first();
   if (!(await trigger.isVisible({ timeout: 1500 }).catch(() => false))) return;
   await trigger.click({ timeout: 3000, force: true }).catch(() => null);
-  await page.waitForTimeout(600);
   const option = page.getByText(/Since buy|Seit Kauf|Seit dem Kauf/i).first();
   if (await option.isVisible({ timeout: 2000 }).catch(() => false)) {
     await option.click({ timeout: 3000, force: true });
-    await page.waitForTimeout(1200);
+    await waitForBodyText(page, (text) => /Investments\s+Since buy/i.test(text), { timeoutMs: 2500 });
   }
 }
 
 async function collectPortalSnapshot(page) {
   await page.goto(TRADE_REPUBLIC_PORTFOLIO_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(3500);
+  await waitForBodyText(page, (text) => /Portfolio|Investments/i.test(text), { timeoutMs: 8000 });
   await ensurePortfolioSinceBuyMode(page);
-  const portfolio = parsePortfolioSnapshot(await readBodyText(page));
+  const { parsed: portfolio } = await waitForParsedPage(
+    page,
+    (text) => parsePortfolioSnapshot(text),
+    isPortfolioSnapshotReady,
+    { timeoutMs: 8000 },
+  );
 
   await page.goto(TRADE_REPUBLIC_TRANSACTIONS_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(3500);
-  const transactions = parseTransactionsSnapshot(await readBodyText(page));
+  const { parsed: transactions } = await waitForParsedPage(
+    page,
+    (text) => parseTransactionsSnapshot(text),
+    isTransactionsSnapshotReady,
+    { timeoutMs: 8000 },
+  );
 
   await page.goto(TRADE_REPUBLIC_ACTIVITY_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
-  const activityRawText = normalizeText(await readBodyText(page)).slice(0, 40000);
+  const activityText = await waitForBodyText(
+    page,
+    (text) => normalizeText(text).length > 300 || /Annual Tax Report|Activity|Profile|Documents?|Reports?/i.test(text),
+    { timeoutMs: 5000 },
+  );
+  const activityRawText = normalizeText(activityText).slice(0, 40000);
 
   return {
     observedAt: new Date(),
@@ -579,7 +640,15 @@ async function scrollLoadedTransactions(page) {
     previousHeight = metrics.height;
     previousTextLength = metrics.textLength;
     await page.mouse.wheel(0, 2400).catch(() => {});
-    await page.waitForTimeout(900);
+    await page.waitForFunction(
+      ({ height, textLength }) => {
+        const currentHeight = document.scrollingElement?.scrollHeight ?? document.body.scrollHeight;
+        const currentTextLength = document.body.innerText.length;
+        return currentHeight !== height || currentTextLength !== textLength;
+      },
+      { height: previousHeight, textLength: previousTextLength },
+      { timeout: 900 },
+    ).catch(() => null);
   }
   await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
 }
@@ -597,10 +666,12 @@ async function waitForRecentTransactions(page) {
     const count = await transactionButtonLocator(page).count().catch(() => 0);
     if (count >= minimumCount) break;
     await page.mouse.wheel(0, 900).catch(() => {});
-    await page.waitForTimeout(400);
+    await waitForLocatorCount(transactionButtonLocator(page), Math.min(count + 1, minimumCount), { timeoutMs: 900 });
   }
   await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
-  await page.waitForTimeout(400);
+  await waitForBodyText(page, (text) => /This month|January|February|March|April|May|June|July|August|September|October|November|December|\d{4}/i.test(text), {
+    timeoutMs: 2500,
+  });
 }
 
 function sha256(content) {
@@ -878,17 +949,42 @@ async function closeDetailView(page) {
     const closeText = root.getByText(/^Close$/i).first();
     if (await closeText.isVisible({ timeout: 500 }).catch(() => false)) {
       await closeText.click({ timeout: 1500, force: true }).catch(() => null);
-      await page.waitForTimeout(300);
+      await waitForDetailClosed(page);
       return;
     }
   }
   const okButton = page.getByRole("button", { name: /ok|close|schließen|schliessen|done/i }).first();
   if (await okButton.isVisible({ timeout: 600 }).catch(() => false)) {
     await okButton.click({ timeout: 1500, force: true }).catch(() => null);
-    await page.waitForTimeout(300);
+    await waitForDetailClosed(page);
+    return;
   }
   await page.keyboard.press("Escape").catch(() => {});
-  await page.waitForTimeout(500);
+  await waitForDetailClosed(page);
+}
+
+async function waitForDetailView(page, { timeoutMs = 4500, pollMs = 200 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastRoot = null;
+  while (Date.now() < deadline) {
+    const root = await detailRoot(page);
+    if (root) {
+      const text = await root.innerText({ timeout: 1000 }).catch(() => "");
+      if (normalizeText(text).length > 20) return root;
+      lastRoot = root;
+    }
+    await page.waitForTimeout(pollMs);
+  }
+  return lastRoot;
+}
+
+async function waitForDetailClosed(page, { timeoutMs = 1500, pollMs = 150 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await detailRoot(page))) return true;
+    await page.waitForTimeout(pollMs);
+  }
+  return false;
 }
 
 function parseBillingExecutionText(text, fallbackLabel, transactionDetail = {}) {
@@ -1065,7 +1161,6 @@ async function clickDocumentAndReadBytes(context, page, label) {
   if (event?.type === "popup") {
     const popup = event.popup;
     await popup.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => null);
-    await popup.waitForTimeout(500).catch(() => null);
     const popupUrl = popup.url();
     if (/^https?:\/\//i.test(popupUrl)) {
       const response = await context.request.get(popupUrl, { timeout: portalPdfFetchTimeoutMs }).catch(() => null);
@@ -1981,8 +2076,8 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
   };
 
   await page.evaluate(() => window.scrollTo(0, 0)).catch(() => null);
-  await page.waitForTimeout(500);
   const transactionButtons = transactionButtonLocator(page);
+  await waitForLocatorCount(transactionButtons, 1, { timeoutMs: 3000 });
   const count = Math.min(await transactionButtons.count().catch(() => 0), portalDocumentScanLimit);
   stats.portalTransactionScanCandidateCount = count;
   let consecutiveKnownTransactions = 0;
@@ -1994,7 +2089,7 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
     const cardDetail = parseTransactionCardText(await button.innerText().catch(() => ""));
     await button.scrollIntoViewIfNeeded().catch(() => null);
     await button.click({ timeout: 5000, force: true }).catch(() => null);
-    await page.waitForTimeout(900);
+    await waitForDetailView(page);
 
     const detailText = await readDetailText(page);
     const modalDetail = parseTransactionDetail(detailText);
@@ -2059,7 +2154,7 @@ async function crawlPortalDocuments(context, page, firestoreClient, now) {
         await closeDetailView(page);
         if (labels.indexOf(label) < labels.length - 1) {
           await button.click({ timeout: 5000, force: true }).catch(() => null);
-          await page.waitForTimeout(700);
+          await waitForDetailView(page);
         }
       }
     }
@@ -2103,16 +2198,20 @@ async function crawlPortalActivityDocuments(context, page, firestoreClient, now)
   };
 
   await page.goto(TRADE_REPUBLIC_ACTIVITY_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(3000);
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    if (await page.getByText(/Annual Tax Report/i).first().isVisible({ timeout: 700 }).catch(() => false)) break;
-    await page.mouse.wheel(0, 900).catch(() => {});
-    await page.waitForTimeout(600);
-  }
-
+  await waitForBodyText(
+    page,
+    (text) => normalizeText(text).length > 300 || /Annual Tax Report|Activity|Documents?|Reports?/i.test(text),
+    { timeoutMs: 5000 },
+  );
   const activityButtons = page.locator('div[role="button"], li [role="button"], button').filter({
     hasText: /Annual Tax Report/i,
   });
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if ((await activityButtons.count().catch(() => 0)) > 0) break;
+    await page.mouse.wheel(0, 900).catch(() => {});
+    await waitForLocatorCount(activityButtons, 1, { timeoutMs: 800 });
+  }
+
   const count = Math.min(await activityButtons.count().catch(() => 0), stats.portalActivityDocumentScanLimit);
   stats.portalActivityScannedCount = count;
 
@@ -2122,7 +2221,7 @@ async function crawlPortalActivityDocuments(context, page, firestoreClient, now)
     const cardDetail = parseTransactionCardText(await button.innerText().catch(() => ""));
     await button.scrollIntoViewIfNeeded().catch(() => null);
     await button.click({ timeout: 5000, force: true }).catch(() => null);
-    await page.waitForTimeout(900);
+    await waitForDetailView(page);
 
     const detailText = await readDetailText(page);
     const modalDetail = parseTransactionDetail(detailText);
@@ -2414,7 +2513,13 @@ async function main() {
 
     await writeStatus("RUNNING", "Transaction-History-Seite wird geoeffnet");
     await page.goto(TRADE_REPUBLIC_TRANSACTIONS_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3500);
+    await waitForBodyText(
+      page,
+      (text) => /This month|January|February|March|April|May|June|July|August|September|October|November|December|\d{4}/i.test(text),
+      {
+        timeoutMs: 8000,
+      },
+    );
     if (fullPortalScan) {
       await scrollLoadedTransactions(page);
     } else {

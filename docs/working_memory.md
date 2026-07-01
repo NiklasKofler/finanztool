@@ -363,11 +363,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-07-01 12:28 CEST
+- Stand: 2026-07-01 14:22 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `e87571d`
-- Handoff-Commit: `82fb58d`
-- Firebase Deploy: 2026-07-01 12:29 CEST erfolgreich
+- Ausgangscommit: `cf0f052`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3310,3 +3310,27 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
 - In eingeklappten Bankkonto- und Kreditkarten-Gruppen muss der Gesamtstand
   direkt im Gruppen-Header sichtbar sein. Negative Geldstaende werden rot,
   positive gruen und neutrale grau dargestellt.
+
+## 2026-07-01 Agenten-Robustheit TFB / Trade Republic
+
+- TF Bank: Ein erfolgreicher Saldo-Import darf nicht als echter Datenfehler
+  haengen bleiben, nur weil beim Abmelden ein Portal-Popup den Logout-Klick
+  blockiert. Der Agent schliesst erkennbare Dialoge vor dem Logout und nutzt
+  als Fallback direkt den `/logout`-Link. Erst wenn auch das scheitert, wird
+  der Logout-Zustand gemeldet; der letzte erfolgreiche Saldo bleibt sichtbar.
+- TF Bank TAN-Logik bleibt direkt ueber Messages-Datenbank/TAN-Datei, kein
+  UI-Fallback. Bereits verwendete TANs werden lokal gehasht gemerkt, damit der
+  Agent nicht denselben Code erneut einreicht.
+- Trade Republic: Der manuelle Portal-Refresh soll moeglichst schnell bis zur
+  App-Bestaetigung kommen. Vor der Freigabe werden feste Wartezeiten reduziert
+  und durch Erkennung von Login-Formular, PIN-Feld oder bestehender Session
+  ersetzt. Die Freigabe selbst bleibt bewusst ein manueller App-Schritt.
+- Trade Republic: Pauschale Sleeps im Portal-Snapshot/Vollscan sollen durch
+  Ereignisse oder Parser-Reife ersetzt werden. Der Agent wartet auf
+  Portfolio-Werte, Cash/Transactions, Activity-/Tax-Report-Inhalte,
+  Detailansichten oder DOM-Aenderungen. Lange Download-/Popup-Zeiten bleiben
+  nur als maximale Event-Timeouts bestehen, nicht als blinde Wartezeit.
+- Umsetzung: Login-/Session-Erkennung laeuft ueber `waitForFunction`; Portal-
+  Snapshot, Transaction-Seite, Activity-Seite und Detailansichten verwenden
+  parser-/DOM-basierte Ready-Checks. Verbleibende kurze Polling-Waits sind nur
+  interne Ereignispruefungen oder harte Download-Maximalzeiten.

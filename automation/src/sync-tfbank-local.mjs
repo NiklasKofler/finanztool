@@ -525,15 +525,93 @@ async function waitForTfBankDashboard(page, { timeoutMs = 60000, pollMs = 1500 }
 async function clickVisibleByRole(page, role, pattern, timeout = 1200) {
   const locator = page.getByRole(role, { name: pattern }).first();
   if (!(await locator.isVisible({ timeout }).catch(() => false))) return false;
-  await locator.click({ timeout: 5000 });
-  return true;
+  return await locator.click({ timeout: 5000, force: true }).then(() => true).catch(async (error) => {
+    await debugTfBank("click_visible_by_role_failed", {
+      role,
+      pattern: String(pattern),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  });
 }
 
 async function clickVisibleText(page, pattern, timeout = 1200) {
   const locator = page.locator(`text=${pattern}`).first();
   if (!(await locator.isVisible({ timeout }).catch(() => false))) return false;
-  await locator.click({ timeout: 5000 });
-  return true;
+  return await locator.click({ timeout: 5000, force: true }).then(() => true).catch(async (error) => {
+    await debugTfBank("click_visible_text_failed", {
+      pattern: String(pattern),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  });
+}
+
+async function dismissTfBankDialog(page) {
+  const dialog = page.locator('[role="dialog"], [aria-modal="true"], .modal').first();
+  if (!(await dialog.isVisible({ timeout: 800 }).catch(() => false))) return false;
+
+  const closePattern = /schlie(?:ß|ss)en|close|ok|verstanden|akzeptieren|weiter|nicht jetzt|nein danke|^[×x]$/i;
+  for (const role of ["button", "link"]) {
+    const control = dialog.getByRole(role, { name: closePattern }).first();
+    if (await control.isVisible({ timeout: 600 }).catch(() => false)) {
+      const clicked = await control.click({ timeout: 3000, force: true }).then(() => true).catch(() => false);
+      if (clicked) {
+        await page.waitForTimeout(300);
+        await debugTfBank("dialog_dismissed", { method: `role:${role}` });
+        return true;
+      }
+    }
+  }
+
+  const clickedFallback = await dialog.evaluate((element) => {
+    const pattern = /schlie(?:ß|ss)en|close|ok|verstanden|akzeptieren|weiter|nicht jetzt|nein danke|^[×x]$/i;
+    const candidates = [...element.querySelectorAll("button, a, [role='button'], [aria-label], .close, .btn")];
+    const item = candidates.find((candidate) => {
+      const text = `${candidate.textContent ?? ""} ${candidate.getAttribute("aria-label") ?? ""}`.trim();
+      const box = candidate.getBoundingClientRect();
+      return pattern.test(text) && box.width > 0 && box.height > 0;
+    });
+    if (!item) return false;
+    item.click();
+    return true;
+  }).catch(() => false);
+  if (clickedFallback) {
+    await page.waitForTimeout(300);
+    await debugTfBank("dialog_dismissed", { method: "dom-fallback" });
+    return true;
+  }
+
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(300);
+  const gone = !(await dialog.isVisible({ timeout: 600 }).catch(() => false));
+  await debugTfBank(gone ? "dialog_dismissed" : "dialog_still_visible", { method: "escape" });
+  return gone;
+}
+
+async function isTfBankLoggedOut(page) {
+  const [text, url] = await Promise.all([
+    page.locator("body").innerText({ timeout: 8000 }).catch(() => ""),
+    Promise.resolve(page.url()),
+  ]);
+  return (
+    /geburtsdatum|kundennummer|einloggen|login|anmelden/i.test(text) ||
+    /login|logout|logged-out|signout|sign-out/i.test(url)
+  );
+}
+
+async function directLogoutTfBank(page) {
+  const logoutUrl = new URL("/logout", homeUrl).toString();
+  await page.goto(logoutUrl, { waitUntil: "domcontentloaded", timeout: 15000 }).catch((error) => {
+    throw new Error(`Direkter Logout-Aufruf fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  await page.waitForTimeout(800);
+  const loggedOut = await isTfBankLoggedOut(page);
+  return {
+    attempted: true,
+    ok: loggedOut,
+    message: loggedOut ? "Logout per direktem Logout-Link bestaetigt." : "Direkter Logout-Link aufgerufen, aber Login-Seite nicht sicher erkannt.",
+  };
 }
 
 async function clickLogoutControl(page) {
@@ -579,20 +657,20 @@ async function logoutTfBank(page) {
   }
 
   try {
+    await dismissTfBankDialog(page);
     const clicked = await clickLogoutControl(page);
     if (!clicked) {
-      return { attempted: true, ok: false, message: "Kein Logout-/Abmelden-Element gefunden." };
+      return await directLogoutTfBank(page);
     }
     await page.waitForTimeout(2500);
-    const text = await page.locator("body").innerText({ timeout: 8000 }).catch(() => "");
-    const url = page.url();
-    const loggedOut =
-      /geburtsdatum|kundennummer|einloggen|login|anmelden/i.test(text) ||
-      /login|logout|logged-out|signout|sign-out/i.test(url);
+    if (!(await isTfBankLoggedOut(page))) {
+      await dismissTfBankDialog(page);
+      if (!(await isTfBankLoggedOut(page))) return await directLogoutTfBank(page);
+    }
     return {
       attempted: true,
-      ok: loggedOut,
-      message: loggedOut ? "Logout bestaetigt." : "Logout geklickt, aber Login-Seite nicht sicher erkannt.",
+      ok: true,
+      message: "Logout bestaetigt.",
     };
   } catch (error) {
     return {
