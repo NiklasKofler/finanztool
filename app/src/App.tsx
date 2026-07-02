@@ -1635,6 +1635,24 @@ function formatChartMoney(value?: number | null, privacyMode = false) {
   return privacyMode ? maskMoney(value) : formatCurrency(value);
 }
 
+function formatChartAxisMoney(value?: number | null, privacyMode = false) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (privacyMode) return maskMoney(value);
+  const absValue = Math.abs(value);
+  const maximumFractionDigits = absValue >= 1000 ? 0 : 2;
+  const formattedValue = new Intl.NumberFormat("de-AT", {
+    minimumFractionDigits: maximumFractionDigits,
+    maximumFractionDigits,
+  }).format(value);
+  return `${formattedValue} €`;
+}
+
+function formatChartAxisPercent(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (Math.abs(value) < 0.0005) return "0 %";
+  return `${value > 0 ? "+" : "-"}${formatPercent(Math.abs(value))}`;
+}
+
 function formatChartPointTime(time?: number | null, rangeId: PriceChartRangeId = "1d") {
   if (typeof time !== "number" || !Number.isFinite(time)) return "—";
   const date = new Date(time);
@@ -1709,6 +1727,12 @@ function PositionPriceChart({
   const values = points.map((point) => point.value);
   const minValue = values.length ? Math.min(...values) : 0;
   const maxValue = values.length ? Math.max(...values) : 0;
+  const midValue = minValue + (maxValue - minValue) / 2;
+  const axisTicks = [
+    { id: "top", value: maxValue },
+    { id: "middle", value: midValue },
+    { id: "bottom", value: minValue },
+  ];
   const valueSpread = maxValue - minValue || 1;
   const firstTime = firstPoint?.time ?? 0;
   const lastTime = latestPoint?.time ?? firstTime + 1;
@@ -1753,46 +1777,60 @@ function PositionPriceChart({
       </header>
       {points.length ? (
         <>
-          <svg
-            className="position-price-chart__svg"
-            viewBox="0 0 100 42"
-            preserveAspectRatio="none"
-            role="img"
-            onPointerDown={handlePointer}
-            onPointerMove={handlePointer}
-            onPointerLeave={(event) => {
-              if (event.pointerType === "mouse") setSelectedPointId(null);
-            }}
-          >
-            <title>Kursverlauf {position.name}</title>
-            <line className="position-price-chart__grid" x1="0" y1="6" x2="100" y2="6" />
-            <line className="position-price-chart__grid" x1="0" y1="21" x2="100" y2="21" />
-            <line className="position-price-chart__grid" x1="0" y1="36" x2="100" y2="36" />
-            {points.length > 1 ? (
-              <polyline points={polylinePoints.join(" ")} />
-            ) : (
-              <circle cx="50" cy="18" r="1.8" />
-            )}
-            {selectedChartPoint ? (
-              <>
-                <line
-                  className="position-price-chart__crosshair"
-                  x1={selectedChartPoint.x}
-                  y1="4"
-                  x2={selectedChartPoint.x}
-                  y2="38"
-                />
-                <circle
-                  className="position-price-chart__marker"
-                  cx={selectedChartPoint.x}
-                  cy={selectedChartPoint.y}
-                  r="2.2"
-                />
-              </>
-            ) : null}
-          </svg>
+          <div className="position-price-chart__plot">
+            <div className="position-price-chart__axis position-price-chart__axis--price" aria-hidden="true">
+              {axisTicks.map((tick) => (
+                <span key={tick.id}>{formatChartAxisMoney(tick.value, privacyMode)}</span>
+              ))}
+            </div>
+            <svg
+              className="position-price-chart__svg"
+              viewBox="0 0 100 42"
+              preserveAspectRatio="none"
+              role="img"
+              onPointerDown={handlePointer}
+              onPointerMove={handlePointer}
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse") setSelectedPointId(null);
+              }}
+            >
+              <title>Kursverlauf {position.name}</title>
+              <line className="position-price-chart__grid" x1="0" y1="6" x2="100" y2="6" />
+              <line className="position-price-chart__grid" x1="0" y1="21" x2="100" y2="21" />
+              <line className="position-price-chart__grid" x1="0" y1="36" x2="100" y2="36" />
+              {points.length > 1 ? (
+                <polyline points={polylinePoints.join(" ")} />
+              ) : (
+                <circle cx="50" cy="18" r="1.8" />
+              )}
+              {selectedChartPoint ? (
+                <>
+                  <line
+                    className="position-price-chart__crosshair"
+                    x1={selectedChartPoint.x}
+                    y1="4"
+                    x2={selectedChartPoint.x}
+                    y2="38"
+                  />
+                  <circle
+                    className="position-price-chart__marker"
+                    cx={selectedChartPoint.x}
+                    cy={selectedChartPoint.y}
+                    r="2.2"
+                  />
+                </>
+              ) : null}
+            </svg>
+            <div className="position-price-chart__axis position-price-chart__axis--percent" aria-hidden="true">
+              {axisTicks.map((tick) => (
+                <span key={tick.id}>
+                  {firstPoint?.value ? formatChartAxisPercent((tick.value - firstPoint.value) / firstPoint.value) : "—"}
+                </span>
+              ))}
+            </div>
+          </div>
           <footer className="position-price-chart__footer">
-            <span>{points.length} Punkt{points.length === 1 ? "" : "e"}</span>
+            <span>{rangeId === "1d" ? "5-Minuten-Raster" : `${points.length} Punkt${points.length === 1 ? "" : "e"}`}</span>
             <strong className={`performance-cell--${deltaTone}`}>
               {privacyMode ? maskSignedMoney(deltaValue) : formatSignedMoney(deltaValue)}
               <small>{formatSignedPercent(deltaPct)}</small>

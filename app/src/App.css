@@ -209,7 +209,8 @@
 .theme-dark .mobile-position-card em,
 .theme-dark .mobile-position-card__details em,
 .theme-dark .position-price-chart__title span,
-.theme-dark .position-price-chart__footer span {
+.theme-dark .position-price-chart__footer span,
+.theme-dark .position-price-chart__axis span {
   color: #9fb0ab;
 }
 
@@ -353,6 +354,14 @@
 .theme-dark .position-price-chart__svg .position-price-chart__marker {
   stroke: #0f171a;
   fill: #40d5ad;
+}
+
+.theme-dark .position-price-chart__axis--percent span:nth-child(1) {
+  color: #51d79f;
+}
+
+.theme-dark .position-price-chart__axis--percent span:nth-child(3) {
+  color: #ff8e74;
 }
 
 .theme-dark .position-price-chart__empty {
@@ -1265,6 +1274,43 @@
   cursor: crosshair;
   touch-action: none;
   user-select: none;
+}
+
+.position-price-chart__plot {
+  display: grid;
+  grid-template-columns: minmax(54px, 74px) minmax(0, 1fr) minmax(40px, 54px);
+  align-items: stretch;
+  gap: 8px;
+}
+
+.position-price-chart__axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 118px;
+  padding: 2px 0;
+  color: #73807c;
+  font-size: 0.66rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.position-price-chart__axis--price {
+  align-items: flex-start;
+}
+
+.position-price-chart__axis--percent {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.position-price-chart__axis--percent span:nth-child(1) {
+  color: #0f7a5d;
+}
+
+.position-price-chart__axis--percent span:nth-child(3) {
+  color: #a63722;
 }
 
 .position-price-chart__svg line.position-price-chart__grid {
@@ -3610,6 +3656,16 @@
 
   .position-price-chart__svg {
     height: 96px;
+  }
+
+  .position-price-chart__plot {
+    grid-template-columns: minmax(48px, 64px) minmax(0, 1fr) minmax(34px, 46px);
+    gap: 5px;
+  }
+
+  .position-price-chart__axis {
+    min-height: 96px;
+    font-size: 0.54rem;
   }
 
   .position-price-chart__footer {

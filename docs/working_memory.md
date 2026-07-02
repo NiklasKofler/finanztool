@@ -370,11 +370,11 @@ Update 2026-06-27:
 
 ## Aktueller Geraete-Handoff
 
-- Stand: 2026-07-01 23:14 CEST
+- Stand: 2026-07-02 11:25 CEST
 - Aktion: `ftp` vom Mac Studio von Niklas Richtung MacBook Pro
-- Ausgangscommit: `5e84e50`
-- Handoff-Commit: `710880a`
-- Firebase Deploy: 2026-07-01 23:14 CEST erfolgreich
+- Ausgangscommit: `d1d3c00`
+- Handoff-Commit: wird in diesem `ftp`-Lauf erstellt
+- Firebase Deploy: wird in diesem `ftp`-Lauf ausgefuehrt
 - Naechster Schritt auf MacBook Pro: `ftd` ausfuehren
 - Bekannte Wechselpunkte:
   - Secrets und produktive LaunchAgents werden nicht per Git uebertragen
@@ -3444,6 +3444,11 @@ ausfuehren; danach auf dem Mac Studio `ftd`, Agent-Installation/Health und
   `historyInterval=5m` den Abrufzeitpunkt (`fetchedAt`/`updatedAt`) als
   Zeitachse und zeigt per Hover oder Fingertipp den exakten Kurs zum
   naechstliegenden Punkt.
+- Darstellung ab 2026-07-02:
+  - links steht die Kurs-Skala des gewaehlten Zeitraums,
+  - rechts steht dieselbe Skala als Prozentveraenderung relativ zum ersten
+    Chartpunkt des Zeitraums,
+  - bei `Heute` zeigt die Fusszeile explizit `5-Minuten-Raster`.
 - Robustheit: Ein Teilfehler in einer Kursquelle, z. B. temporare SIX/CHF-EUR-
   Fehler bei EquatePlus, darf den generischen Positionssnapshot nicht mehr
   blockieren. `run-quote-sync-local.mjs` schreibt bei Teilfehlern
